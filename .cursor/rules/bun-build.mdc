@@ -1,0 +1,122 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Bun Bundler (beta) — Fast native bundling in one command
+
+```bash
+bun build ./index.tsx --outdir ./build        # CLI
+````
+
+```ts
+await Bun.build({ entrypoints: ['index.tsx'], outdir: 'build' }); // JS API
+```
+
+> **Speed:** Out-bundles esbuild on the three.js benchmark (10× copies, sourcemaps & minify).
+
+---
+
+## Why bundle?
+
+1. **Fewer HTTP requests** – merge hundreds of module files into a few.
+2. **Code transforms** – TS, JSX, CSS-in-JS → plain JS/CSS.
+3. **Framework glue** – routing, loaders, server components.
+4. **Full-stack builds** – bundle client + server, produce single-file executables.
+
+---
+
+## Essential flags / options
+
+| Option (JS / CLI)                                                          | Purpose                          | Default              |                 |            |        |
+| -------------------------------------------------------------------------- | -------------------------------- | -------------------- | --------------- | ---------- | ------ |
+| `entrypoints` / positional                                                 | Files to start from              | **required**         |                 |            |        |
+| `outdir` / `--outdir`                                                      | Write bundles there              | –                    |                 |            |        |
+| `target` / `--target browser \| bun \| node`                               | Env-specific resolution          | `browser`            |                 |            |        |
+| `format` / `--format esm \| cjs \| iife`                                   | Module format                    | `esm`                |                 |            |        |
+| `splitting` / `--splitting`                                                | Code splitting & shared chunks   | `false`              |                 |            |        |
+| `watch` / `--watch`                                                        | Rebuild on change                | `false`              |                 |            |        |
+| `minify` / `--minify*`                                                     | Whitespace/identifiers/syntax    | `false`              |                 |            |        |
+| `sourcemap` / `--sourcemap`                                                | \`none                           | linked               | inline          | external\` | `none` |
+| `env` / \`--env inline                                                     | "PREFIX\_\*"                     | disable\`            | Inline env vars | –          |        |
+| `external` / `--external react`                                            | Leave import unresolved          | `[]`                 |                 |            |        |
+| `packages` / `--packages external`                                         | Treat *all* pkg imports external | `bundle`             |                 |            |        |
+| `publicPath` / `--public-path https://cdn/`                                | Prefix asset/chunk URLs          | –                    |                 |            |        |
+| `naming` / `--entry-naming '[dir]/[name]-[hash].[ext]'`                    | Custom file names                | `[dir]/[name].[ext]` |                 |            |        |
+| Misc JS only: `plugins`, `banner`, `footer`, `drop`, `bytecode`, `compile` |                                  |                      |                 |            |        |
+
+---
+
+## Built-in loaders
+
+| Files                   | Behaviour                     |
+| ----------------------- | ----------------------------- |
+| `.js[x] .ts[x]`         | TS/JSX → JS, tree-shake & DCE |
+| `.json` `.toml`         | Parsed & inlined              |
+| `.txt`                  | Inlined as string             |
+| Other / `.wasm` `.node` | Copied, path string returned  |
+
+Unknown extensions become hashed assets (`logo-ab12.svg`).
+
+---
+
+## Output object (`await Bun.build(...)`)
+
+```ts
+{
+  success: boolean,
+  outputs: BuildArtifact[],     // each is a Blob
+  logs: BuildMessage[]
+}
+
+type BuildArtifact = {
+  path: string;                 // absolute
+  kind: 'entry-point'|'chunk'|'asset'|'sourcemap'|'bytecode';
+  loader: Loader; hash?: string; sourcemap?: BuildArtifact;
+} & Blob
+```
+
+---
+
+## Executables & bytecode
+
+```bash
+bun build ./cli.ts --outfile mycli --compile     # self-contained binary
+bun build ./api.ts --outdir out --bytecode       # adds .jsc for fast start
+```
+
+(bytecode: CJS + `target:bun` only)
+
+---
+
+## Macros – bundle-time JS
+
+```ts
+import { random } from './util.ts' with { type: 'macro' };
+console.log(random());          // call runs at **build**, value inlined
+```
+
+* Disable with `--no-macros`.
+* Packages should export a `"macro"` condition for macro code.
+
+---
+
+## Error handling
+
+* Promise rejects with `AggregateError` (or check `success`).
+* `error.errors` contains `BuildMessage` / `ResolveMessage` objects with positions & codes.
+
+---
+
+### Cheat-sheet
+
+```bash
+# Rebuild on change with sourcemaps & minify
+bun build src/index.tsx --outdir dist --watch --sourcemap=linked --minify
+
+# Externalise React, CDN prefixes assets
+bun build app.tsx --outdir public \
+  --external react --public-path https://cdn.example.com/
+```
+
+That’s the entire Bun bundler feature-set, minus the verbosity.

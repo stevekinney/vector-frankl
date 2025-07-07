@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "oven.bun-vscode",
+    "dbaeumer.vscode-eslint",
+    "github.vscode-github-actions",
+    "EditorConfig.EditorConfig"
+  ]
+}

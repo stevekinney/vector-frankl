@@ -1,0 +1,67 @@
+# Source files (only ship built files)
+src/
+examples/
+tests/
+scripts/
+requirements/
+docs/
+
+# Configuration files
+.husky/
+.cursor/
+eslint.config.js
+bunfig.toml
+tsconfig.json
+tsconfig.build.json
+.prettierrc
+.prettierignore
+
+# Development files
+*.test.ts
+*.spec.ts
+*.test.js
+*.spec.js
+CLAUDE.md
+REQUIREMENTS.md
+
+# Build artifacts and temp files
+coverage/
+.nyc_output/
+*.log
+*.pid
+*.seed
+node_modules/
+.bun/
+.bun-install-cache/
+*.tsbuildinfo
+.eslintcache
+
+# Git and CI
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment files
+.env
+.env.*
+local.env
+
+# Misc
+repomix-output.xml
+test-output/
+
+# Keep these files
+!dist/
+!LICENSE
+!README.md
+!CHANGELOG.md
+!package.json

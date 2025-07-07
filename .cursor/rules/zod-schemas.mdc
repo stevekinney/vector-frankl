@@ -1,0 +1,363 @@
+---
+description: Working with Zod schemas in TypeScript (v3.25.56)
+globs: *.tsx,*.ts
+alwaysApply: false
+---
+
+# Zod Schema Best Practices
+
+## CRITICAL: Package Version & Import Requirements
+
+**IMPORTANT**: This codebase uses Zod v4 imported as `zod/v4`. All guidance below is for **Zod v4 only**.
+
+### ✅ Correct Imports (v3)
+
+```typescript
+// ✅ ALWAYS use standard import for v3
+import { z } from 'zod';
+
+// ❌ NEVER use version-specific imports - they cause type inference failures
+import { z } from 'zod/v4'; // This breaks everything!
+```
+
+### 🚨 Critical Bug Prevention
+
+**The #1 cause of tool system failures**: Importing from `zod/v4` when using Zod v3 causes:
+- All tool parameters to be inferred as `{}`
+- Complete loss of type safety
+- Runtime errors in Chrome extension tools
+
+## Schema Authoring Rules (v3)
+
+### ✅ Error Messages (v3 Pattern)
+
+```typescript
+// ✅ CORRECT for v3 - use `message`
+z.string().min(5, { message: "Too short" });
+z.string({ required_error: "This field is required" });
+z.string({ invalid_type_error: "Must be a string" });
+
+// ❌ WRONG - `error` function is v4 only
+z.string().min(5, { error: "Too short" }); // Doesn't exist in v3
+```
+
+### ✅ Object Validation (v3 Pattern)
+
+```typescript
+// ✅ CORRECT - `.strict()` is available in v3
+z.object({ name: z.string() }).strict();
+
+// ✅ Alternative - catchall with never
+z.object({ name: z.string() }).catchall(z.never());
+
+// ❌ WRONG - `z.strictObject()` is v4 only
+z.strictObject({ name: z.string() }); // Doesn't exist in v3
+```
+
+### ✅ Error Handling (v3 Pattern)
+
+```typescript
+// ✅ CORRECT - v3 error handling
+const result = schema.safeParse(data);
+if (!result.success) {
+  console.log(result.error.message); // ✅ Available in v3
+  console.log(result.error.issues); // ✅ Available in v3
+  console.log(result.error.format()); // ✅ Available in v3
+}
+
+// ❌ WRONG - `z.treeifyError()` is v4 only
+z.treeifyError(result.error); // Doesn't exist in v3
+```
+
+## Chrome Extension Specific Patterns
+
+### Tool Parameter Schemas
+
+```typescript
+// ✅ Tool schema pattern for Chrome extension
+export const chromeTabToolSchema = z.object({
+  tabId: z.number().int().positive().optional()
+    .describe('Tab ID to operate on, defaults to active tab'),
+  action: z.enum(['close', 'reload', 'pin', 'unpin'])
+    .describe('Action to perform on the tab'),
+  windowId: z.number().int().positive().optional()
+    .describe('Window ID containing the tab'),
+}).strict();
+
+export type ChromeTabToolArgs = z.infer<typeof chromeTabToolSchema>;
+```
+
+### Chrome API Response Validation
+
+```typescript
+// ✅ Validate Chrome API responses
+export const ChromeTabSchema = z.object({
+  id: z.number().int().positive(),
+  url: z.string().url().optional(),
+  title: z.string().optional(),
+  active: z.boolean(),
+  pinned: z.boolean(),
+  windowId: z.number().int().positive(),
+  index: z.number().int().min(0),
+}).strict();
+
+// ✅ Safe Chrome API wrapper
+export async function getValidatedTab(tabId: number): Promise<chrome.tabs.Tab | null> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const result = ChromeTabSchema.safeParse(tab);
+
+    if (!result.success) {
+      console.error('Invalid Chrome tab data:', result.error.format());
+      return null;
+    }
+
+    return result.data;
+  } catch (error) {
+    console.error('Failed to get tab:', error);
+    return null;
+  }
+}
+```
+
+### Storage Schema Patterns
+
+```typescript
+// ✅ Chrome storage validation with defaults
+export const ApiKeysSchema = z.object({
+  apiKeys: z.object({
+    openai: z.string().nullable().default(null),
+    anthropic: z.string().nullable().default(null),
+    google: z.string().nullable().default(null),
+  }).strict().default({
+    openai: null,
+    anthropic: null,
+    google: null,
+  }),
+}).strict().default({
+  apiKeys: { openai: null, anthropic: null, google: null }
+});
+
+// ✅ Safe storage access
+export async function getApiKeys() {
+  const result = await chrome.storage.local.get('apiKeys');
+  const parsed = ApiKeysSchema.safeParse(result);
+
+  if (!parsed.success) {
+    console.warn('Invalid API keys in storage, using defaults');
+    return ApiKeysSchema.parse({});
+  }
+
+  return parsed.data;
+}
+```
+
+## Field Type Guidelines (v3)
+
+### ✅ Recommended Types
+
+```typescript
+// ✅ Basic types
+z.string()
+z.number().int() // Prefer int() for whole numbers
+z.number() // For decimals
+z.boolean()
+z.array(z.string())
+z.enum(['option1', 'option2', 'option3'])
+
+// ✅ String validations
+z.string().email()
+z.string().uuid()
+z.string().url()
+z.string().min(1).max(100)
+
+// ✅ Number validations
+z.number().int().positive()
+z.number().min(0).max(100)
+z.number().int().min(1) // For IDs
+
+// ✅ Optional with defaults
+z.string().optional()
+z.string().default('default value')
+z.number().default(0)
+```
+
+### ❌ Avoid These Types
+
+```typescript
+// ❌ Avoid - poor OpenAI tool compatibility
+z.any() // Loses all type safety
+z.unknown() // OpenAI may reject
+z.function() // Not serializable
+z.date() // Use z.string().datetime() instead
+z.bigint() // Use z.number() or z.string()
+
+// ❌ Complex types that OpenAI struggles with
+z.map(z.string(), z.number()) // Use z.record() instead
+z.set(z.string()) // Use z.array().refine() for uniqueness
+```
+
+## Union & Discriminated Union Patterns (v3)
+
+```typescript
+// ✅ Simple unions
+z.union([z.string(), z.number()])
+
+// ✅ Discriminated unions (recommended)
+const NotificationSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('email'),
+    to: z.string().email(),
+    subject: z.string(),
+    body: z.string(),
+  }),
+  z.object({
+    type: z.literal('sms'),
+    to: z.string(),
+    message: z.string().max(160),
+  }),
+]).strict();
+
+// ✅ Enum-based unions
+const StatusSchema = z.enum(['pending', 'processing', 'completed', 'failed']);
+```
+
+## Transformation Patterns (v3)
+
+```typescript
+// ✅ Data transformations
+const DateStringSchema = z.string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD format')
+  .transform((str) => new Date(str));
+
+// ✅ Preprocessing
+const NumberStringSchema = z.preprocess(
+  (val) => typeof val === 'string' ? parseFloat(val) : val,
+  z.number()
+);
+
+// ✅ String cleaning
+const CleanStringSchema = z.string()
+  .transform((str) => str.trim().toLowerCase());
+```
+
+## Testing Patterns
+
+```typescript
+// ✅ Schema testing
+describe('ChromeTabSchema', () => {
+  it('validates valid Chrome tab', () => {
+    const validTab = {
+      id: 123,
+      url: 'https://example.com',
+      title: 'Example',
+      active: true,
+      pinned: false,
+      windowId: 1,
+      index: 0,
+    };
+
+    expect(() => ChromeTabSchema.parse(validTab)).not.toThrow();
+  });
+
+  it('rejects invalid tab data', () => {
+    const invalidTab = { id: 'not-a-number' };
+
+    const result = ChromeTabSchema.safeParse(invalidTab);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues[0]?.code).toBe('invalid_type');
+    }
+  });
+});
+```
+
+## Tool Integration Best Practices
+
+```typescript
+// ✅ Complete tool schema example
+export const searchTabsToolSchema = z.object({
+  query: z.string().min(1).describe('Search query to match against tab titles and URLs'),
+  matchUrl: z.boolean().default(true).describe('Whether to search in URLs'),
+  matchTitle: z.boolean().default(true).describe('Whether to search in titles'),
+  caseSensitive: z.boolean().default(false).describe('Whether search is case sensitive'),
+  limit: z.number().int().positive().max(100).default(10)
+    .describe('Maximum number of results to return'),
+}).strict();
+
+// ✅ Tool registration with proper typing
+export const searchTabsTool = Tool.register(
+  {
+    name: 'search-tabs',
+    description: 'Search through open browser tabs by title or URL',
+    parameters: searchTabsToolSchema.shape, // Extract the shape for Tool.register
+  },
+  async (args) => {
+    // args is now properly typed as z.infer<typeof searchTabsToolSchema>
+    const tabs = await chrome.tabs.query({});
+
+    return tabs
+      .filter(tab => {
+        if (!args.matchTitle && !args.matchUrl) return false;
+
+        const titleMatch = args.matchTitle &&
+          tab.title?.includes(args.caseSensitive ? args.query : args.query.toLowerCase());
+        const urlMatch = args.matchUrl &&
+          tab.url?.includes(args.caseSensitive ? args.query : args.query.toLowerCase());
+
+        return titleMatch || urlMatch;
+      })
+      .slice(0, args.limit)
+      .map(tab => ({
+        id: tab.id,
+        title: tab.title,
+        url: tab.url,
+        active: tab.active,
+      }));
+  }
+);
+```
+
+## Performance Optimization
+
+```typescript
+// ✅ Reuse schemas instead of recreating
+const EMAIL_SCHEMA = z.string().email(); // Create once, reuse everywhere
+
+// ✅ Use lazy evaluation for recursive schemas
+const CommentSchema: z.ZodType<Comment> = z.lazy(() => z.object({
+  id: z.string(),
+  text: z.string(),
+  replies: z.array(CommentSchema),
+}));
+
+// ✅ Cache validation results for repeated data
+const validationCache = new Map<string, boolean>();
+
+function isValidEmail(email: string): boolean {
+  if (validationCache.has(email)) {
+    return validationCache.get(email)!;
+  }
+
+  const result = EMAIL_SCHEMA.safeParse(email);
+  validationCache.set(email, result.success);
+  return result.success;
+}
+```
+
+## Migration Guide: v4 Features to Avoid
+
+If you see these patterns, they're v4-only and will break:
+
+```typescript
+// ❌ v4 patterns that don't exist in v3.25.56
+z.strictObject() // Use z.object().strict()
+z.looseObject() // Use z.object()
+z.email() // Use z.string().email()
+z.uuid() // Use z.string().uuid()
+z.function({ input: [...], output: ... }) // Use basic z.function()
+z.treeifyError() // Use error.format()
+error: (issue) => string // Use message: string
+```
+
+Always verify your schemas work by testing them after any changes!

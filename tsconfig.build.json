@@ -1,0 +1,40 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Override noEmit for building
+    "noEmit": false,
+    
+    // Generate declaration files
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    
+    // Output configuration
+    "outDir": "./dist",
+    "rootDir": "./src",
+    
+    // Remove settings that interfere with build
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": false,
+    
+    // Module settings for Node.js compatibility
+    "module": "ES2022",
+    "moduleResolution": "node",
+    
+    // Clean build
+    "incremental": false,
+    "tsBuildInfoFile": null
+  },
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "tests",
+    "examples",
+    "scripts",
+    "src/test"
+  ]
+}

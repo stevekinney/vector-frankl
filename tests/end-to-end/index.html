@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vector Frankl E2E Tests</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .status.success { background-color: #d4edda; color: #155724; }
+        .status.error { background-color: #f8d7da; color: #721c24; }
+        .status.info { background-color: #d1ecf1; color: #0c5460; }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        #logs {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            border-radius: 4px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Vector Frankl E2E Tests</h1>
+        <p>This page tests the vector database functionality in real browser environments.</p>
+        
+        <div id="browser-info" class="status info"></div>
+        
+        <div class="test-section">
+            <h2>Database Status</h2>
+            <div id="db-status" class="status">Not initialized</div>
+            <button id="init-db" onclick="initDatabase()">Initialize Database</button>
+            <button id="clear-db" onclick="clearDatabase()" disabled>Clear Database</button>
+        </div>
+
+        <div class="test-section">
+            <h2>Basic Operations</h2>
+            <button id="test-crud" onclick="testCRUD()" disabled>Test CRUD Operations</button>
+            <button id="test-search" onclick="testSearch()" disabled>Test Vector Search</button>
+            <button id="test-batch" onclick="testBatch()" disabled>Test Batch Operations</button>
+        </div>
+
+        <div class="test-section">
+            <h2>Performance Tests</h2>
+            <button id="test-performance" onclick="testPerformance()" disabled>Run Performance Test</button>
+            <button id="test-memory" onclick="testMemory()" disabled>Test Memory Usage</button>
+        </div>
+
+        <div class="test-section">
+            <h2>Advanced Features</h2>
+            <button id="test-workers" onclick="testWorkers()" disabled>Test Web Workers</button>
+            <button id="test-wasm" onclick="testWASM()" disabled>Test WASM Operations</button>
+            <button id="test-namespaces" onclick="testNamespaces()" disabled>Test Namespaces</button>
+        </div>
+
+        <div class="test-section">
+            <h2>Test Results</h2>
+            <div id="test-results"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>Logs</h2>
+            <div id="logs"></div>
+            <button onclick="clearLogs()">Clear Logs</button>
+        </div>
+    </div>
+
+    <script type="module">
+        // This will be populated by our test scripts
+        window.testResults = [];
+        window.db = null;
+        window.vf = null;
+
+        // Log function for debugging
+        window.log = function(message, type = 'info') {
+            const timestamp = new Date().toISOString();
+            const logEntry = `[${timestamp}] ${type.toUpperCase()}: ${message}\n`;
+            document.getElementById('logs').textContent += logEntry;
+            console.log(logEntry);
+        };
+
+        window.clearLogs = function() {
+            document.getElementById('logs').textContent = '';
+        };
+
+        // Display browser info
+        function displayBrowserInfo() {
+            const info = {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                language: navigator.language,
+                cookieEnabled: navigator.cookieEnabled,
+                onLine: navigator.onLine,
+                hardwareConcurrency: navigator.hardwareConcurrency,
+                maxTouchPoints: navigator.maxTouchPoints || 0,
+                webgl: !!window.WebGLRenderingContext,
+                webgl2: !!window.WebGL2RenderingContext,
+                webgpu: !!navigator.gpu,
+                sharedArrayBuffer: typeof SharedArrayBuffer !== 'undefined',
+                webAssembly: typeof WebAssembly !== 'undefined',
+                indexedDB: !!window.indexedDB,
+                webWorkers: typeof Worker !== 'undefined',
+                serviceWorker: 'serviceWorker' in navigator,
+                storage: {
+                    localStorage: !!window.localStorage,
+                    sessionStorage: !!window.sessionStorage,
+                }
+            };
+
+            const infoDiv = document.getElementById('browser-info');
+            infoDiv.innerHTML = `
+                <strong>Browser Environment:</strong><br>
+                Platform: ${info.platform}<br>
+                Language: ${info.language}<br>
+                Hardware Concurrency: ${info.hardwareConcurrency}<br>
+                WebGL: ${info.webgl ? '✓' : '✗'} | WebGL2: ${info.webgl2 ? '✓' : '✗'} | WebGPU: ${info.webgpu ? '✓' : '✗'}<br>
+                SharedArrayBuffer: ${info.sharedArrayBuffer ? '✓' : '✗'} | WebAssembly: ${info.webAssembly ? '✓' : '✗'}<br>
+                IndexedDB: ${info.indexedDB ? '✓' : '✗'} | Web Workers: ${info.webWorkers ? '✓' : '✗'}
+            `;
+        }
+
+        // Test result display
+        window.addTestResult = function(testName, result, details = '') {
+            window.testResults.push({ testName, result, details, timestamp: Date.now() });
+            
+            const resultsDiv = document.getElementById('test-results');
+            const resultElement = document.createElement('div');
+            resultElement.className = `status ${result}`;
+            resultElement.innerHTML = `<strong>${testName}:</strong> ${result.toUpperCase()}${details ? '<br>' + details : ''}`;
+            resultsDiv.appendChild(resultElement);
+            
+            window.log(`Test ${testName}: ${result}${details ? ' - ' + details : ''}`);
+        };
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            displayBrowserInfo();
+            window.log('Page loaded, ready for testing');
+        });
+
+        // Make functions available globally for button onclick handlers
+        window.initDatabase = async function() {
+            try {
+                window.log('Initializing database...');
+                
+                // Import the vector database (we'll load this from the built dist)
+                const module = await import('/dist/index.js');
+                const { VectorDB, VectorFrankl } = module;
+                
+                // Initialize simple database
+                window.db = new VectorDB('test-db', 384);
+                await window.db.init();
+                
+                // Initialize namespace database
+                window.vf = new VectorFrankl();
+                await window.vf.init();
+                
+                document.getElementById('db-status').textContent = 'Initialized';
+                document.getElementById('db-status').className = 'status success';
+                
+                // Enable other buttons
+                const buttons = ['clear-db', 'test-crud', 'test-search', 'test-batch', 'test-performance', 'test-memory', 'test-workers', 'test-wasm', 'test-namespaces'];
+                buttons.forEach(id => {
+                    document.getElementById(id).disabled = false;
+                });
+                
+                window.addTestResult('Database Initialization', 'success');
+                window.log('Database initialized successfully');
+            } catch (error) {
+                window.addTestResult('Database Initialization', 'error', error.message);
+                window.log(`Database initialization failed: ${error.message}`, 'error');
+            }
+        };
+
+        window.clearDatabase = async function() {
+            try {
+                if (window.db) {
+                    await window.db.clear();
+                }
+                if (window.vf) {
+                    // Clear all namespaces
+                    const namespaces = await window.vf.listNamespaces();
+                    for (const ns of namespaces) {
+                        await window.vf.deleteNamespace(ns.name);
+                    }
+                }
+                window.addTestResult('Database Clear', 'success');
+                window.log('Database cleared successfully');
+            } catch (error) {
+                window.addTestResult('Database Clear', 'error', error.message);
+                window.log(`Database clear failed: ${error.message}`, 'error');
+            }
+        };
+
+        // Placeholder functions for tests (will be implemented in separate files)
+        window.testCRUD = function() { window.log('CRUD test not yet implemented'); };
+        window.testSearch = function() { window.log('Search test not yet implemented'); };
+        window.testBatch = function() { window.log('Batch test not yet implemented'); };
+        window.testPerformance = function() { window.log('Performance test not yet implemented'); };
+        window.testMemory = function() { window.log('Memory test not yet implemented'); };
+        window.testWorkers = function() { window.log('Workers test not yet implemented'); };
+        window.testWASM = function() { window.log('WASM test not yet implemented'); };
+        window.testNamespaces = function() { window.log('Namespaces test not yet implemented'); };
+    </script>
+</body>
+</html>

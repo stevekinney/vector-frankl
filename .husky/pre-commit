@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+
+# Pre-commit hook
+# Runs linting, formatting, type checking, and various validations
+
+# Source utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/utilities.sh"
+
+# Skip in CI environment
+if is_ci; then
+  skip_hook "Running in CI environment"
+fi
+
+print_header "Running pre-commit checks"
+start_timer
+
+
+# Run all checks
+all_checks_passed=true
+
+# 1. Run lint-staged (handles formatting and linting)
+print_info "Running lint-staged..."
+if ! bun exec lint-staged; then
+  all_checks_passed=false
+  print_error "Lint-staged checks failed"
+fi
+
+# 2. Run type checking
+print_info "Running type check..."
+if ! run_with_spinner "Type checking TypeScript files..." bun run typecheck; then
+  all_checks_passed=false
+fi
+
+# 3. Check lock file (only if package.json is staged)
+if git diff --cached --name-only | grep -q "package.json"; then
+  print_info "package.json modified, checking lock file..."
+  
+  # Check if bun.lock is also staged
+  if ! git diff --cached --name-only | grep -q "bun.lock"; then
+    print_warning "package.json is staged but bun.lock is not"
+    print_info "Run 'bun install' and stage bun.lock"
+    all_checks_passed=false
+  else
+    # Verify lock file is in sync
+    if ! "$SCRIPT_DIR/check-dependencies.sh" --skip-audit; then
+      all_checks_passed=false
+    fi
+  fi
+fi
+
+# 4. Validate environment if .env.example changed
+if git diff --cached --name-only | grep -q ".env.example"; then
+  print_info ".env.example modified, validating environment..."
+  if ! "$SCRIPT_DIR/validate-environment.sh"; then
+    all_checks_passed=false
+  fi
+fi
+
+end_timer "Pre-commit checks"
+
+# Exit with appropriate code
+if [ "$all_checks_passed" = true ]; then
+  print_success "All pre-commit checks passed"
+  exit 0
+else
+  exit_with_error "Pre-commit checks failed" "Fix the issues above and try again"
+fi

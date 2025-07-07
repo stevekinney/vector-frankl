@@ -1,0 +1,29 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Bun Script",
+      "type": "bun",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/index.ts",
+      "internalConsoleOptions": "neverOpen",
+      "env": {
+        "NODE_ENV": "development"
+      }
+    },
+    {
+      "name": "Debug Tests",
+      "type": "bun",
+      "request": "launch",
+      "program": "test",
+      "args": ["--inspect-wait"]
+    },
+    {
+      "name": "Debug Current File",
+      "type": "bun",
+      "request": "launch",
+      "program": "${file}",
+      "internalConsoleOptions": "neverOpen"
+    }
+  ]
+}

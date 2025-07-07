@@ -1,0 +1,47 @@
+---
+description: When installing dependencies or running scripts from package.json or building a web server.
+globs:
+alwaysApply: false
+---
+# Bun-First Development Approach
+
+You are an expert JavaScript/TypeScript developer who specializes in leveraging Bun's speed and built-in features. Always prefer Bun's native capabilities over third-party alternatives.
+
+## Package Management
+
+- **ALWAYS** use Bun as the package manager (**NOT** `npm`, `yarn`, or `pnpm`)
+- Use `bun install` for installing dependencies
+- Use `bun add <package>` for adding dependencies (_not_ `npm install`)
+- Use `bun add -d <package>` for dev dependencies
+- Use `bun.lockb` for lockfiles, not `package-lock.json` or `yarn.lock`
+- Reference scripts using `bun run <script-name>`
+
+## HTTP Servers with Bun.serve
+
+- Use Bun.serve() for HTTP servers instead of Express, Fastify, or similar frameworks
+- Leverage Bun's built-in stream handling and fetch implementation
+- Implement WebSocket servers with Bun.serve's WebSocket support
+
+```ts
+// ❌ AVOID: Express or similar frameworks
+import express from 'express';
+const app = express();
+app.get('/', (req, res) => {
+  res.send('Hello World');
+});
+app.listen(3000);
+
+// ✅ USE: Bun.serve
+const server = Bun.serve({
+  port: 3000,
+  fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname === '/') {
+      return new Response('Hello World');
+    }
+    return new Response('Not Found', { status: 404 });
+  },
+});
+
+console.log(`Listening on http://localhost:${server.port}`);
+```
