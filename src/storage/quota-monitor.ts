@@ -375,8 +375,6 @@ export class StorageQuotaMonitor {
    * Estimate the size of a JavaScript object in bytes
    */
   private estimateObjectSize(obj: unknown): number {
-    let size = 0;
-
     if (obj === null || obj === undefined) {
       return 8; // rough estimate
     }
@@ -388,7 +386,7 @@ export class StorageQuotaMonitor {
         return 8;
       case 'string':
         return obj.length * 2; // UTF-16
-      case 'object':
+      case 'object': {
         if (obj instanceof Float32Array || obj instanceof Float64Array) {
           return obj.byteLength;
         }
@@ -400,12 +398,14 @@ export class StorageQuotaMonitor {
         }
 
         // Regular object
+        let size = 0;
         const objAsRecord = obj as Record<string, unknown>;
         for (const key in objAsRecord) {
           size += key.length * 2; // Key size
           size += this.estimateObjectSize(objAsRecord[key]); // Value size
         }
         return size + 48; // Object overhead
+      }
       default:
         return 8;
     }

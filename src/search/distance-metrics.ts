@@ -315,6 +315,16 @@ export class DistanceCalculator {
     distances.sort((a, b) => a.distance - b.distance);
     return distances.slice(0, k);
   }
+
+  /**
+   * Get metric information
+   */
+  getMetricInfo(): { name: string; requiresNormalized?: boolean } {
+    return {
+      name: this.metric.name,
+      ...(this.metric.requiresNormalized !== undefined && { requiresNormalized: this.metric.requiresNormalized }),
+    };
+  }
 }
 
 /**

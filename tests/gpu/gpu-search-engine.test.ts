@@ -81,7 +81,7 @@ const mockWebGPU = () => {
     destroy: () => {},
   };
 
-  // @ts-ignore - Mocking navigator.gpu for WebGPU testing
+  // @ts-expect-error - Mocking navigator.gpu for WebGPU testing
   (global as any).navigator = {
     gpu: {
       requestAdapter: async () => mockAdapter,

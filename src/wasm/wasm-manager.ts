@@ -538,9 +538,9 @@ export class WASMManager {
     // Benchmark JavaScript
     const jsStart = performance.now();
     for (let i = 0; i < iterations; i++) {
-      let sum = 0;
+      let _sum = 0;
       for (let j = 0; j < vectorA.length; j++) {
-        sum += (vectorA[j] ?? 0) * (vectorB[j] ?? 0);
+        _sum += (vectorA[j] ?? 0) * (vectorB[j] ?? 0);
       }
     }
     const jsEnd = performance.now();

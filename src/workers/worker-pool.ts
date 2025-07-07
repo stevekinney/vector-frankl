@@ -38,22 +38,20 @@ export class WorkerPool {
   private busyWorkers = new Set<Worker>();
   private taskQueue: Array<{
     task: WorkerTask;
-    resolve: (value: any) => void;
-    reject: (reason?: any) => void;
+    resolve: (value: unknown) => void;
+    reject: (reason?: unknown) => void;
   }> = [];
   private activeTasks = new Map<
     string,
     {
-      resolve: (value: any) => void;
-      reject: (reason?: any) => void;
+      resolve: (value: unknown) => void;
+      reject: (reason?: unknown) => void;
       timeout?: ReturnType<typeof setTimeout>;
     }
   >();
   private maxWorkers: number;
   private workerScript: string;
   private defaultTimeout: number;
-  // @ts-expect-error - retries field may be used in future retry logic
-  private _retries: number;
   private isInitialized = false;
   private sharedMemoryManager: SharedMemoryManager | null = null;
   private enableSharedMemoryOptimizations = false;
@@ -199,7 +197,7 @@ export class WorkerPool {
     const task: WorkerTask = { taskId, operation, data, transferables };
 
     return new Promise<T>((resolve, reject) => {
-      const taskInfo = { task, resolve: resolve as any, reject: reject as any };
+      const taskInfo = { task, resolve: resolve as (value: unknown) => void, reject: reject as (reason?: unknown) => void };
 
       const availableWorker = this.getAvailableWorker();
 
@@ -225,8 +223,8 @@ export class WorkerPool {
     worker: Worker,
     taskInfo: {
       task: WorkerTask;
-      resolve: (value: any) => void;
-      reject: (reason?: any) => void;
+      resolve: (value: unknown) => void;
+      reject: (reason?: unknown) => void;
     },
     customTimeout?: number,
   ): void {

@@ -117,11 +117,11 @@ describe('ProductQuantizer', () => {
     it('should handle insufficient training vectors', async () => {
       const smallTrainingSet = trainingVectors.slice(0, 5); // Too few for 16 centroids
 
-      await expect(quantizer.trainCodebook(smallTrainingSet)).rejects.toThrow();
+      expect(quantizer.trainCodebook(smallTrainingSet)).rejects.toThrow();
     });
 
     it('should handle empty training set', async () => {
-      await expect(quantizer.trainCodebook([])).rejects.toThrow();
+      expect(quantizer.trainCodebook([])).rejects.toThrow();
     });
 
     it('should handle dimension mismatches in training', async () => {
@@ -131,7 +131,7 @@ describe('ProductQuantizer', () => {
         new Float32Array(64),
       ];
 
-      await expect(quantizer.trainCodebook(mismatchedVectors)).rejects.toThrow();
+      expect(quantizer.trainCodebook(mismatchedVectors)).rejects.toThrow();
     });
 
     it('should limit training vectors when specified', async () => {
@@ -208,7 +208,7 @@ describe('ProductQuantizer', () => {
       const untrainedQuantizer = new ProductQuantizer();
       const testVector = new Float32Array(64);
 
-      await expect(untrainedQuantizer.compress(testVector)).rejects.toThrow();
+      expect(untrainedQuantizer.compress(testVector)).rejects.toThrow();
     });
   });
 
@@ -257,12 +257,12 @@ describe('ProductQuantizer', () => {
       // Time full decompression approach
       const fullStart = performance.now();
       const decompressed = await quantizer.decompress(compressed);
-      let fullDist = 0;
+      let _fullDist = 0;
       for (let i = 0; i < queryVector!.length; i++) {
         const diff = queryVector![i]! - decompressed[i]!;
-        fullDist += diff * diff;
+        _fullDist += diff * diff;
       }
-      fullDist = Math.sqrt(fullDist);
+      _fullDist = Math.sqrt(_fullDist);
       const fullTime = performance.now() - fullStart;
 
       // Asymmetric should be faster or at least not significantly slower

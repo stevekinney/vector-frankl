@@ -133,7 +133,7 @@ test.describe('Web Workers Tests', () => {
             }
           }
 
-          createWorker(id) {
+          createWorker(_id) {
             const workerCode = `
               self.onmessage = function(e) {
                 const { taskId, data } = e.data;
@@ -386,17 +386,17 @@ test.describe('Web Workers Tests', () => {
           const blob = new Blob([badWorkerCode], { type: 'application/javascript' });
           const badWorker = new Worker(URL.createObjectURL(blob));
 
-          const errorPromise = new Promise((resolve) => {
+          const errorPromise = new Promise((_resolve) => {
             badWorker.onerror = () => {
               errorsCaught++;
-              resolve();
+              _resolve();
             };
             badWorker.postMessage('test');
           });
 
           await Promise.race([
             errorPromise,
-            new Promise((_, reject) =>
+            new Promise((_resolve, reject) =>
               setTimeout(() => reject(new Error('Worker error timeout')), 2000),
             ),
           ]);
@@ -417,17 +417,17 @@ test.describe('Web Workers Tests', () => {
           const blob = new Blob([errorWorkerCode], { type: 'application/javascript' });
           const errorWorker = new Worker(URL.createObjectURL(blob));
 
-          const runtimeErrorPromise = new Promise((resolve) => {
+          const runtimeErrorPromise = new Promise((_resolve) => {
             errorWorker.onerror = () => {
               errorsCaught++;
-              resolve();
+              _resolve();
             };
             errorWorker.postMessage('test');
           });
 
           await Promise.race([
             runtimeErrorPromise,
-            new Promise((_, reject) =>
+            new Promise((_resolve, reject) =>
               setTimeout(() => reject(new Error('Runtime error timeout')), 2000),
             ),
           ]);

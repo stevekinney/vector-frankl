@@ -137,6 +137,7 @@ export default [
   // TypeScript-specific rules
   {
     files: [tsFiles],
+    ignores: ['playwright.config.ts'],
     languageOptions: {
       parser: tseslintParser,
       parserOptions: {

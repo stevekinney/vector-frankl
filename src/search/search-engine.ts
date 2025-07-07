@@ -1,3 +1,4 @@
+import { VectorDatabase } from '@/core/database.js';
 import { DimensionMismatchError } from '@/core/errors.js';
 import { VectorStorage } from '@/core/storage.js';
 import type {
@@ -74,7 +75,7 @@ export class SearchEngine {
       this.hnswIndex = new HNSWIndex(distanceMetric, options?.indexConfig);
 
       if (options?.database) {
-        this.indexCache = new IndexCache(options.database as any);
+        this.indexCache = new IndexCache(options.database as VectorDatabase);
       }
     }
 
@@ -123,7 +124,7 @@ export class SearchEngine {
       throw new Error('HNSW index not initialized');
     }
 
-    const metric = (this.distanceCalculator as any)['metric'];
+    const metric = this.distanceCalculator.getMetricInfo();
     const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
@@ -164,7 +165,7 @@ export class SearchEngine {
     options?: SearchOptions,
   ): Promise<SearchResult[]> {
     // Normalize query if needed for cosine similarity
-    const metric = (this.distanceCalculator as any)['metric'];
+    const metric = this.distanceCalculator.getMetricInfo();
     const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
@@ -178,7 +179,7 @@ export class SearchEngine {
 
     // Use GPU acceleration for very large datasets
     if (this.gpuSearchEngine && candidates.length >= this.gpuThreshold) {
-      return this.searchWithGPU(processedQuery, candidates, k, metric, options);
+      return this.searchWithGPU(processedQuery, candidates, k, metric || { name: 'cosine' }, options);
     }
 
     // Use parallel processing for large datasets
@@ -187,7 +188,7 @@ export class SearchEngine {
     }
 
     // Calculate distances sequentially for smaller datasets
-    const scoredCandidates = this.scoreVectors(processedQuery, candidates, metric);
+    const scoredCandidates = this.scoreVectors(processedQuery, candidates, metric || { name: 'cosine' });
 
     // Sort by distance (ascending) and take top k
     scoredCandidates.sort((a, b) => a.distance - b.distance);
@@ -291,7 +292,7 @@ export class SearchEngine {
       return this.searchSequential(queryVector, candidates, k, options);
     }
 
-    const metric = (this.distanceCalculator as any)['metric'];
+    const metric = this.distanceCalculator.getMetricInfo();
 
     // Compile filter function if needed
     let filterFn: ((metadata: Record<string, unknown>) => boolean) | undefined;
@@ -342,8 +343,8 @@ export class SearchEngine {
     k: number,
     options?: SearchOptions,
   ): SearchResult[] {
-    const metric = (this.distanceCalculator as any)['metric'];
-    const scoredCandidates = this.scoreVectors(queryVector, candidates, metric);
+    const metric = this.distanceCalculator.getMetricInfo();
+    const scoredCandidates = this.scoreVectors(queryVector, candidates, metric || { name: 'cosine' });
 
     // Sort by distance (ascending) and take top k
     scoredCandidates.sort((a, b) => a.distance - b.distance);
@@ -379,7 +380,7 @@ export class SearchEngine {
       throw new DimensionMismatchError(this.dimension, queryVector.length);
     }
 
-    const metric = (this.distanceCalculator as any)['metric'];
+    const metric = this.distanceCalculator.getMetricInfo();
     const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
@@ -555,12 +556,12 @@ export class SearchEngine {
     k: number,
     options?: SearchOptions,
   ): Promise<SearchResult[]> {
-    const metric = (this.distanceCalculator as any)['metric'];
+    const metric = this.distanceCalculator.getMetricInfo();
     const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
 
-    const scoredCandidates = this.scoreVectors(processedQuery, candidates, metric);
+    const scoredCandidates = this.scoreVectors(processedQuery, candidates, metric || { name: 'cosine' });
 
     // Sort and take top k
     scoredCandidates.sort((a, b) => a.distance - b.distance);
@@ -716,7 +717,7 @@ export class SearchEngine {
       return;
     }
 
-    const distanceMetric = (this.distanceCalculator as any)['metric']?.name || 'cosine';
+    const distanceMetric = this.distanceCalculator.getMetricInfo().name || 'cosine';
     this.indexCache.putInCache(this.indexId, this.hnswIndex, distanceMetric, true);
     await this.indexCache.flushDirty();
   }

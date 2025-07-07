@@ -135,7 +135,7 @@ export class MockIDBObjectStore {
       this.data.set(actualKey, { ...(value as Record<string, unknown>) });
       return new MockIDBRequest<IDBValidKey>(actualKey);
     }
-    return new MockIDBRequest<IDBValidKey>(null as any, new Error('No key provided'));
+    return new MockIDBRequest<IDBValidKey>(null as IDBValidKey, new Error('No key provided'));
   }
 
   add<T = unknown>(value: T, key?: IDBValidKey): MockIDBRequest<IDBValidKey> {
@@ -144,7 +144,7 @@ export class MockIDBObjectStore {
       this.data.set(actualKey, { ...(value as Record<string, unknown>) });
       return new MockIDBRequest<IDBValidKey>(actualKey);
     }
-    return new MockIDBRequest<IDBValidKey>(null as any, new Error('Key already exists'));
+    return new MockIDBRequest<IDBValidKey>(null as IDBValidKey, new Error('Key already exists'));
   }
 
   delete(key: IDBValidKey): MockIDBRequest<boolean> {
@@ -452,7 +452,7 @@ export class MockIDBOpenDBRequest {
 
       // Always trigger upgrade for new databases (simulate schema creation)
       const upgradeEvent: IDBVersionChangeEvent = {
-        target: this as any,
+        target: this as IDBRequest,
         oldVersion: 0,
         newVersion: version || 1,
       };

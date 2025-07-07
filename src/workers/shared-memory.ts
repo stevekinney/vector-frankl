@@ -355,7 +355,7 @@ export class SharedMemoryManager {
       // This would be processed by workers in parallel
       const chunkResults = await this.processChunkInWorkers(
         buffer,
-        layout as any, // Cast to avoid type mismatch
+        layout.batches[0]!, // Use the first batch layout
         k,
         metric,
         { topK: options.chunkSize || 1000, threshold: 0.5 }, // Map options to expected format
@@ -494,7 +494,12 @@ export class SharedMemoryManager {
 
   private async processChunkInWorkers(
     _buffer: SharedArrayBuffer,
-    _layout: any,
+    _layout: {
+      vectorsOffset: number;
+      queriesOffset: number;
+      vectorCount: number;
+      queryCount: number;
+    },
     _k: number,
     _metric: DistanceMetric,
     _options: { topK?: number; threshold?: number },
