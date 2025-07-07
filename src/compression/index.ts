@@ -1,12 +1,12 @@
 /**
  * Vector compression module
- * 
+ *
  * Provides efficient compression algorithms for vector data storage,
  * including scalar quantization, product quantization, and binary quantization.
  */
 
 // Import types that are used in this file
-import type { CompressionConfig, CompressedVector } from './base-compressor.js';
+import type { CompressedVector, CompressionConfig } from './base-compressor.js';
 import type { CompressionRecommendation } from './compression-manager.js';
 
 // Base compression interfaces and utilities
@@ -15,7 +15,7 @@ export {
   type CompressionMetadata,
   type CompressionConfig,
   type CompressionQuality,
-  type CompressedVector
+  type CompressedVector,
 } from './base-compressor.js';
 
 // Compression utilities
@@ -32,14 +32,14 @@ export {
   unpackQuantizedValues,
   type VectorStatistics,
   type DimensionStatistics,
-  type QuantizationBounds
+  type QuantizationBounds,
 } from './compression-utils.js';
 
 // Scalar quantization
 export {
   ScalarQuantizer,
   type ScalarQuantizationConfig,
-  type QuantizationStrategy
+  type QuantizationStrategy,
 } from './scalar-quantizer.js';
 
 // Product quantization
@@ -48,14 +48,14 @@ export {
   type PQConfig,
   type PQCodebook,
   type PQMetadata,
-  type PQInitMethod
+  type PQInitMethod,
 } from './product-quantizer.js';
 
 // Compression management
 export {
   CompressionManager,
   type CompressionManagerConfig,
-  type CompressionRecommendation
+  type CompressionRecommendation,
 } from './compression-manager.js';
 
 /**
@@ -63,7 +63,7 @@ export {
  */
 export async function compressVector(
   vector: Float32Array,
-  config?: CompressionConfig
+  config?: CompressionConfig,
 ): Promise<CompressedVector> {
   const { CompressionManager } = await import('./compression-manager.js');
   const manager = new CompressionManager({
@@ -72,7 +72,7 @@ export async function compressVector(
     minSizeForCompression: 64,
     targetCompressionRatio: 2.0,
     maxPrecisionLoss: 0.05,
-    validateQuality: true
+    validateQuality: true,
   });
   return manager.compress(vector, undefined, config);
 }
@@ -80,7 +80,9 @@ export async function compressVector(
 /**
  * Convenience function to decompress a vector
  */
-export async function decompressVector(compressed: CompressedVector): Promise<Float32Array> {
+export async function decompressVector(
+  compressed: CompressedVector,
+): Promise<Float32Array> {
   const { CompressionManager } = await import('./compression-manager.js');
   const manager = new CompressionManager();
   return manager.decompress(compressed);
@@ -89,7 +91,9 @@ export async function decompressVector(compressed: CompressedVector): Promise<Fl
 /**
  * Get compression recommendation for a vector
  */
-export async function getCompressionRecommendation(vector: Float32Array): Promise<CompressionRecommendation> {
+export async function getCompressionRecommendation(
+  vector: Float32Array,
+): Promise<CompressionRecommendation> {
   const { CompressionManager } = await import('./compression-manager.js');
   const manager = new CompressionManager();
   return manager.getRecommendation(vector);

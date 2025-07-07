@@ -1,8 +1,9 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { VectorNamespace } from './namespace.js';
-import { VectorOperations } from '@/vectors/operations.js';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+
 import { DimensionMismatchError } from '@/core/errors.js';
 import type { NamespaceConfig } from '@/core/types.js';
+import { VectorOperations } from '@/vectors/operations.js';
+import { VectorNamespace } from './namespace.js';
 
 describe('VectorNamespace', () => {
   let namespace: VectorNamespace;
@@ -11,7 +12,7 @@ describe('VectorNamespace', () => {
     distanceMetric: 'cosine',
     indexStrategy: 'brute',
     compression: 'none',
-    description: 'Test namespace'
+    description: 'Test namespace',
   };
 
   beforeEach(async () => {
@@ -33,7 +34,7 @@ describe('VectorNamespace', () => {
     it('should create unique database names', () => {
       const ns1 = new VectorNamespace('ns1', config, 'root');
       const ns2 = new VectorNamespace('ns2', config, 'root');
-      
+
       expect(ns1.getDatabaseName()).toBe('root-ns-ns1');
       expect(ns2.getDatabaseName()).toBe('root-ns-ns2');
       expect(ns1.getDatabaseName()).not.toBe(ns2.getDatabaseName());
@@ -44,9 +45,9 @@ describe('VectorNamespace', () => {
     it('should add and retrieve vectors', async () => {
       const vector = VectorOperations.randomUnit(128);
       const metadata = { title: 'Test Document', category: 'test' };
-      
+
       await namespace.addVector('vec1', vector, metadata);
-      
+
       const retrieved = await namespace.getVector('vec1');
       expect(retrieved).not.toBeNull();
       expect(retrieved?.id).toBe('vec1');
@@ -56,22 +57,24 @@ describe('VectorNamespace', () => {
 
     it('should enforce dimension constraints', async () => {
       const wrongVector = VectorOperations.randomUnit(256); // Wrong dimension
-      
-      expect(
-        namespace.addVector('wrong', wrongVector)
-      ).rejects.toThrow(DimensionMismatchError);
+
+      expect(namespace.addVector('wrong', wrongVector)).rejects.toThrow(
+        DimensionMismatchError,
+      );
     });
 
     it('should handle batch operations', async () => {
       const vectors = Array.from({ length: 10 }, (_, i) => ({
         id: `batch-${i}`,
         vector: VectorOperations.randomUnit(128),
-        metadata: { index: i }
+        metadata: { index: i },
       }));
 
       let progressCount = 0;
       await namespace.addBatch(vectors, {
-        onProgress: () => { progressCount++; }
+        onProgress: () => {
+          progressCount++;
+        },
       });
 
       expect(progressCount).toBeGreaterThan(0);
@@ -82,16 +85,16 @@ describe('VectorNamespace', () => {
 
     it('should delete vectors', async () => {
       await namespace.addVector('to-delete', VectorOperations.randomUnit(128));
-      
+
       await namespace.deleteVector('to-delete');
-      
+
       const retrieved = await namespace.getVector('to-delete');
       expect(retrieved).toBeNull();
     });
 
     it('should check vector existence', async () => {
       await namespace.addVector('exists', VectorOperations.randomUnit(128));
-      
+
       expect(await namespace.exists('exists')).toBe(true);
       expect(await namespace.exists('not-exists')).toBe(false);
     });
@@ -104,7 +107,7 @@ describe('VectorNamespace', () => {
 
       const vectors = await namespace.getMany(ids);
       expect(vectors).toHaveLength(3);
-      expect(vectors.map(v => v.id).sort()).toEqual(ids);
+      expect(vectors.map((v) => v.id).sort()).toEqual(ids);
     });
 
     it('should delete multiple vectors', async () => {
@@ -131,15 +134,11 @@ describe('VectorNamespace', () => {
         { id: 'doc2', category: 'tech', title: 'Machine Learning' },
         { id: 'doc3', category: 'business', title: 'Market Analysis' },
         { id: 'doc4', category: 'business', title: 'Growth Strategy' },
-        { id: 'doc5', category: 'tech', title: 'Deep Learning' }
+        { id: 'doc5', category: 'tech', title: 'Deep Learning' },
       ];
 
       for (const data of testData) {
-        await namespace.addVector(
-          data.id,
-          VectorOperations.randomUnit(128),
-          data
-        );
+        await namespace.addVector(data.id, VectorOperations.randomUnit(128), data);
       }
     });
 
@@ -156,18 +155,18 @@ describe('VectorNamespace', () => {
       const query = VectorOperations.randomUnit(128);
       const results = await namespace.search(query, 10, {
         filter: { category: 'tech' },
-        includeMetadata: true
+        includeMetadata: true,
       });
 
       expect(results).toHaveLength(3);
-      expect(results.every(r => r.metadata?.['category'] === 'tech')).toBe(true);
+      expect(results.every((r) => r.metadata?.['category'] === 'tech')).toBe(true);
     });
 
     it('should include vectors and metadata when requested', async () => {
       const query = VectorOperations.randomUnit(128);
       const results = await namespace.search(query, 2, {
         includeVector: true,
-        includeMetadata: true
+        includeMetadata: true,
       });
 
       expect(results[0]!.vector).toBeDefined();
@@ -179,7 +178,7 @@ describe('VectorNamespace', () => {
   describe('namespace metadata', () => {
     it('should return namespace statistics', async () => {
       const stats = await namespace.getStats();
-      
+
       expect(stats.dimension).toBe(128);
       expect(stats.distanceMetric).toBe('cosine');
       expect(stats.description).toBe('Test namespace');
@@ -193,11 +192,7 @@ describe('VectorNamespace', () => {
     });
 
     it('should use defaults for missing config', () => {
-      const minimalNamespace = new VectorNamespace(
-        'minimal',
-        { dimension: 100 },
-        'root'
-      );
+      const minimalNamespace = new VectorNamespace('minimal', { dimension: 100 }, 'root');
 
       expect(minimalNamespace.getDistanceMetric()).toBe('cosine');
       expect(minimalNamespace.getIndexStrategy()).toBe('auto');
@@ -209,17 +204,15 @@ describe('VectorNamespace', () => {
     it('should estimate storage usage', async () => {
       // Add some vectors
       for (let i = 0; i < 10; i++) {
-        await namespace.addVector(
-          `vec-${i}`,
-          VectorOperations.randomUnit(128),
-          { index: i }
-        );
+        await namespace.addVector(`vec-${i}`, VectorOperations.randomUnit(128), {
+          index: i,
+        });
       }
 
       const estimate = await namespace.estimateStorageUsage();
       expect(estimate.vectorCount).toBe(10);
       expect(estimate.estimatedBytes).toBeGreaterThan(0);
-      
+
       // Rough calculation: 128 * 4 bytes + 200 overhead = 712 bytes per vector
       // 10 vectors = ~7120 bytes
       expect(estimate.estimatedBytes).toBeGreaterThanOrEqual(7000);
@@ -230,7 +223,7 @@ describe('VectorNamespace', () => {
       const largeNamespace = new VectorNamespace(
         'large',
         { dimension: 1024 },
-        'test-root'
+        'test-root',
       );
       await largeNamespace.init();
 
@@ -265,7 +258,7 @@ describe('VectorNamespace', () => {
       await namespace.close();
       // Should be able to reinitialize
       await namespace.init();
-      
+
       // And still work
       await namespace.addVector('after-close', VectorOperations.randomUnit(128));
       const vector = await namespace.getVector('after-close');
@@ -277,17 +270,15 @@ describe('VectorNamespace', () => {
     it('should retrieve all vectors', async () => {
       const count = 5;
       for (let i = 0; i < count; i++) {
-        await namespace.addVector(
-          `all-${i}`,
-          VectorOperations.randomUnit(128),
-          { index: i }
-        );
+        await namespace.addVector(`all-${i}`, VectorOperations.randomUnit(128), {
+          index: i,
+        });
       }
 
       const allVectors = await namespace.getAllVectors();
       expect(allVectors).toHaveLength(count);
-      expect(allVectors.map(v => v.id).sort()).toEqual(
-        Array.from({ length: count }, (_, i) => `all-${i}`)
+      expect(allVectors.map((v) => v.id).sort()).toEqual(
+        Array.from({ length: count }, (_, i) => `all-${i}`),
       );
     });
   });

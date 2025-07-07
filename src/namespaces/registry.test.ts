@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
-import { NamespaceRegistry } from './registry.js';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+
 import { NamespaceExistsError, NamespaceNotFoundError } from '@/core/errors.js';
+import { NamespaceRegistry } from './registry.js';
 
 describe('NamespaceRegistry', () => {
   let registry: NamespaceRegistry;
@@ -33,7 +34,7 @@ describe('NamespaceRegistry', () => {
       const config = {
         dimension: 384,
         distanceMetric: 'cosine' as const,
-        description: 'Test namespace'
+        description: 'Test namespace',
       };
 
       const info = await registry.register('test-ns', config);
@@ -50,36 +51,32 @@ describe('NamespaceRegistry', () => {
       const config = { dimension: 100 };
       await registry.register('duplicate', config);
 
-      expect(
-        registry.register('duplicate', config)
-      ).rejects.toThrow(NamespaceExistsError);
+      expect(registry.register('duplicate', config)).rejects.toThrow(
+        NamespaceExistsError,
+      );
     });
 
     it('should validate namespace names', async () => {
       const config = { dimension: 100 };
 
       // Invalid characters
-      expect(
-        registry.register('test space', config)
-      ).rejects.toThrow('must contain only alphanumeric');
+      expect(registry.register('test space', config)).rejects.toThrow(
+        'must contain only alphanumeric',
+      );
 
-      expect(
-        registry.register('test!@#', config)
-      ).rejects.toThrow('must contain only alphanumeric');
+      expect(registry.register('test!@#', config)).rejects.toThrow(
+        'must contain only alphanumeric',
+      );
 
       // Too short
-      expect(
-        registry.register('ab', config)
-      ).rejects.toThrow('must be between 3 and 64 characters');
+      expect(registry.register('ab', config)).rejects.toThrow(
+        'must be between 3 and 64 characters',
+      );
 
       // Reserved names
-      expect(
-        registry.register('root', config)
-      ).rejects.toThrow('reserved');
+      expect(registry.register('root', config)).rejects.toThrow('reserved');
 
-      expect(
-        registry.register('system', config)
-      ).rejects.toThrow('reserved');
+      expect(registry.register('system', config)).rejects.toThrow('reserved');
     });
 
     it('should accept valid namespace names', async () => {
@@ -90,7 +87,7 @@ describe('NamespaceRegistry', () => {
         'validName123',
         'VALID_NAME',
         'v123',
-        'a'.repeat(64) // Max length
+        'a'.repeat(64), // Max length
       ];
 
       for (const name of validNames) {
@@ -104,7 +101,7 @@ describe('NamespaceRegistry', () => {
     it('should retrieve an existing namespace', async () => {
       const config = {
         dimension: 256,
-        distanceMetric: 'euclidean' as const
+        distanceMetric: 'euclidean' as const,
       };
       const registered = await registry.register('get-test', config);
 
@@ -123,7 +120,7 @@ describe('NamespaceRegistry', () => {
       const namespaces = [
         { name: 'ns1', config: { dimension: 100 } },
         { name: 'ns2', config: { dimension: 200 } },
-        { name: 'ns3', config: { dimension: 300 } }
+        { name: 'ns3', config: { dimension: 300 } },
       ];
 
       for (const ns of namespaces) {
@@ -132,7 +129,7 @@ describe('NamespaceRegistry', () => {
 
       const list = await registry.list();
       expect(list).toHaveLength(3);
-      expect(list.map(ns => ns.name).sort()).toEqual(['ns1', 'ns2', 'ns3']);
+      expect(list.map((ns) => ns.name).sort()).toEqual(['ns1', 'ns2', 'ns3']);
     });
 
     it('should return empty array when no namespaces', async () => {
@@ -148,7 +145,7 @@ describe('NamespaceRegistry', () => {
       await registry.updateStats('stats-test', {
         vectorCount: 1000,
         storageSize: 4096000,
-        lastAccessed: Date.now()
+        lastAccessed: Date.now(),
       });
 
       const info = await registry.get('stats-test');
@@ -160,7 +157,7 @@ describe('NamespaceRegistry', () => {
 
     it('should throw for non-existent namespace', async () => {
       expect(
-        registry.updateStats('does-not-exist', { vectorCount: 100 })
+        registry.updateStats('does-not-exist', { vectorCount: 100 }),
       ).rejects.toThrow(NamespaceNotFoundError);
     });
 
@@ -169,12 +166,12 @@ describe('NamespaceRegistry', () => {
 
       // First update
       await registry.updateStats('merge-test', {
-        vectorCount: 500
+        vectorCount: 500,
       });
 
       // Second update (partial)
       await registry.updateStats('merge-test', {
-        storageSize: 2048000
+        storageSize: 2048000,
       });
 
       const info = await registry.get('merge-test');
@@ -186,24 +183,24 @@ describe('NamespaceRegistry', () => {
   describe('unregister', () => {
     it('should remove a namespace', async () => {
       await registry.register('to-delete', { dimension: 100 });
-      
+
       await registry.unregister('to-delete');
-      
+
       const info = await registry.get('to-delete');
       expect(info).toBeNull();
     });
 
     it('should throw for non-existent namespace', async () => {
-      expect(
-        registry.unregister('does-not-exist')
-      ).rejects.toThrow(NamespaceNotFoundError);
+      expect(registry.unregister('does-not-exist')).rejects.toThrow(
+        NamespaceNotFoundError,
+      );
     });
   });
 
   describe('exists', () => {
     it('should return true for existing namespace', async () => {
       await registry.register('exists-test', { dimension: 100 });
-      
+
       const exists = await registry.exists('exists-test');
       expect(exists).toBe(true);
     });
@@ -222,7 +219,7 @@ describe('NamespaceRegistry', () => {
         'documents-manual',
         'documents-guide',
         'images-product',
-        'test-namespace'
+        'test-namespace',
       ];
 
       for (const name of namespaces) {
@@ -233,15 +230,15 @@ describe('NamespaceRegistry', () => {
     it('should find namespaces by string pattern', async () => {
       const results = await registry.findByPattern('products');
       expect(results).toHaveLength(2);
-      expect(results.every(ns => ns.name.includes('products'))).toBe(true);
+      expect(results.every((ns) => ns.name.includes('products'))).toBe(true);
     });
 
     it('should find namespaces by regex pattern', async () => {
       const results = await registry.findByPattern(/^documents-/);
       expect(results).toHaveLength(2);
-      expect(results.map(ns => ns.name).sort()).toEqual([
+      expect(results.map((ns) => ns.name).sort()).toEqual([
         'documents-guide',
-        'documents-manual'
+        'documents-manual',
       ]);
     });
 

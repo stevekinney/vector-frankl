@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+
 import { VectorOperations } from '@/vectors/operations.js';
 
 describe('VectorOperations SIMD Integration', () => {
@@ -21,18 +22,18 @@ describe('VectorOperations SIMD Integration', () => {
     it('should enable/disable SIMD optimizations', () => {
       VectorOperations.setSIMDEnabled(false);
       expect(VectorOperations.isSIMDEnabled()).toBe(false);
-      
+
       VectorOperations.setSIMDEnabled(true);
       expect(VectorOperations.isSIMDEnabled()).toBe(true);
     });
 
     it('should set SIMD threshold', () => {
       VectorOperations.setSIMDThreshold(32);
-      
+
       // Test with vector below new threshold
       const result = VectorOperations.magnitude(largeVector);
       expect(result).toBeGreaterThan(0);
-      
+
       // Reset
       VectorOperations.setSIMDThreshold(16);
     });
@@ -77,7 +78,7 @@ describe('VectorOperations SIMD Integration', () => {
       const vectorA = new Float32Array([1, 2, 3, 4]);
       const vectorB = new Float32Array([5, 6, 7, 8]);
       const result = await VectorOperations.dotProduct(vectorA, vectorB);
-      const expected = 1*5 + 2*6 + 3*7 + 4*8; // 70
+      const expected = 1 * 5 + 2 * 6 + 3 * 7 + 4 * 8; // 70
       expect(result).toBe(expected);
     });
 
@@ -85,7 +86,7 @@ describe('VectorOperations SIMD Integration', () => {
       const vectorA = new Float32Array(Array.from({ length: 32 }, (_, i) => i + 1));
       const vectorB = new Float32Array(Array.from({ length: 32 }, (_, i) => (i + 1) * 2));
       const result = await VectorOperations.dotProduct(vectorA, vectorB);
-      
+
       // Manual calculation
       let expected = 0;
       for (let i = 0; i < 32; i++) {
@@ -114,9 +115,9 @@ describe('VectorOperations SIMD Integration', () => {
       const vectorA = new Float32Array(Array.from({ length: 32 }, (_, i) => i + 1));
       const vectorB = new Float32Array(Array.from({ length: 32 }, (_, i) => (i + 1) * 2));
       const result = await VectorOperations.add(vectorA, vectorB);
-      
+
       for (let i = 0; i < 32; i++) {
-        expect(result[i]!).toBe((i + 1) + (i + 1) * 2);
+        expect(result[i]!).toBe(i + 1 + (i + 1) * 2);
       }
     });
 
@@ -140,7 +141,7 @@ describe('VectorOperations SIMD Integration', () => {
       const vectorA = new Float32Array(Array.from({ length: 32 }, (_, i) => (i + 1) * 3));
       const vectorB = new Float32Array(Array.from({ length: 32 }, (_, i) => i + 1));
       const result = await VectorOperations.subtract(vectorA, vectorB);
-      
+
       for (let i = 0; i < 32; i++) {
         expect(result[i]!).toBe((i + 1) * 3 - (i + 1));
       }
@@ -166,7 +167,7 @@ describe('VectorOperations SIMD Integration', () => {
       const vector = new Float32Array(Array.from({ length: 32 }, (_, i) => i + 1));
       const scalar = 3;
       const result = await VectorOperations.scale(vector, scalar);
-      
+
       for (let i = 0; i < 32; i++) {
         expect(result[i]!).toBe((i + 1) * 3);
       }
@@ -182,31 +183,33 @@ describe('VectorOperations SIMD Integration', () => {
 
   describe('SIMD vs Scalar Consistency', () => {
     it('should produce identical results for magnitude calculation', async () => {
-      const testVector = new Float32Array(Array.from({ length: 32 }, () => Math.random()));
-      
+      const testVector = new Float32Array(
+        Array.from({ length: 32 }, () => Math.random()),
+      );
+
       // Force scalar calculation
       VectorOperations.setSIMDThreshold(1000);
       const scalarResult = await VectorOperations.magnitude(testVector);
-      
+
       // Force SIMD calculation
       VectorOperations.setSIMDThreshold(16);
       const simdResult = await VectorOperations.magnitude(testVector);
-      
+
       expect(simdResult).toBeCloseTo(scalarResult, 6);
     });
 
     it('should produce identical results for dot product calculation', async () => {
       const vectorA = new Float32Array(Array.from({ length: 32 }, () => Math.random()));
       const vectorB = new Float32Array(Array.from({ length: 32 }, () => Math.random()));
-      
+
       // Force scalar calculation
       VectorOperations.setSIMDThreshold(1000);
       const scalarResult = await VectorOperations.dotProduct(vectorA, vectorB);
-      
+
       // Force SIMD calculation
       VectorOperations.setSIMDThreshold(16);
       const simdResult = await VectorOperations.dotProduct(vectorA, vectorB);
-      
+
       expect(simdResult).toBeCloseTo(scalarResult, 6);
     });
 
@@ -214,19 +217,19 @@ describe('VectorOperations SIMD Integration', () => {
       const vectorA = new Float32Array(Array.from({ length: 32 }, () => Math.random()));
       const vectorB = new Float32Array(Array.from({ length: 32 }, () => Math.random()));
       const scalar = Math.random() * 10;
-      
+
       // Force scalar calculation
       VectorOperations.setSIMDThreshold(1000);
       const scalarAdd = await VectorOperations.add(vectorA, vectorB);
       const scalarSub = await VectorOperations.subtract(vectorA, vectorB);
       const scalarScale = await VectorOperations.scale(vectorA, scalar);
-      
+
       // Force SIMD calculation
       VectorOperations.setSIMDThreshold(16);
       const simdAdd = await VectorOperations.add(vectorA, vectorB);
       const simdSub = await VectorOperations.subtract(vectorA, vectorB);
       const simdScale = await VectorOperations.scale(vectorA, scalar);
-      
+
       // Compare results
       for (let i = 0; i < 32; i++) {
         expect(simdAdd[i]!).toBeCloseTo(scalarAdd[i]!, 6);
@@ -238,20 +241,24 @@ describe('VectorOperations SIMD Integration', () => {
 
   describe('Performance Characteristics', () => {
     it('should handle large vectors efficiently', async () => {
-      const largeVectorA = new Float32Array(Array.from({ length: 1000 }, () => Math.random()));
-      const largeVectorB = new Float32Array(Array.from({ length: 1000 }, () => Math.random()));
-      
+      const largeVectorA = new Float32Array(
+        Array.from({ length: 1000 }, () => Math.random()),
+      );
+      const largeVectorB = new Float32Array(
+        Array.from({ length: 1000 }, () => Math.random()),
+      );
+
       const start = performance.now();
-      
+
       // Perform multiple operations
       for (let i = 0; i < 100; i++) {
         await VectorOperations.dotProduct(largeVectorA, largeVectorB);
         await VectorOperations.add(largeVectorA, largeVectorB);
         await VectorOperations.magnitude(largeVectorA);
       }
-      
+
       const elapsed = performance.now() - start;
-      
+
       // Should complete in reasonable time (less than 1 second)
       expect(elapsed).toBeLessThan(1000);
     });
@@ -261,18 +268,18 @@ describe('VectorOperations SIMD Integration', () => {
       const emptyA = new Float32Array(0);
       const emptyB = new Float32Array(0);
       expect(await VectorOperations.dotProduct(emptyA, emptyB)).toBe(0);
-      
+
       // Single element vectors
       const singleA = new Float32Array([5]);
       const singleB = new Float32Array([3]);
       expect(await VectorOperations.dotProduct(singleA, singleB)).toBe(15);
-      
+
       // Very large vectors
       const hugeSizes = [2048, 4096];
       for (const size of hugeSizes) {
         const hugeA = new Float32Array(Array.from({ length: size }, (_, i) => i));
         const hugeB = new Float32Array(Array.from({ length: size }, (_, i) => i + 1));
-        
+
         const result = await VectorOperations.dotProduct(hugeA, hugeB);
         expect(result).toBeGreaterThan(0);
         expect(isFinite(result)).toBe(true);

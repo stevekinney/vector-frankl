@@ -2,9 +2,9 @@
  * Debug hooks for integrating with existing components
  */
 
+import { DebugContext } from './debug-context.js';
 import { debugManager } from './debug-manager.js';
 import { profiler } from './profiler.js';
-import { DebugContext } from './debug-context.js';
 import type { DebugLevel } from './types.js';
 
 const context = DebugContext.getInstance();
@@ -20,23 +20,23 @@ export function debugMethod(
     captureArgs?: boolean;
     captureResult?: boolean;
     memoryTracking?: boolean;
-  } = {}
+  } = {},
 ) {
-  return function(
-    target: any, 
-    _propertyKey: string | symbol, 
-    descriptor: PropertyDescriptor
+  return function (
+    target: any,
+    _propertyKey: string | symbol,
+    descriptor: PropertyDescriptor,
   ): PropertyDescriptor {
     const originalMethod = descriptor.value;
-    
-    descriptor.value = async function(this: any, ...args: unknown[]) {
+
+    descriptor.value = async function (this: any, ...args: unknown[]) {
       if (!debugManager.isEnabled()) {
         return originalMethod.apply(this, args);
       }
 
       const operationName = `${target.constructor.name}.${operation}`;
       const metadata: Record<string, unknown> = {};
-      
+
       if (options.captureArgs) {
         metadata['args'] = args;
       }
@@ -52,12 +52,12 @@ export function debugMethod(
         type: 'trace',
         operation: operationName,
         level,
-        data: metadata
+        data: metadata,
       });
 
       try {
         const result = await originalMethod.apply(this, args);
-        
+
         if (options.captureResult) {
           metadata['result'] = result;
         }
@@ -78,13 +78,17 @@ export function debugMethod(
           error: {
             message: error instanceof Error ? error.message : String(error),
             ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
-            ...(error instanceof Error && 'code' in error && error.code ? { code: String(error.code) } : {})
-          }
+            ...(error instanceof Error && 'code' in error && error.code
+              ? { code: String(error.code) }
+              : {}),
+          },
         });
 
         // End profiling with error
         if (profileId) {
-          profiler.endProfile(profileId, { error: error instanceof Error ? error.message : String(error) });
+          profiler.endProfile(profileId, {
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
 
         throw error;
@@ -101,7 +105,7 @@ export function debugMethod(
 export async function withProfiling<T>(
   operation: string,
   fn: () => T | Promise<T>,
-  metadata: Record<string, unknown> = {}
+  metadata: Record<string, unknown> = {},
 ): Promise<T> {
   if (!debugManager.isEnabled() || !debugManager.getConfig().profile) {
     return fn();
@@ -122,15 +126,19 @@ export async function withContext<T>(
     tags?: Record<string, string>;
     metadata?: Record<string, unknown>;
   },
-  fn: () => T | Promise<T>
+  fn: () => T | Promise<T>,
 ): Promise<T> {
   if (!debugManager.isEnabled()) {
     return fn();
   }
 
   const contextId = `context-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-  
-  return context.withContext(contextId, contextInfo as unknown as Partial<import('./debug-context.js').ContextInfo>, fn);
+
+  return context.withContext(
+    contextId,
+    contextInfo as unknown as Partial<import('./debug-context.js').ContextInfo>,
+    fn,
+  );
 }
 
 /**
@@ -156,17 +164,17 @@ export async function trace<T>(
     type: 'trace',
     operation,
     level,
-    data: metadata
+    data: metadata,
   });
 
   try {
     const result = await fn();
-    
+
     debugManager.addEntry({
       type: 'trace',
       operation: `${operation}:completed`,
       level,
-      data: { ...metadata, completed: true }
+      data: { ...metadata, completed: true },
     });
 
     return result;
@@ -179,8 +187,10 @@ export async function trace<T>(
       error: {
         message: error instanceof Error ? error.message : String(error),
         ...(error instanceof Error && error.stack ? { stack: error.stack } : {}),
-        ...(error instanceof Error && 'code' in error && error.code ? { code: String(error.code) } : {})
-      }
+        ...(error instanceof Error && 'code' in error && error.code
+          ? { code: String(error.code) }
+          : {}),
+      },
     });
 
     throw error;
@@ -193,7 +203,7 @@ export async function trace<T>(
 export function logMetrics(
   operation: string,
   metrics: Record<string, number>,
-  level: DebugLevel = 'detailed'
+  level: DebugLevel = 'detailed',
 ): void {
   if (!debugManager.isEnabled()) return;
 
@@ -201,17 +211,14 @@ export function logMetrics(
     type: 'info',
     operation,
     level,
-    data: { metrics }
+    data: { metrics },
   });
 }
 
 /**
  * Log memory usage
  */
-export function logMemoryUsage(
-  operation: string,
-  level: DebugLevel = 'detailed'
-): void {
+export function logMemoryUsage(operation: string, level: DebugLevel = 'detailed'): void {
   if (!debugManager.isEnabled() || !debugManager.getConfig().memoryTracking) {
     return;
   }
@@ -224,7 +231,7 @@ export function logMemoryUsage(
     operation,
     level,
     data: {},
-    memoryUsage: memory
+    memoryUsage: memory,
   });
 }
 
@@ -245,16 +252,16 @@ export class DebugTimer {
 
   end(level: DebugLevel = 'basic'): number {
     const duration = performance.now() - this.startTime;
-    
+
     if (debugManager.isEnabled()) {
       debugManager.addEntry({
         type: 'profile',
         operation: this.operation,
         level,
         data: {
-          marks: Object.fromEntries(this.marks)
+          marks: Object.fromEntries(this.marks),
         },
-        duration
+        duration,
       });
     }
 
@@ -275,7 +282,7 @@ export function createTimer(operation: string): DebugTimer {
 export function debugAssert(
   condition: boolean,
   message: string,
-  operation: string = 'assertion'
+  operation: string = 'assertion',
 ): void {
   if (!condition && debugManager.isEnabled()) {
     debugManager.addEntry({
@@ -285,8 +292,8 @@ export function debugAssert(
       data: { assertion: message },
       error: {
         message: `Assertion failed: ${message}`,
-        ...(new Error().stack && { stack: new Error().stack })
-      }
+        ...(new Error().stack && { stack: new Error().stack }),
+      },
     });
   }
 }
@@ -295,9 +302,13 @@ export function debugAssert(
  * Batch debug entries
  */
 export class DebugBatch {
-  private entries: Array<Omit<Parameters<typeof debugManager.addEntry>[0], 'timestamp' | 'id'>> = [];
+  private entries: Array<
+    Omit<Parameters<typeof debugManager.addEntry>[0], 'timestamp' | 'id'>
+  > = [];
 
-  add(entry: Omit<Parameters<typeof debugManager.addEntry>[0], 'timestamp' | 'id'>): void {
+  add(
+    entry: Omit<Parameters<typeof debugManager.addEntry>[0], 'timestamp' | 'id'>,
+  ): void {
     this.entries.push(entry);
   }
 
@@ -307,7 +318,7 @@ export class DebugBatch {
       return;
     }
 
-    this.entries.forEach(entry => debugManager.addEntry(entry));
+    this.entries.forEach((entry) => debugManager.addEntry(entry));
     this.entries = [];
   }
 

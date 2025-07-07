@@ -29,7 +29,7 @@ export type Environment = z.infer<typeof environmentSchema>;
 function validateEnvironment(env?: Record<string, string | undefined>): Environment {
   // In browser environments, provide sensible defaults
   const envToValidate = env || {};
-  
+
   // Add default values for browser environment
   const browserDefaults = {
     NODE_ENV: 'production',

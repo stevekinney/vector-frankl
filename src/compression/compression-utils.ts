@@ -73,7 +73,7 @@ export function calculateVectorStatistics(vector: Float32Array): VectorStatistic
     max,
     mean,
     std,
-    range: max - min
+    range: max - min,
   };
 }
 
@@ -91,11 +91,11 @@ export function calculateBatchStatistics(vectors: Float32Array[]): VectorStatist
   }
   const dimension = firstVector.length;
   const totalElements = vectors.length * dimension;
-  
+
   let globalMin = Infinity;
   let globalMax = -Infinity;
   let globalSum = 0;
-  
+
   // Per-dimension statistics
   const dimensionStats: DimensionStatistics[] = [];
   for (let d = 0; d < dimension; d++) {
@@ -104,7 +104,7 @@ export function calculateBatchStatistics(vectors: Float32Array[]): VectorStatist
       min: Infinity,
       max: -Infinity,
       mean: 0,
-      std: 0
+      std: 0,
     };
   }
 
@@ -116,12 +116,12 @@ export function calculateBatchStatistics(vectors: Float32Array[]): VectorStatist
 
     for (let d = 0; d < dimension; d++) {
       const value = vector[d]!; // Safe since we're within bounds
-      
+
       // Global statistics
       globalMin = Math.min(globalMin, value);
       globalMax = Math.max(globalMax, value);
       globalSum += value;
-      
+
       // Per-dimension statistics
       const dimStat = dimensionStats[d]!; // Safe since we allocated array
       dimStat.min = Math.min(dimStat.min, value);
@@ -144,11 +144,11 @@ export function calculateBatchStatistics(vectors: Float32Array[]): VectorStatist
   for (const vector of vectors) {
     for (let d = 0; d < dimension; d++) {
       const value = vector[d]!; // Safe since we're within bounds
-      
+
       // Global variance
       const globalDiff = value - globalMean;
       globalVariance += globalDiff * globalDiff;
-      
+
       // Per-dimension variance
       const dimMean = dimensionStats[d]!.mean; // Safe since we allocated array
       const dimDiff = value - dimMean;
@@ -168,7 +168,7 @@ export function calculateBatchStatistics(vectors: Float32Array[]): VectorStatist
     mean: globalMean,
     std: globalStd,
     range: globalMax - globalMin,
-    dimensions: dimensionStats
+    dimensions: dimensionStats,
   };
 }
 
@@ -178,19 +178,19 @@ export function calculateBatchStatistics(vectors: Float32Array[]): VectorStatist
 export function calculateQuantizationBounds(
   vectors: Float32Array[],
   strategy: 'global' | 'per-dimension' | 'percentile' = 'global',
-  percentileRange: [number, number] = [0.01, 0.99]
+  percentileRange: [number, number] = [0.01, 0.99],
 ): QuantizationBounds {
   const stats = calculateBatchStatistics(vectors);
-  
+
   const bounds: QuantizationBounds = {
     globalMin: stats.min,
-    globalMax: stats.max
+    globalMax: stats.max,
   };
 
   if (strategy === 'per-dimension' && stats.dimensions) {
-    bounds.dimensionBounds = stats.dimensions.map(dim => ({
+    bounds.dimensionBounds = stats.dimensions.map((dim) => ({
       min: dim.min,
-      max: dim.max
+      max: dim.max,
     }));
   }
 
@@ -201,14 +201,14 @@ export function calculateQuantizationBounds(
         allValues.push(vector[i]!); // Safe since we're within bounds
       }
     }
-    
+
     allValues.sort((a, b) => a - b);
     const lowerIndex = Math.floor(allValues.length * percentileRange[0]);
     const upperIndex = Math.floor(allValues.length * percentileRange[1]);
-    
+
     bounds.percentileBounds = {
       min: allValues[lowerIndex]!,
-      max: allValues[upperIndex]!
+      max: allValues[upperIndex]!,
     };
   }
 
@@ -222,16 +222,16 @@ export function quantizeValue(
   value: number,
   min: number,
   max: number,
-  bits: number
+  bits: number,
 ): number {
   const levels = (1 << bits) - 1; // 2^bits - 1
   const range = max - min;
-  
+
   if (range === 0) return 0;
-  
+
   const normalized = (value - min) / range;
   const quantized = Math.round(normalized * levels);
-  
+
   return Math.max(0, Math.min(levels, quantized));
 }
 
@@ -242,13 +242,13 @@ export function dequantizeValue(
   quantized: number,
   min: number,
   max: number,
-  bits: number
+  bits: number,
 ): number {
   const levels = (1 << bits) - 1;
   const range = max - min;
-  
+
   if (range === 0) return min;
-  
+
   const normalized = quantized / levels;
   return min + normalized * range;
 }
@@ -258,13 +258,13 @@ export function dequantizeValue(
  */
 export function calculateOptimalBits(
   vector: Float32Array,
-  targetPrecisionLoss: number
+  targetPrecisionLoss: number,
 ): number {
   const stats = calculateVectorStatistics(vector);
-  
+
   // Start with 8 bits and adjust based on precision requirements
   let bits = 8;
-  
+
   // If we have very high precision requirements, use 16 bits
   if (targetPrecisionLoss < 0.001) {
     bits = 16;
@@ -275,7 +275,7 @@ export function calculateOptimalBits(
   } else {
     bits = 4;
   }
-  
+
   // Adjust based on dynamic range
   const dynamicRange = stats.range;
   if (dynamicRange > 1000) {
@@ -283,7 +283,7 @@ export function calculateOptimalBits(
   } else if (dynamicRange > 100) {
     bits = Math.max(bits, 8);
   }
-  
+
   return Math.max(4, Math.min(16, bits));
 }
 
@@ -293,19 +293,19 @@ export function calculateOptimalBits(
 export function estimateMemoryUsage(
   dimension: number,
   bits: number,
-  includeBounds: boolean = true
+  includeBounds: boolean = true,
 ): number {
   // Vector data: dimension * bits / 8 bytes
-  let bytes = Math.ceil(dimension * bits / 8);
-  
+  let bytes = Math.ceil((dimension * bits) / 8);
+
   // Add bounds storage (min/max values)
   if (includeBounds) {
     bytes += 8; // 2 * Float32 (4 bytes each)
   }
-  
+
   // Add padding for alignment
   bytes = Math.ceil(bytes / 4) * 4;
-  
+
   return bytes;
 }
 
@@ -315,7 +315,7 @@ export function estimateMemoryUsage(
 export function createQuantizedArray(dimension: number, bits: number): ArrayBuffer {
   const totalBits = dimension * bits;
   const totalBytes = Math.ceil(totalBits / 8);
-  
+
   return new ArrayBuffer(totalBytes);
 }
 
@@ -325,31 +325,31 @@ export function createQuantizedArray(dimension: number, bits: number): ArrayBuff
 export function packQuantizedValues(
   values: number[],
   bits: number,
-  buffer: ArrayBuffer
+  buffer: ArrayBuffer,
 ): void {
   const view = new Uint8Array(buffer);
   let bitOffset = 0;
-  
+
   for (const value of values) {
     // Pack value into buffer at current bit offset
     const byteOffset = Math.floor(bitOffset / 8);
     const bitPos = bitOffset % 8;
-    
+
     // Handle values that span byte boundaries
     if (bitPos + bits <= 8) {
       // Value fits in current byte
-      view[byteOffset]! |= (value << (8 - bitPos - bits));
+      view[byteOffset]! |= value << (8 - bitPos - bits);
     } else {
       // Value spans multiple bytes
       const bitsInFirstByte = 8 - bitPos;
       const bitsInSecondByte = bits - bitsInFirstByte;
-      
-      view[byteOffset]! |= (value >> bitsInSecondByte);
+
+      view[byteOffset]! |= value >> bitsInSecondByte;
       if (byteOffset + 1 < view.length) {
-        view[byteOffset + 1]! |= (value << (8 - bitsInSecondByte));
+        view[byteOffset + 1]! |= value << (8 - bitsInSecondByte);
       }
     }
-    
+
     bitOffset += bits;
   }
 }
@@ -360,19 +360,19 @@ export function packQuantizedValues(
 export function unpackQuantizedValues(
   buffer: ArrayBuffer,
   dimension: number,
-  bits: number
+  bits: number,
 ): number[] {
   const view = new Uint8Array(buffer);
   const values: number[] = [];
   const mask = (1 << bits) - 1;
   let bitOffset = 0;
-  
+
   for (let i = 0; i < dimension; i++) {
     const byteOffset = Math.floor(bitOffset / 8);
     const bitPos = bitOffset % 8;
-    
+
     let value = 0;
-    
+
     if (bitPos + bits <= 8) {
       // Value fits in current byte
       value = (view[byteOffset]! >> (8 - bitPos - bits)) & mask;
@@ -380,16 +380,16 @@ export function unpackQuantizedValues(
       // Value spans multiple bytes
       const bitsInFirstByte = 8 - bitPos;
       const bitsInSecondByte = bits - bitsInFirstByte;
-      
+
       value = (view[byteOffset]! & ((1 << bitsInFirstByte) - 1)) << bitsInSecondByte;
       if (byteOffset + 1 < view.length) {
-        value |= (view[byteOffset + 1]! >> (8 - bitsInSecondByte));
+        value |= view[byteOffset + 1]! >> (8 - bitsInSecondByte);
       }
     }
-    
+
     values.push(value);
     bitOffset += bits;
   }
-  
+
   return values;
 }

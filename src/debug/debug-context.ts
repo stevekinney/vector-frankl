@@ -2,7 +2,6 @@
  * Debug context management
  */
 
-
 export interface ContextInfo {
   /** Current namespace */
   namespace?: string;
@@ -42,8 +41,10 @@ export class DebugContext {
       metadata: new Map(Object.entries(info.metadata || {})),
       ...(info.namespace && { namespace: info.namespace }),
       ...(info.operationType && { operationType: info.operationType }),
-      ...(info.vectorDimensions !== undefined && { vectorDimensions: info.vectorDimensions }),
-      ...(info.vectorCount !== undefined && { vectorCount: info.vectorCount })
+      ...(info.vectorDimensions !== undefined && {
+        vectorDimensions: info.vectorDimensions,
+      }),
+      ...(info.vectorCount !== undefined && { vectorCount: info.vectorCount }),
     };
 
     this.contexts.set(id, context);
@@ -57,7 +58,7 @@ export class DebugContext {
     if (!this.contexts.has(id)) {
       throw new Error(`Context ${id} not found`);
     }
-    
+
     if (this.currentContextId) {
       this.contextStack.push(this.currentContextId);
     }
@@ -86,21 +87,23 @@ export class DebugContext {
    */
   updateContext(updates: Partial<ContextInfo>): void {
     if (!this.currentContextId) return;
-    
+
     const context = this.contexts.get(this.currentContextId);
     if (!context) return;
 
     if (updates.namespace !== undefined) context.namespace = updates.namespace;
-    if (updates.operationType !== undefined) context.operationType = updates.operationType;
-    if (updates.vectorDimensions !== undefined) context.vectorDimensions = updates.vectorDimensions;
+    if (updates.operationType !== undefined)
+      context.operationType = updates.operationType;
+    if (updates.vectorDimensions !== undefined)
+      context.vectorDimensions = updates.vectorDimensions;
     if (updates.vectorCount !== undefined) context.vectorCount = updates.vectorCount;
-    
+
     if (updates.tags) {
       Object.entries(updates.tags).forEach(([key, value]) => {
         context.tags.set(key, value);
       });
     }
-    
+
     if (updates.metadata) {
       Object.entries(updates.metadata).forEach(([key, value]) => {
         context.metadata.set(key, value);
@@ -136,7 +139,7 @@ export class DebugContext {
     if (this.currentContextId === id) {
       this.currentContextId = this.contextStack.pop() || null;
     }
-    this.contextStack = this.contextStack.filter(cid => cid !== id);
+    this.contextStack = this.contextStack.filter((cid) => cid !== id);
   }
 
   /**
@@ -161,7 +164,7 @@ export class DebugContext {
       vectorDimensions: context.vectorDimensions,
       vectorCount: context.vectorCount,
       tags: Object.fromEntries(context.tags),
-      metadata: Object.fromEntries(context.metadata)
+      metadata: Object.fromEntries(context.metadata),
     };
   }
 
@@ -169,13 +172,13 @@ export class DebugContext {
    * Execute function with context
    */
   async withContext<T>(
-    id: string, 
+    id: string,
     info: Partial<ContextInfo>,
-    fn: () => T | Promise<T>
+    fn: () => T | Promise<T>,
   ): Promise<T> {
     this.createContext(id, info);
     this.pushContext(id);
-    
+
     try {
       return await fn();
     } finally {

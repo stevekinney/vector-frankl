@@ -2,8 +2,8 @@
  * SIMD-accelerated distance metrics for high-performance vector similarity calculations
  */
 
-import { SIMDOperations } from './simd-operations.js';
 import type { DistanceMetric } from '../core/types.js';
+import { SIMDOperations } from './simd-operations.js';
 
 export interface SIMDDistanceConfig {
   /** Enable SIMD optimizations */
@@ -38,13 +38,13 @@ export class SIMDDistanceMetrics {
       enableSIMD: config.enableSIMD ?? true,
       simdThreshold: config.simdThreshold || 16,
       enableCaching: config.enableCaching ?? false,
-      maxCacheSize: config.maxCacheSize || 1000
+      maxCacheSize: config.maxCacheSize || 1000,
     };
 
     this.simdOps = new SIMDOperations({
       enableSIMD: this.config.enableSIMD,
       simdThreshold: this.config.simdThreshold,
-      enableProfiling: false
+      enableProfiling: false,
     });
 
     this.initializeCalculators();
@@ -60,7 +60,7 @@ export class SIMDDistanceMetrics {
       calculate: (a, b) => this.cosineDistance(a, b),
       batchCalculate: (vectors, query) => this.batchCosineDistance(vectors, query),
       requiresNormalized: false,
-      simdAccelerated: true
+      simdAccelerated: true,
     });
 
     // Euclidean distance (SIMD-accelerated)
@@ -69,7 +69,7 @@ export class SIMDDistanceMetrics {
       calculate: (a, b) => this.simdOps.euclideanDistance(a, b),
       batchCalculate: (vectors, query) => this.batchEuclideanDistance(vectors, query),
       requiresNormalized: false,
-      simdAccelerated: true
+      simdAccelerated: true,
     });
 
     // Manhattan distance (SIMD-accelerated)
@@ -78,7 +78,7 @@ export class SIMDDistanceMetrics {
       calculate: (a, b) => this.simdOps.manhattanDistance(a, b),
       batchCalculate: (vectors, query) => this.batchManhattanDistance(vectors, query),
       requiresNormalized: false,
-      simdAccelerated: true
+      simdAccelerated: true,
     });
 
     // Dot product (SIMD-accelerated)
@@ -87,7 +87,7 @@ export class SIMDDistanceMetrics {
       calculate: (a, b) => -this.simdOps.dotProduct(a, b), // Negative for distance
       batchCalculate: (vectors, query) => this.batchDotProduct(vectors, query),
       requiresNormalized: false,
-      simdAccelerated: true
+      simdAccelerated: true,
     });
 
     // Hamming distance (optimized but not SIMD)
@@ -95,7 +95,7 @@ export class SIMDDistanceMetrics {
       name: 'hamming',
       calculate: (a, b) => this.hammingDistance(a, b),
       requiresNormalized: false,
-      simdAccelerated: false
+      simdAccelerated: false,
     });
 
     // Jaccard distance (optimized but not SIMD)
@@ -103,7 +103,7 @@ export class SIMDDistanceMetrics {
       name: 'jaccard',
       calculate: (a, b) => this.jaccardDistance(a, b),
       requiresNormalized: false,
-      simdAccelerated: false
+      simdAccelerated: false,
     });
   }
 
@@ -137,20 +137,16 @@ export class SIMDDistanceMetrics {
   /**
    * Calculate distance with optional caching
    */
-  calculateDistance(
-    a: Float32Array, 
-    b: Float32Array, 
-    metric: DistanceMetric
-  ): number {
+  calculateDistance(a: Float32Array, b: Float32Array, metric: DistanceMetric): number {
     const calculator = this.getCalculator(metric);
-    
+
     if (this.config.enableCaching) {
       const cacheKey = this.generateCacheKey(a, b, metric);
       const cached = this.cache.get(cacheKey);
       if (cached !== undefined) {
         return cached;
       }
-      
+
       const result = calculator.calculate(a, b);
       this.addToCache(cacheKey, result);
       return result;
@@ -165,10 +161,10 @@ export class SIMDDistanceMetrics {
   batchCalculateDistances(
     vectors: Float32Array[],
     query: Float32Array,
-    metric: DistanceMetric
+    metric: DistanceMetric,
   ): Float32Array {
     const calculator = this.getCalculator(metric);
-    
+
     if (calculator.batchCalculate) {
       return calculator.batchCalculate(vectors, query);
     }
@@ -191,22 +187,22 @@ export class SIMDDistanceMetrics {
     switch (metric) {
       case 'cosine':
         // Cosine distance is in range [0, 2], convert to similarity [0, 1]
-        return 1 - (distance / 2);
-      
+        return 1 - distance / 2;
+
       case 'dot':
         // Dot product is negative distance, convert back
         return -distance;
-      
+
       case 'euclidean':
       case 'manhattan':
         // Convert distance to similarity using exponential decay
         return Math.exp(-distance);
-      
+
       case 'hamming':
       case 'jaccard':
         // These are already in [0, 1] range
         return 1 - distance;
-      
+
       default:
         // Generic conversion
         return 1 / (1 + distance);
@@ -220,14 +216,14 @@ export class SIMDDistanceMetrics {
    */
   private cosineDistance(a: Float32Array, b: Float32Array): number {
     const dotProduct = this.simdOps.dotProduct(a, b);
-    
+
     // Calculate magnitudes using SIMD
     const magA = Math.sqrt(this.simdOps.dotProduct(a, a));
     const magB = Math.sqrt(this.simdOps.dotProduct(b, b));
-    
+
     const magnitude = magA * magB;
     if (magnitude === 0) return 1; // Maximum distance
-    
+
     const similarity = dotProduct / magnitude;
     return 1 - similarity; // Convert similarity to distance
   }
@@ -235,21 +231,24 @@ export class SIMDDistanceMetrics {
   /**
    * Batch cosine distance calculation
    */
-  private batchCosineDistance(vectors: Float32Array[], query: Float32Array): Float32Array {
+  private batchCosineDistance(
+    vectors: Float32Array[],
+    query: Float32Array,
+  ): Float32Array {
     const results = new Float32Array(vectors.length);
-    
+
     // Pre-calculate query magnitude
     const queryMagnitude = Math.sqrt(this.simdOps.dotProduct(query, query));
-    
+
     // Use SIMD for batch dot products
     const dotProducts = this.simdOps.batchDotProduct(vectors, query);
-    
+
     for (let i = 0; i < vectors.length; i++) {
       const vector = vectors[i];
       if (vector) {
         const vectorMagnitude = Math.sqrt(this.simdOps.dotProduct(vector, vector));
         const magnitude = queryMagnitude * vectorMagnitude;
-        
+
         if (magnitude === 0) {
           results[i] = 1; // Maximum distance
         } else {
@@ -261,39 +260,45 @@ export class SIMDDistanceMetrics {
         }
       }
     }
-    
+
     return results;
   }
 
   /**
    * Batch Euclidean distance calculation
    */
-  private batchEuclideanDistance(vectors: Float32Array[], query: Float32Array): Float32Array {
+  private batchEuclideanDistance(
+    vectors: Float32Array[],
+    query: Float32Array,
+  ): Float32Array {
     const results = new Float32Array(vectors.length);
-    
+
     for (let i = 0; i < vectors.length; i++) {
       const vector = vectors[i];
       if (vector) {
         results[i] = this.simdOps.euclideanDistance(vector, query);
       }
     }
-    
+
     return results;
   }
 
   /**
    * Batch Manhattan distance calculation
    */
-  private batchManhattanDistance(vectors: Float32Array[], query: Float32Array): Float32Array {
+  private batchManhattanDistance(
+    vectors: Float32Array[],
+    query: Float32Array,
+  ): Float32Array {
     const results = new Float32Array(vectors.length);
-    
+
     for (let i = 0; i < vectors.length; i++) {
       const vector = vectors[i];
       if (vector) {
         results[i] = this.simdOps.manhattanDistance(vector, query);
       }
     }
-    
+
     return results;
   }
 
@@ -302,7 +307,7 @@ export class SIMDDistanceMetrics {
    */
   private batchDotProduct(vectors: Float32Array[], query: Float32Array): Float32Array {
     const dotProducts = this.simdOps.batchDotProduct(vectors, query);
-    
+
     // Convert to negative for distance
     for (let i = 0; i < dotProducts.length; i++) {
       const value = dotProducts[i];
@@ -310,7 +315,7 @@ export class SIMDDistanceMetrics {
         dotProducts[i] = -value;
       }
     }
-    
+
     return dotProducts;
   }
 
@@ -321,14 +326,14 @@ export class SIMDDistanceMetrics {
    */
   private hammingDistance(a: Float32Array, b: Float32Array): number {
     let distance = 0;
-    
+
     // Use bitwise operations for integer-like values
     for (let i = 0; i < a.length; i++) {
       if (a[i] !== b[i]) {
         distance++;
       }
     }
-    
+
     return distance / a.length; // Normalize by vector length
   }
 
@@ -338,26 +343,30 @@ export class SIMDDistanceMetrics {
   private jaccardDistance(a: Float32Array, b: Float32Array): number {
     let intersection = 0;
     let union = 0;
-    
+
     for (let i = 0; i < a.length; i++) {
       const aVal = a[i];
       const bVal = b[i];
       if (aVal !== undefined && bVal !== undefined) {
         const minVal = Math.min(aVal, bVal);
         const maxVal = Math.max(aVal, bVal);
-        
+
         intersection += minVal;
         union += maxVal;
       }
     }
-    
+
     if (union === 0) return 0;
-    return 1 - (intersection / union);
+    return 1 - intersection / union;
   }
 
   // Cache management
 
-  private generateCacheKey(a: Float32Array, b: Float32Array, metric: DistanceMetric): string {
+  private generateCacheKey(
+    a: Float32Array,
+    b: Float32Array,
+    metric: DistanceMetric,
+  ): string {
     // Simple hash-based cache key
     const aHash = this.hashVector(a);
     const bHash = this.hashVector(b);
@@ -406,7 +415,7 @@ export class SIMDDistanceMetrics {
     return {
       size: this.cache.size,
       maxSize: this.config.maxCacheSize,
-      hitRate: 0 // Would need to track hits/misses
+      hitRate: 0, // Would need to track hits/misses
     };
   }
 
@@ -414,9 +423,9 @@ export class SIMDDistanceMetrics {
    * Benchmark SIMD vs non-SIMD performance
    */
   benchmark(
-    vectorLength: number = 1000, 
+    vectorLength: number = 1000,
     vectorCount: number = 100,
-    metric: DistanceMetric = 'cosine'
+    metric: DistanceMetric = 'cosine',
   ): {
     simdTime: number;
     scalarTime: number;
@@ -432,7 +441,7 @@ export class SIMDDistanceMetrics {
       }
       vectors.push(vector);
     }
-    
+
     const query = new Float32Array(vectorLength);
     for (let i = 0; i < vectorLength; i++) {
       query[i] = Math.random() * 2 - 1;
@@ -464,7 +473,7 @@ export class SIMDDistanceMetrics {
       simdTime,
       scalarTime,
       speedup: scalarTime / simdTime,
-      operationsPerSecond: vectorCount / (simdTime / 1000)
+      operationsPerSecond: vectorCount / (simdTime / 1000),
     };
   }
 }
@@ -474,7 +483,7 @@ export class SIMDDistanceMetrics {
  */
 export function createSIMDDistanceCalculator(
   metric: DistanceMetric,
-  config?: SIMDDistanceConfig
+  config?: SIMDDistanceConfig,
 ): (a: Float32Array, b: Float32Array) => number {
   const metrics = new SIMDDistanceMetrics(config);
   const calculator = metrics.getCalculator(metric);

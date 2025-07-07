@@ -48,7 +48,7 @@ export class MockIDBRequest<T = unknown> {
   result: T | null = null;
   error: Error | null = null;
   readyState: 'pending' | 'done' = 'pending';
-  
+
   onsuccess: ((event: IDBRequestEvent) => void) | null = null;
   onerror: ((event: IDBRequestEvent) => void) | null = null;
 
@@ -85,7 +85,7 @@ export class MockIDBCursor<T = unknown> {
     if (this.index < this.data.length) {
       const item = this.data[this.index];
       this.value = item ?? null;
-      this.key = (item as Record<string, unknown>)['id'] as IDBValidKey || this.index;
+      this.key = ((item as Record<string, unknown>)['id'] as IDBValidKey) || this.index;
       this.primaryKey = this.key;
     } else {
       this.value = null;
@@ -164,7 +164,10 @@ export class MockIDBObjectStore {
     return new MockIDBRequest(this.data.size);
   }
 
-  openCursor(_range?: IDBValidKey | IDBKeyRange, _direction?: IDBCursorDirection): MockIDBRequest<MockIDBCursor | null> {
+  openCursor(
+    _range?: IDBValidKey | IDBKeyRange,
+    _direction?: IDBCursorDirection,
+  ): MockIDBRequest<MockIDBCursor | null> {
     const values = Array.from(this.data.values());
     if (values.length === 0) {
       return new MockIDBRequest(null);
@@ -173,7 +176,11 @@ export class MockIDBObjectStore {
     return new MockIDBRequest(cursor);
   }
 
-  createIndex(name: string, keyPath: string | string[], _options: IDBIndexOptions = {}): MockIDBIndex {
+  createIndex(
+    name: string,
+    keyPath: string | string[],
+    _options: IDBIndexOptions = {},
+  ): MockIDBIndex {
     const index = new MockIDBIndex(name, keyPath, this);
     this.indices.set(name, index);
     return index;
@@ -209,7 +216,7 @@ export class MockIDBIndex {
   get(key: IDBValidKey): MockIDBRequest<unknown> {
     // Simple implementation - find first matching value
     const values = Array.from(this.store.getData().values());
-    const match = values.find(value => this.getIndexKey(value) === key);
+    const match = values.find((value) => this.getIndexKey(value) === key);
     return new MockIDBRequest(match || null);
   }
 
@@ -218,7 +225,10 @@ export class MockIDBIndex {
     return new MockIDBRequest(values);
   }
 
-  openCursor(_range?: IDBValidKey | IDBKeyRange, _direction?: IDBCursorDirection): MockIDBRequest<MockIDBCursor | null> {
+  openCursor(
+    _range?: IDBValidKey | IDBKeyRange,
+    _direction?: IDBCursorDirection,
+  ): MockIDBRequest<MockIDBCursor | null> {
     const values = Array.from(this.store.getData().values());
     if (values.length === 0) {
       return new MockIDBRequest(null);
@@ -239,8 +249,15 @@ export class MockIDBIndex {
   }
 
   private getNestedValue(obj: unknown, path: string): unknown {
-    return path.split('.').reduce<unknown>((current, key) => 
-      current && typeof current === 'object' ? (current as Record<string, unknown>)[key] : undefined, obj);
+    return path
+      .split('.')
+      .reduce<unknown>(
+        (current, key) =>
+          current && typeof current === 'object'
+            ? (current as Record<string, unknown>)[key]
+            : undefined,
+        obj,
+      );
   }
 }
 
@@ -257,11 +274,11 @@ export class MockIDBTransaction {
   constructor(
     storeNames: string[],
     mode: 'readonly' | 'readwrite' | 'versionchange',
-    stores: Map<string, MockIDBObjectStore>
+    stores: Map<string, MockIDBObjectStore>,
   ) {
     this.mode = mode;
     this.objectStoreNames = storeNames;
-    
+
     // Copy relevant stores
     for (const name of storeNames) {
       const store = stores.get(name);
@@ -313,24 +330,24 @@ export class MockIDBDatabase {
   constructor(name: string, version: number) {
     this.name = name;
     this.version = version;
-    
+
     // Initialize objectStoreNames as DOMStringList
     this.objectStoreNames = Object.assign([], {
-      contains: (name: string) => this.objectStoreNames.includes(name)
+      contains: (name: string) => this.objectStoreNames.includes(name),
     }) as DOMStringList;
   }
 
   createObjectStore(
     name: string,
-    options: IDBObjectStoreOptions = {}
+    options: IDBObjectStoreOptions = {},
   ): MockIDBObjectStore {
     const store = new MockIDBObjectStore(name, options);
     this.stores.set(name, store);
     const names = Array.from(this.stores.keys());
     this.objectStoreNames = Object.assign(names, {
-      contains: (name: string) => names.includes(name)
+      contains: (name: string) => names.includes(name),
     }) as DOMStringList;
-    
+
     return store;
   }
 
@@ -338,13 +355,13 @@ export class MockIDBDatabase {
     this.stores.delete(name);
     const names = Array.from(this.stores.keys());
     this.objectStoreNames = Object.assign(names, {
-      contains: (name: string) => names.includes(name)
+      contains: (name: string) => names.includes(name),
     }) as DOMStringList;
   }
 
   transaction(
     storeNames: string | string[],
-    mode: 'readonly' | 'readwrite' | 'versionchange' = 'readonly'
+    mode: 'readonly' | 'readwrite' | 'versionchange' = 'readonly',
   ): MockIDBTransaction {
     const names = Array.isArray(storeNames) ? storeNames : [storeNames];
     return new MockIDBTransaction(names, mode, this.stores);
@@ -361,7 +378,7 @@ export class MockIDBDatabase {
    */
   async withTransaction<T>(
     storeNames: string[],
-    callback: (tx: MockIDBTransaction) => Promise<T>
+    callback: (tx: MockIDBTransaction) => Promise<T>,
   ): Promise<T> {
     const transaction = this.transaction(storeNames, 'readwrite');
     try {
@@ -379,11 +396,11 @@ export class MockIDBDatabase {
   async executeTransaction<T>(
     storeNames: string | string[],
     mode: 'readonly' | 'readwrite' | 'versionchange',
-    operation: (transaction: MockIDBTransaction) => Promise<T>
+    operation: (transaction: MockIDBTransaction) => Promise<T>,
   ): Promise<T> {
     const stores = Array.isArray(storeNames) ? storeNames : [storeNames];
     const transaction = this.transaction(stores, mode);
-    
+
     return new Promise((resolve, reject) => {
       let result: T;
 
@@ -416,7 +433,7 @@ export class MockIDBOpenDBRequest {
   result: MockIDBDatabase | null = null;
   error: Error | null = null;
   readyState: 'pending' | 'done' = 'pending';
-  
+
   onsuccess: ((event: IDBRequestEvent) => void) | null = null;
   onerror: ((event: IDBRequestEvent) => void) | null = null;
   onupgradeneeded: ((event: IDBVersionChangeEvent) => void) | null = null;
@@ -426,24 +443,24 @@ export class MockIDBOpenDBRequest {
     setTimeout(() => {
       // Simulate database opening
       const db = new MockIDBDatabase(name, version || 1);
-      
+
       // Store the database in the global registry
       mockDatabases.set(name, db);
-      
+
       // Set result before callbacks
       this.result = db;
-      
+
       // Always trigger upgrade for new databases (simulate schema creation)
       const upgradeEvent: IDBVersionChangeEvent = {
         target: this as any,
         oldVersion: 0,
-        newVersion: version || 1
+        newVersion: version || 1,
       };
-      
+
       if (this.onupgradeneeded) {
         this.onupgradeneeded(upgradeEvent);
       }
-      
+
       // Wait a tick to ensure upgrade is processed, then trigger success
       setTimeout(() => {
         this.readyState = 'done';
@@ -470,7 +487,7 @@ export const mockIndexedDB = {
   databases(): Promise<Array<{ name: string; version: number }>> {
     const dbs = Array.from(mockDatabases.entries()).map(([name, db]) => ({
       name,
-      version: db.version
+      version: db.version,
     }));
     return Promise.resolve(dbs);
   },
@@ -482,7 +499,7 @@ export const mockIndexedDB = {
     if (a < b) return -1;
     if (a > b) return 1;
     return 0;
-  }
+  },
 };
 
 // Mock storage API
@@ -490,14 +507,14 @@ export const mockStorage = {
   estimate(): Promise<{ usage: number; quota: number }> {
     return Promise.resolve({
       usage: 1024 * 1024 * 10, // 10MB
-      quota: 1024 * 1024 * 1024 // 1GB
+      quota: 1024 * 1024 * 1024, // 1GB
     });
-  }
+  },
 };
 
 // Mock navigator
 export const mockNavigator = {
-  storage: mockStorage
+  storage: mockStorage,
 };
 
 /**

@@ -5,11 +5,11 @@
 /**
  * Supported vector formats
  */
-export type VectorFormat = 
-  | Float32Array 
-  | Float64Array 
-  | Int8Array 
-  | Uint8Array 
+export type VectorFormat =
+  | Float32Array
+  | Float64Array
+  | Int8Array
+  | Uint8Array
   | number[];
 
 /**
@@ -85,31 +85,23 @@ export interface NamespaceStats {
 /**
  * Distance metrics
  */
-export type DistanceMetric = 
-  | 'cosine' 
-  | 'euclidean' 
-  | 'manhattan' 
-  | 'hamming' 
+export type DistanceMetric =
+  | 'cosine'
+  | 'euclidean'
+  | 'manhattan'
+  | 'hamming'
   | 'jaccard'
   | 'dot';
 
 /**
  * Index strategies
  */
-export type IndexStrategy = 
-  | 'auto' 
-  | 'brute' 
-  | 'kdtree' 
-  | 'hnsw';
+export type IndexStrategy = 'auto' | 'brute' | 'kdtree' | 'hnsw';
 
 /**
  * Compression strategies
  */
-export type CompressionStrategy = 
-  | 'none' 
-  | 'scalar' 
-  | 'product' 
-  | 'binary';
+export type CompressionStrategy = 'none' | 'scalar' | 'product' | 'binary';
 
 /**
  * Search options
@@ -137,11 +129,7 @@ export interface SearchResult {
 /**
  * Metadata filter
  */
-export type MetadataFilter = 
-  | SimpleFilter 
-  | AndFilter 
-  | OrFilter 
-  | NotFilter;
+export type MetadataFilter = SimpleFilter | AndFilter | OrFilter | NotFilter;
 
 export interface SimpleFilter {
   [field: string]: FilterValue | FilterOperator;

@@ -21,7 +21,7 @@ export class InputValidator {
     maxArrayLength: 10000,
     maxObjectDepth: 10,
     maxObjectProperties: 1000,
-    allowedTypes: new Set(['string', 'number', 'boolean', 'object'])
+    allowedTypes: new Set(['string', 'number', 'boolean', 'object']),
   };
 
   /**
@@ -123,8 +123,8 @@ export class InputValidator {
    * Validate metadata object
    */
   static validateMetadata(
-    metadata: unknown, 
-    options: ValidationOptions = {}
+    metadata: unknown,
+    options: ValidationOptions = {},
   ): Record<string, unknown> {
     const opts = { ...this.DEFAULT_OPTIONS, ...options };
 
@@ -137,11 +137,13 @@ export class InputValidator {
     }
 
     const validatedMetadata = metadata as Record<string, unknown>;
-    
+
     // Check number of properties
     const propertyCount = Object.keys(validatedMetadata).length;
     if (propertyCount > opts.maxObjectProperties) {
-      throw new Error(`Metadata cannot have more than ${opts.maxObjectProperties} properties`);
+      throw new Error(
+        `Metadata cannot have more than ${opts.maxObjectProperties} properties`,
+      );
     }
 
     // Recursively validate metadata
@@ -171,11 +173,11 @@ export class InputValidator {
 
     for (let i = 0; i < ids.length; i++) {
       const id = this.validateVectorId(ids[i]);
-      
+
       if (seen.has(id)) {
         throw new Error(`Duplicate vector ID found: ${id}`);
       }
-      
+
       seen.add(id);
       validatedIds.push(id);
     }
@@ -189,7 +191,7 @@ export class InputValidator {
   static validateBatchData<T>(
     data: unknown,
     itemValidator: (item: unknown, index: number) => T,
-    maxItems: number = 1000
+    maxItems: number = 1000,
   ): T[] {
     if (!Array.isArray(data)) {
       throw new Error('Batch data must be an array');
@@ -207,7 +209,9 @@ export class InputValidator {
       try {
         return itemValidator(item, index);
       } catch (error) {
-        throw new Error(`Invalid item at index ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new Error(
+          `Invalid item at index ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
       }
     });
   }
@@ -231,7 +235,9 @@ export class InputValidator {
     // Check for valid database name pattern
     const validPattern = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
     if (!validPattern.test(name)) {
-      throw new Error('Database name must start with a letter and contain only letters, numbers, underscores, and hyphens');
+      throw new Error(
+        'Database name must start with a letter and contain only letters, numbers, underscores, and hyphens',
+      );
     }
 
     return name;
@@ -256,7 +262,9 @@ export class InputValidator {
     // Check for valid namespace pattern
     const validPattern = /^[a-zA-Z][a-zA-Z0-9_-]*$/;
     if (!validPattern.test(namespace)) {
-      throw new Error('Namespace must start with a letter and contain only letters, numbers, underscores, and hyphens');
+      throw new Error(
+        'Namespace must start with a letter and contain only letters, numbers, underscores, and hyphens',
+      );
     }
 
     return namespace;
@@ -268,7 +276,7 @@ export class InputValidator {
   private static validateObjectRecursive(
     obj: Record<string, unknown>,
     options: Required<ValidationOptions>,
-    currentDepth: number
+    currentDepth: number,
   ): void {
     if (currentDepth >= options.maxObjectDepth) {
       throw new Error(`Metadata object depth cannot exceed ${options.maxObjectDepth}`);
@@ -300,7 +308,7 @@ export class InputValidator {
   private static validateValue(
     value: unknown,
     options: Required<ValidationOptions>,
-    currentDepth: number
+    currentDepth: number,
   ): void {
     if (value === null || value === undefined) {
       return;
@@ -316,7 +324,9 @@ export class InputValidator {
       case 'string': {
         const strValue = value as string;
         if (strValue.length > options.maxStringLength) {
-          throw new Error(`String value cannot exceed ${options.maxStringLength} characters`);
+          throw new Error(
+            `String value cannot exceed ${options.maxStringLength} characters`,
+          );
         }
         break;
       }
@@ -335,7 +345,7 @@ export class InputValidator {
           if (arrValue.length > options.maxArrayLength) {
             throw new Error(`Array cannot exceed ${options.maxArrayLength} elements`);
           }
-          
+
           for (const item of arrValue) {
             this.validateValue(item, options, currentDepth);
           }

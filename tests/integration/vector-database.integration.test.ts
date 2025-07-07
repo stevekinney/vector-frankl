@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+
 import { VectorDB, VectorFrankl } from '@/index.js';
-import { setupIndexedDBMocks, cleanupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
+import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
 
 describe('Vector Database Integration Tests', () => {
   let db: VectorDB;
@@ -22,7 +23,7 @@ describe('Vector Database Integration Tests', () => {
 
     db = new VectorDB(testDBName, dimension, {
       autoEviction: false, // Disable for controlled testing
-      useIndex: true
+      useIndex: true,
     });
     await db.init();
 
@@ -37,7 +38,7 @@ describe('Vector Database Integration Tests', () => {
     } catch (error) {
       console.warn('Cleanup error:', error);
     }
-    
+
     // Clean up IndexedDB mocks
     cleanupIndexedDBMocks();
   });
@@ -69,7 +70,7 @@ describe('Vector Database Integration Tests', () => {
       const vectors = Array.from({ length: 100 }, (_, i) => ({
         id: `batch-${i}`,
         vector: new Float32Array(dimension).fill(i / 100),
-        metadata: { batch: true, index: i }
+        metadata: { batch: true, index: i },
       }));
 
       // Batch add
@@ -80,7 +81,7 @@ describe('Vector Database Integration Tests', () => {
       expect(stats.vectorCount).toBe(100);
 
       // Batch retrieve
-      const ids = vectors.map(v => v.id);
+      const ids = vectors.map((v) => v.id);
       const retrieved = await db.getMany(ids);
       expect(retrieved).toHaveLength(100);
 
@@ -113,9 +114,7 @@ describe('Vector Database Integration Tests', () => {
       expect(retrieved!.metadata).toEqual(updatedMetadata);
 
       // Batch update
-      await db.updateBatch([
-        { id: 'update-test', metadata: { version: 3 } }
-      ]);
+      await db.updateBatch([{ id: 'update-test', metadata: { version: 3 } }]);
       retrieved = await db.getVector('update-test');
       expect(retrieved!.metadata?.['version']).toBe(3);
     });
@@ -125,17 +124,37 @@ describe('Vector Database Integration Tests', () => {
     beforeEach(async () => {
       // Add test vectors with different patterns
       const testVectors = [
-        { id: 'similar-1', vector: new Float32Array(dimension).fill(1.0), metadata: { group: 'A', score: 0.9 } },
-        { id: 'similar-2', vector: new Float32Array(dimension).fill(0.9), metadata: { group: 'A', score: 0.8 } },
-        { id: 'different-1', vector: new Float32Array(dimension).fill(0.1), metadata: { group: 'B', score: 0.7 } },
-        { id: 'different-2', vector: new Float32Array(dimension).fill(-0.5), metadata: { group: 'B', score: 0.6 } },
-        { id: 'mixed', vector: (() => {
-          const v = new Float32Array(dimension);
-          for (let i = 0; i < dimension; i++) {
-            v[i] = i % 2 === 0 ? 1.0 : -1.0;
-          }
-          return v;
-        })(), metadata: { group: 'C', score: 0.5 } }
+        {
+          id: 'similar-1',
+          vector: new Float32Array(dimension).fill(1.0),
+          metadata: { group: 'A', score: 0.9 },
+        },
+        {
+          id: 'similar-2',
+          vector: new Float32Array(dimension).fill(0.9),
+          metadata: { group: 'A', score: 0.8 },
+        },
+        {
+          id: 'different-1',
+          vector: new Float32Array(dimension).fill(0.1),
+          metadata: { group: 'B', score: 0.7 },
+        },
+        {
+          id: 'different-2',
+          vector: new Float32Array(dimension).fill(-0.5),
+          metadata: { group: 'B', score: 0.6 },
+        },
+        {
+          id: 'mixed',
+          vector: (() => {
+            const v = new Float32Array(dimension);
+            for (let i = 0; i < dimension; i++) {
+              v[i] = i % 2 === 0 ? 1.0 : -1.0;
+            }
+            return v;
+          })(),
+          metadata: { group: 'C', score: 0.5 },
+        },
       ];
 
       await db.addBatch(testVectors);
@@ -152,31 +171,28 @@ describe('Vector Database Integration Tests', () => {
 
     it('should support metadata filtering', async () => {
       const queryVector = new Float32Array(dimension).fill(0.5);
-      
+
       // Filter by group
       const groupAResults = await db.search(queryVector, 5, {
         filter: { group: 'A' },
-        includeMetadata: true
+        includeMetadata: true,
       });
 
       expect(groupAResults).toHaveLength(2);
-      groupAResults.forEach(result => {
+      groupAResults.forEach((result) => {
         expect(result.metadata?.['group']).toBe('A');
       });
 
       // Complex filter with score range
       const highScoreResults = await db.search(queryVector, 5, {
         filter: {
-          $and: [
-            { group: { $in: ['A', 'B'] } },
-            { score: { $gte: 0.7 } }
-          ]
+          $and: [{ group: { $in: ['A', 'B'] } }, { score: { $gte: 0.7 } }],
         },
-        includeMetadata: true
+        includeMetadata: true,
       });
 
       expect(highScoreResults.length).toBeGreaterThan(0);
-      highScoreResults.forEach(result => {
+      highScoreResults.forEach((result) => {
         expect(['A', 'B']).toContain(result.metadata?.['group']);
         expect(result.metadata?.['score']).toBeGreaterThanOrEqual(0.7);
       });
@@ -188,11 +204,11 @@ describe('Vector Database Integration Tests', () => {
 
       const rangeResults = await db.searchRange(queryVector, maxDistance, {
         maxResults: 10,
-        includeMetadata: true
+        includeMetadata: true,
       });
 
       expect(rangeResults.length).toBeGreaterThan(0);
-      rangeResults.forEach(result => {
+      rangeResults.forEach((result) => {
         expect(result.distance).toBeLessThanOrEqual(maxDistance);
       });
     });
@@ -204,7 +220,7 @@ describe('Vector Database Integration Tests', () => {
       for await (const batch of db.searchStream(queryVector, {
         batchSize: 2,
         maxResults: 5,
-        includeMetadata: true
+        includeMetadata: true,
       })) {
         results.push(...batch);
       }
@@ -234,8 +250,8 @@ describe('Vector Database Integration Tests', () => {
       expect(manhattanResults).toHaveLength(3);
 
       // At least some results should be in different order
-      const sameOrder = cosineResults.every((result, index) => 
-        result.id === euclideanResults[index]?.id
+      const sameOrder = cosineResults.every(
+        (result, index) => result.id === euclideanResults[index]?.id,
       );
       expect(sameOrder).toBe(false);
     });
@@ -253,7 +269,7 @@ describe('Vector Database Integration Tests', () => {
           }
           return v;
         })(),
-        metadata: { cluster: Math.floor(i / 100) }
+        metadata: { cluster: Math.floor(i / 100) },
       }));
 
       await db.addBatch(vectors);
@@ -269,7 +285,7 @@ describe('Vector Database Integration Tests', () => {
       // Test search with index
       const queryVector = vectors[0]!.vector;
       const results = await db.search(queryVector, 10);
-      
+
       expect(results).toHaveLength(10);
       expect(results[0]!.id).toBe('indexed-0'); // Should find itself first
     });
@@ -279,7 +295,7 @@ describe('Vector Database Integration Tests', () => {
       const vectors = Array.from({ length: 100 }, (_, i) => ({
         id: `persist-${i}`,
         vector: new Float32Array(dimension).fill(i / 100),
-        metadata: { index: i }
+        metadata: { index: i },
       }));
 
       await db.addBatch(vectors);
@@ -292,7 +308,7 @@ describe('Vector Database Integration Tests', () => {
 
       // Close and reopen database
       await db.close();
-      
+
       db = new VectorDB(testDBName, dimension, { useIndex: true });
       await db.init();
 
@@ -306,7 +322,7 @@ describe('Vector Database Integration Tests', () => {
   describe('Storage Management', () => {
     it('should monitor storage quota', async () => {
       const quotaInfo = await db.getStorageQuota();
-      
+
       if (quotaInfo) {
         expect(quotaInfo.usage).toBeGreaterThanOrEqual(0);
         expect(quotaInfo.quota).toBeGreaterThan(0);
@@ -321,10 +337,10 @@ describe('Vector Database Integration Tests', () => {
       const vectors = Array.from({ length: 50 }, (_, i) => ({
         id: `eviction-${i}`,
         vector: new Float32Array(dimension).fill(i / 50),
-        metadata: { 
+        metadata: {
           priority: i < 10 ? 1.0 : 0.5, // First 10 are high priority
-          permanent: i < 5 // First 5 are permanent
-        }
+          permanent: i < 5, // First 5 are permanent
+        },
       }));
 
       await db.addBatch(vectors);
@@ -335,13 +351,15 @@ describe('Vector Database Integration Tests', () => {
       }
 
       const evictionStats = await db.getEvictionStats();
-      
+
       expect(evictionStats.stats.totalVectors).toBe(50);
       expect(evictionStats.stats.permanentVectors).toBe(5);
       expect(evictionStats.stats.totalEstimatedBytes).toBeGreaterThan(0);
-      
+
       if (evictionStats.suggestion) {
-        expect(['lru', 'lfu', 'ttl', 'score', 'hybrid']).toContain(evictionStats.suggestion.strategy);
+        expect(['lru', 'lfu', 'ttl', 'score', 'hybrid']).toContain(
+          evictionStats.suggestion.strategy,
+        );
         expect(evictionStats.suggestion.reasoning).toBeTruthy();
       }
     });
@@ -351,10 +369,10 @@ describe('Vector Database Integration Tests', () => {
       const vectors = Array.from({ length: 30 }, (_, i) => ({
         id: `evict-test-${i}`,
         vector: new Float32Array(dimension).fill(i / 30),
-        metadata: { 
+        metadata: {
           priority: Math.random(),
-          permanent: i < 3 // First 3 are permanent
-        }
+          permanent: i < 3, // First 3 are permanent
+        },
       }));
 
       await db.addBatch(vectors);
@@ -363,7 +381,7 @@ describe('Vector Database Integration Tests', () => {
       const lruResult = await db.evictVectors({
         strategy: 'lru',
         maxVectors: 10,
-        preservePermanent: true
+        preservePermanent: true,
       });
 
       expect(lruResult.evictedCount).toBeLessThanOrEqual(10);
@@ -379,7 +397,7 @@ describe('Vector Database Integration Tests', () => {
       // Test score-based eviction
       const scoreResult = await db.evictVectors({
         strategy: 'score',
-        maxVectors: 5
+        maxVectors: 5,
       });
 
       expect(scoreResult.evictedCount).toBeLessThanOrEqual(5);
@@ -399,9 +417,11 @@ describe('Vector Database Integration Tests', () => {
       // Note: It's difficult to trigger actual quota warnings in tests
       // This test mainly verifies the API is working
       expect(typeof db.getUsageTrend).toBe('function');
-      
+
       const trend = db.getUsageTrend();
-      expect(['increasing', 'decreasing', 'stable', 'insufficient_data']).toContain(trend.trend);
+      expect(['increasing', 'decreasing', 'stable', 'insufficient_data']).toContain(
+        trend.trend,
+      );
       expect(trend.confidence).toBeGreaterThanOrEqual(0);
       expect(trend.confidence).toBeLessThanOrEqual(1);
     });
@@ -413,13 +433,13 @@ describe('Vector Database Integration Tests', () => {
       const textNamespace = await vectorFrankl.createNamespace('text-embeddings', {
         dimension: 384,
         distanceMetric: 'cosine',
-        description: 'Text embeddings'
+        description: 'Text embeddings',
       });
 
       const imageNamespace = await vectorFrankl.createNamespace('image-embeddings', {
         dimension: 512,
         distanceMetric: 'euclidean',
-        description: 'Image embeddings'
+        description: 'Image embeddings',
       });
 
       // Add vectors to different namespaces
@@ -448,26 +468,30 @@ describe('Vector Database Integration Tests', () => {
     it('should handle namespace storage independently', async () => {
       const ns1 = await vectorFrankl.createNamespace('storage-test-1', {
         dimension: 128,
-        description: 'First namespace'
+        description: 'First namespace',
       });
 
       const ns2 = await vectorFrankl.createNamespace('storage-test-2', {
         dimension: 128,
-        description: 'Second namespace'
+        description: 'Second namespace',
       });
 
       // Add different amounts of data to each namespace
-      await ns1.addBatch(Array.from({ length: 20 }, (_, i) => ({
-        id: `ns1-${i}`,
-        vector: new Float32Array(128).fill(i / 20),
-        metadata: { namespace: 1 }
-      })));
+      await ns1.addBatch(
+        Array.from({ length: 20 }, (_, i) => ({
+          id: `ns1-${i}`,
+          vector: new Float32Array(128).fill(i / 20),
+          metadata: { namespace: 1 },
+        })),
+      );
 
-      await ns2.addBatch(Array.from({ length: 10 }, (_, i) => ({
-        id: `ns2-${i}`,
-        vector: new Float32Array(128).fill(i / 10),
-        metadata: { namespace: 2 }
-      })));
+      await ns2.addBatch(
+        Array.from({ length: 10 }, (_, i) => ({
+          id: `ns2-${i}`,
+          vector: new Float32Array(128).fill(i / 10),
+          metadata: { namespace: 2 },
+        })),
+      );
 
       // Check stats for each namespace
       const ns1Stats = await ns1.getStats();
@@ -507,7 +531,9 @@ describe('Vector Database Integration Tests', () => {
       const result = await db.getVector('non-existent');
       expect(result).toBeNull();
 
-      expect(async () => await db.updateVector('non-existent', new Float32Array(dimension))).toThrow();
+      expect(
+        async () => await db.updateVector('non-existent', new Float32Array(dimension)),
+      ).toThrow();
     });
 
     it('should handle corrupted or invalid data gracefully', async () => {
@@ -529,7 +555,7 @@ describe('Vector Database Integration Tests', () => {
       const largeBatch = Array.from({ length: 1000 }, (_, i) => ({
         id: `perf-${i}`,
         vector: new Float32Array(dimension).fill(Math.random()),
-        metadata: { batch: 'large', index: i }
+        metadata: { batch: 'large', index: i },
       }));
 
       const startTime = performance.now();
@@ -560,17 +586,17 @@ describe('Vector Database Integration Tests', () => {
       const vectors = Array.from({ length: 500 }, (_, i) => ({
         id: `memory-${i}`,
         vector: new Float32Array(dimension).fill(Math.random()),
-        metadata: { test: 'memory', index: i }
+        metadata: { test: 'memory', index: i },
       }));
 
       await db.addBatch(vectors);
 
       const afterMemory = (performance as any).memory?.usedJSHeapSize || 0;
-      
+
       if (afterMemory > 0 && initialMemory > 0) {
         const memoryIncrease = afterMemory - initialMemory;
         const expectedSize = vectors.length * dimension * 4; // Rough estimate
-        
+
         // Memory increase should be reasonable (within 5x of expected)
         expect(memoryIncrease).toBeLessThan(expectedSize * 5);
       }

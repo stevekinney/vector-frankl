@@ -1,7 +1,7 @@
-import { 
-  DatabaseInitializationError, 
+import {
+  BrowserSupportError,
+  DatabaseInitializationError,
   TransactionError,
-  BrowserSupportError 
 } from './errors.js';
 import type { DatabaseConfig } from './types.js';
 
@@ -22,7 +22,7 @@ export class VectorDatabase {
     INDICES: 'indices',
     CONFIG: 'config',
     NAMESPACES: 'namespaces',
-    HNSW_INDICES: 'hnsw_indices'
+    HNSW_INDICES: 'hnsw_indices',
   } as const;
 
   /**
@@ -31,7 +31,7 @@ export class VectorDatabase {
   static readonly VECTOR_INDICES = {
     METADATA: 'metadata',
     TIMESTAMP: 'timestamp',
-    LAST_ACCESSED: 'lastAccessed'
+    LAST_ACCESSED: 'lastAccessed',
   } as const;
 
   constructor(config: DatabaseConfig) {
@@ -58,7 +58,7 @@ export class VectorDatabase {
     }
 
     this.initializationPromise = this.openDatabase();
-    
+
     try {
       await this.initializationPromise;
     } catch (error) {
@@ -75,10 +75,12 @@ export class VectorDatabase {
       const request = indexedDB.open(this.name, this.version);
 
       request.onerror = () => {
-        reject(new DatabaseInitializationError(
-          'Failed to open database',
-          request.error || undefined
-        ));
+        reject(
+          new DatabaseInitializationError(
+            'Failed to open database',
+            request.error || undefined,
+          ),
+        );
       };
 
       request.onsuccess = () => {
@@ -93,9 +95,11 @@ export class VectorDatabase {
       };
 
       request.onblocked = () => {
-        reject(new DatabaseInitializationError(
-          'Database upgrade blocked by other connections'
-        ));
+        reject(
+          new DatabaseInitializationError(
+            'Database upgrade blocked by other connections',
+          ),
+        );
       };
     });
   }
@@ -106,61 +110,44 @@ export class VectorDatabase {
   private createSchema(database: IDBDatabase, _oldVersion: number): void {
     // Create vectors store if it doesn't exist
     if (!database.objectStoreNames.contains(VectorDatabase.STORES.VECTORS)) {
-      const vectorStore = database.createObjectStore(
-        VectorDatabase.STORES.VECTORS,
-        { keyPath: 'id' }
-      );
+      const vectorStore = database.createObjectStore(VectorDatabase.STORES.VECTORS, {
+        keyPath: 'id',
+      });
 
       // Create indices for efficient querying
-      vectorStore.createIndex(
-        VectorDatabase.VECTOR_INDICES.METADATA,
-        'metadata',
-        { unique: false }
-      );
-      
-      vectorStore.createIndex(
-        VectorDatabase.VECTOR_INDICES.TIMESTAMP,
-        'timestamp',
-        { unique: false }
-      );
-      
+      vectorStore.createIndex(VectorDatabase.VECTOR_INDICES.METADATA, 'metadata', {
+        unique: false,
+      });
+
+      vectorStore.createIndex(VectorDatabase.VECTOR_INDICES.TIMESTAMP, 'timestamp', {
+        unique: false,
+      });
+
       vectorStore.createIndex(
         VectorDatabase.VECTOR_INDICES.LAST_ACCESSED,
         'lastAccessed',
-        { unique: false }
+        { unique: false },
       );
     }
 
     // Create indices store if it doesn't exist
     if (!database.objectStoreNames.contains(VectorDatabase.STORES.INDICES)) {
-      database.createObjectStore(
-        VectorDatabase.STORES.INDICES,
-        { keyPath: 'name' }
-      );
+      database.createObjectStore(VectorDatabase.STORES.INDICES, { keyPath: 'name' });
     }
 
     // Create config store if it doesn't exist
     if (!database.objectStoreNames.contains(VectorDatabase.STORES.CONFIG)) {
-      database.createObjectStore(
-        VectorDatabase.STORES.CONFIG,
-        { keyPath: 'key' }
-      );
+      database.createObjectStore(VectorDatabase.STORES.CONFIG, { keyPath: 'key' });
     }
 
     // Create namespaces store if it doesn't exist
     if (!database.objectStoreNames.contains(VectorDatabase.STORES.NAMESPACES)) {
-      database.createObjectStore(
-        VectorDatabase.STORES.NAMESPACES,
-        { keyPath: 'name' }
-      );
+      database.createObjectStore(VectorDatabase.STORES.NAMESPACES, { keyPath: 'name' });
     }
 
     // Create HNSW indices store if it doesn't exist
     if (!database.objectStoreNames.contains(VectorDatabase.STORES.HNSW_INDICES)) {
-      database.createObjectStore(
-        VectorDatabase.STORES.HNSW_INDICES,
-        { keyPath: 'id' }
-      );
+      database.createObjectStore(VectorDatabase.STORES.HNSW_INDICES, { keyPath: 'id' });
     }
   }
 
@@ -204,10 +191,10 @@ export class VectorDatabase {
    */
   async transaction(
     storeNames: string | string[],
-    mode: IDBTransactionMode = 'readonly'
+    mode: IDBTransactionMode = 'readonly',
   ): Promise<IDBTransaction> {
     const database = await this.getDatabase();
-    
+
     try {
       const stores = Array.isArray(storeNames) ? storeNames : [storeNames];
       return database.transaction(stores, mode);
@@ -215,7 +202,7 @@ export class VectorDatabase {
       throw new TransactionError(
         'create transaction',
         `Failed to create transaction for stores: ${storeNames}`,
-        error instanceof Error ? error : undefined
+        error instanceof Error ? error : undefined,
       );
     }
   }
@@ -226,10 +213,10 @@ export class VectorDatabase {
   async executeTransaction<T>(
     storeNames: string | string[],
     mode: IDBTransactionMode,
-    operation: (transaction: IDBTransaction) => Promise<T>
+    operation: (transaction: IDBTransaction) => Promise<T>,
   ): Promise<T> {
     const transaction = await this.transaction(storeNames, mode);
-    
+
     return new Promise((resolve, reject) => {
       let result: T;
 
@@ -238,19 +225,23 @@ export class VectorDatabase {
       };
 
       transaction.onerror = () => {
-        reject(new TransactionError(
-          'execute',
-          'Transaction failed',
-          transaction.error || undefined
-        ));
+        reject(
+          new TransactionError(
+            'execute',
+            'Transaction failed',
+            transaction.error || undefined,
+          ),
+        );
       };
 
       transaction.onabort = () => {
-        reject(new TransactionError(
-          'execute',
-          'Transaction aborted',
-          transaction.error || undefined
-        ));
+        reject(
+          new TransactionError(
+            'execute',
+            'Transaction aborted',
+            transaction.error || undefined,
+          ),
+        );
       };
 
       // Execute the operation
@@ -290,16 +281,20 @@ export class VectorDatabase {
       };
 
       request.onerror = () => {
-        reject(new DatabaseInitializationError(
-          'Failed to delete database',
-          request.error || undefined
-        ));
+        reject(
+          new DatabaseInitializationError(
+            'Failed to delete database',
+            request.error || undefined,
+          ),
+        );
       };
 
       request.onblocked = () => {
-        reject(new DatabaseInitializationError(
-          'Database deletion blocked by other connections'
-        ));
+        reject(
+          new DatabaseInitializationError(
+            'Database deletion blocked by other connections',
+          ),
+        );
       };
     });
   }
@@ -324,11 +319,11 @@ export class VectorDatabase {
     stores: string[];
   }> {
     const database = await this.getDatabase();
-    
+
     return {
       name: database.name,
       version: database.version,
-      stores: Array.from(database.objectStoreNames)
+      stores: Array.from(database.objectStoreNames),
     };
   }
 
@@ -346,7 +341,7 @@ export class VectorDatabase {
     if ('databases' in indexedDB) {
       return indexedDB.databases();
     }
-    
+
     throw new BrowserSupportError('indexedDB.databases()', 'Current browser');
   }
 }

@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeAll, afterAll } from 'bun:test';
-import { GPUSearchEngine } from '../../src/gpu/gpu-search-engine.js';
+import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+
 import type { VectorData } from '../../src/core/types.js';
-import { setupIndexedDBMocks, cleanupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
+import { GPUSearchEngine } from '../../src/gpu/gpu-search-engine.js';
+import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
 
 // Mock WebGPU API for testing
 const mockWebGPU = () => {
@@ -16,12 +17,12 @@ const mockWebGPU = () => {
     UNIFORM: 64,
     STORAGE: 128,
     INDIRECT: 256,
-    QUERY_RESOLVE: 512
+    QUERY_RESOLVE: 512,
   };
-  
+
   global.GPUMapMode = {
     READ: 1,
-    WRITE: 2
+    WRITE: 2,
   };
   const mockAdapter = {
     features: new Set(['timestamp-query']),
@@ -29,9 +30,9 @@ const mockWebGPU = () => {
       maxStorageBufferBindingSize: 1024 * 1024 * 1024,
       maxComputeWorkgroupSizeX: 256,
       maxComputeWorkgroupSizeY: 256,
-      maxComputeInvocationsPerWorkgroup: 256
+      maxComputeInvocationsPerWorkgroup: 256,
     },
-    requestDevice: async () => mockDevice
+    requestDevice: async () => mockDevice,
   };
 
   const mockDevice = {
@@ -41,7 +42,7 @@ const mockWebGPU = () => {
     createShaderModule: () => ({ label: 'mock-shader' }),
     createComputePipeline: () => ({
       label: 'mock-pipeline',
-      getBindGroupLayout: () => ({ label: 'mock-layout' })
+      getBindGroupLayout: () => ({ label: 'mock-layout' }),
     }),
     createBuffer: (descriptor: any) => ({
       size: descriptor.size,
@@ -50,16 +51,17 @@ const mockWebGPU = () => {
       getMappedRange: () => {
         // Return mock similarity scores for results buffer
         const buffer = new ArrayBuffer(descriptor.size);
-        if (descriptor.usage & 1) { // MAP_READ flag indicates read buffer
+        if (descriptor.usage & 1) {
+          // MAP_READ flag indicates read buffer
           const view = new Float32Array(buffer);
           // Fill with mock scores (higher for first vector)
           for (let i = 0; i < view.length; i++) {
-            view[i] = 1.0 - (i * 0.1); // Decreasing similarity
+            view[i] = 1.0 - i * 0.1; // Decreasing similarity
           }
         }
         return buffer;
       },
-      unmap: () => {}
+      unmap: () => {},
     }),
     createBindGroup: () => ({ label: 'mock-bind-group' }),
     createCommandEncoder: () => ({
@@ -67,23 +69,23 @@ const mockWebGPU = () => {
         setPipeline: () => {},
         setBindGroup: () => {},
         dispatchWorkgroups: () => {},
-        end: () => {}
+        end: () => {},
       }),
       copyBufferToBuffer: () => {},
-      finish: () => ({ label: 'mock-command-buffer' })
+      finish: () => ({ label: 'mock-command-buffer' }),
     }),
     queue: {
       writeBuffer: () => {},
-      submit: () => {}
+      submit: () => {},
     },
-    destroy: () => {}
+    destroy: () => {},
   };
 
   // @ts-ignore - Mocking navigator.gpu for WebGPU testing
   (global as any).navigator = {
     gpu: {
-      requestAdapter: async () => mockAdapter
-    }
+      requestAdapter: async () => mockAdapter,
+    },
   };
 
   return { mockAdapter, mockDevice };
@@ -101,21 +103,21 @@ describe('GPUSearchEngine', () => {
   describe('Initialization', () => {
     it('should initialize with default configuration', async () => {
       mockWebGPU();
-      
+
       const engine = new GPUSearchEngine();
       await engine.init();
-      
+
       expect(engine.isGPUReady()).toBe(true);
-      
+
       const capabilities = engine.getGPUCapabilities();
       expect(capabilities).toBeDefined();
-      
+
       await engine.cleanup();
     });
 
     it('should initialize with custom configuration', async () => {
       mockWebGPU();
-      
+
       const config = {
         gpuThreshold: 2000,
         enableFallback: true,
@@ -123,25 +125,25 @@ describe('GPUSearchEngine', () => {
         enableProfiling: true,
         webGPUConfig: {
           powerPreference: 'high-performance' as const,
-          debug: true
-        }
+          debug: true,
+        },
       };
 
       const engine = new GPUSearchEngine(config);
       await engine.init();
-      
+
       expect(engine.isGPUReady()).toBe(true);
-      
+
       await engine.cleanup();
     });
 
     it('should handle initialization failure gracefully', async () => {
       // Remove WebGPU support
       (global as any).navigator = {};
-      
+
       const engine = new GPUSearchEngine({ enableFallback: true });
       await engine.init();
-      
+
       expect(engine.isGPUReady()).toBe(false);
     });
   });
@@ -154,7 +156,7 @@ describe('GPUSearchEngine', () => {
       mockWebGPU();
       engine = new GPUSearchEngine({
         gpuThreshold: 2, // Low threshold for testing
-        enableProfiling: true
+        enableProfiling: true,
       });
       await engine.init();
 
@@ -165,22 +167,22 @@ describe('GPUSearchEngine', () => {
           vector: new Float32Array([1, 0, 0]),
           metadata: { type: 'test', value: 1 },
           magnitude: 1,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           id: 'v2',
           vector: new Float32Array([0, 1, 0]),
           metadata: { type: 'test', value: 2 },
           magnitude: 1,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           id: 'v3',
           vector: new Float32Array([0, 0, 1]),
           metadata: { type: 'test', value: 3 },
           magnitude: 1,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
     });
 
@@ -190,42 +192,46 @@ describe('GPUSearchEngine', () => {
 
     it('should perform GPU-accelerated search', async () => {
       const queryVector = new Float32Array([1, 0, 0]);
-      
+
       const { results, stats } = await engine.search(vectors, queryVector, 2, 'cosine');
-      
+
       expect(results).toBeDefined();
       expect(stats!.usedGPU).toBe(true);
       expect(stats!.processingTime).toBeDefined();
       expect(stats!.memoryUsage).toBeDefined();
       expect(stats!.gpuCapabilities).toBeDefined();
-      
+
       // Results should be sorted by score (highest first)
-      if (results.length >= 2 && results[0]?.score !== undefined && results[1]?.score !== undefined) {
+      if (
+        results.length >= 2 &&
+        results[0]?.score !== undefined &&
+        results[1]?.score !== undefined
+      ) {
         expect(results[0]!.score).toBeGreaterThanOrEqual(results[1]!.score);
       }
-      
+
       // Check that we get results (even if empty in mock environment)
       expect(Array.isArray(results)).toBe(true);
     });
 
     it('should include metadata when requested', async () => {
       const queryVector = new Float32Array([1, 0, 0]);
-      
+
       const { results } = await engine.search(vectors, queryVector, 2, 'cosine', {
-        includeMetadata: true
+        includeMetadata: true,
       });
-      
+
       expect(results[0]!.metadata).toBeDefined();
       expect(results[0]!.metadata?.['type']).toBe('test');
     });
 
     it('should include vector data when requested', async () => {
       const queryVector = new Float32Array([1, 0, 0]);
-      
+
       const { results } = await engine.search(vectors, queryVector, 2, 'cosine', {
-        includeVector: true
+        includeVector: true,
       });
-      
+
       expect(results[0]!.vector).toBeDefined();
       expect(results[0]!.vector).toBeInstanceOf(Float32Array);
     });
@@ -233,30 +239,39 @@ describe('GPUSearchEngine', () => {
     it('should support different distance metrics', async () => {
       const queryVector = new Float32Array([1, 1]);
       const testVectors = [
-        { 
-          id: 'v1', 
-          vector: new Float32Array([2, 2]), 
-          metadata: {}, 
-          magnitude: Math.sqrt(8), 
-          timestamp: Date.now() 
-        }
+        {
+          id: 'v1',
+          vector: new Float32Array([2, 2]),
+          metadata: {},
+          magnitude: Math.sqrt(8),
+          timestamp: Date.now(),
+        },
       ];
 
       // Test euclidean
       const { results: euclideanResults } = await engine.search(
-        testVectors, queryVector, 1, 'euclidean'
+        testVectors,
+        queryVector,
+        1,
+        'euclidean',
       );
       expect(euclideanResults).toHaveLength(1);
 
       // Test manhattan
       const { results: manhattanResults } = await engine.search(
-        testVectors, queryVector, 1, 'manhattan'
+        testVectors,
+        queryVector,
+        1,
+        'manhattan',
       );
       expect(manhattanResults).toHaveLength(1);
 
       // Test dot product
       const { results: dotResults } = await engine.search(
-        testVectors, queryVector, 1, 'dot'
+        testVectors,
+        queryVector,
+        1,
+        'dot',
       );
       expect(dotResults).toHaveLength(1);
     });
@@ -264,25 +279,35 @@ describe('GPUSearchEngine', () => {
     it('should fallback to CPU for small datasets', async () => {
       const smallEngine = new GPUSearchEngine({
         gpuThreshold: 10, // Higher than our test vectors
-        enableFallback: true
+        enableFallback: true,
       });
       await smallEngine.init();
 
       const queryVector = new Float32Array([1, 0, 0]);
-      
-      const { results, stats } = await smallEngine.search(vectors, queryVector, 2, 'cosine');
-      
+
+      const { results, stats } = await smallEngine.search(
+        vectors,
+        queryVector,
+        2,
+        'cosine',
+      );
+
       expect(results).toHaveLength(2);
       expect(stats.usedGPU).toBe(false);
-      
+
       await smallEngine.cleanup();
     });
 
     it('should fallback to CPU for unsupported metrics', async () => {
       const queryVector = new Float32Array([1, 0, 0]);
-      
-      const { results, stats } = await engine.search(vectors, queryVector, 2, 'hamming' as any);
-      
+
+      const { results, stats } = await engine.search(
+        vectors,
+        queryVector,
+        2,
+        'hamming' as any,
+      );
+
       expect(results).toHaveLength(2);
       expect(stats.usedGPU).toBe(false);
     });
@@ -297,7 +322,7 @@ describe('GPUSearchEngine', () => {
       engine = new GPUSearchEngine({
         gpuThreshold: 2,
         batchSize: 2,
-        enableProfiling: true
+        enableProfiling: true,
       });
       await engine.init();
 
@@ -307,15 +332,15 @@ describe('GPUSearchEngine', () => {
           vector: new Float32Array([1, 0]),
           metadata: {},
           magnitude: 1,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         },
         {
           id: 'v2',
           vector: new Float32Array([0, 1]),
           metadata: {},
           magnitude: 1,
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       ];
     });
 
@@ -327,30 +352,40 @@ describe('GPUSearchEngine', () => {
       const queryVectors = [
         new Float32Array([1, 0]),
         new Float32Array([0, 1]),
-        new Float32Array([1, 1])
+        new Float32Array([1, 1]),
       ];
-      
-      const { results, stats } = await engine.batchSearch(vectors, queryVectors, 2, 'cosine');
-      
+
+      const { results, stats } = await engine.batchSearch(
+        vectors,
+        queryVectors,
+        2,
+        'cosine',
+      );
+
       expect(results).toHaveLength(3);
       expect(stats).toHaveLength(3);
-      
+
       // All searches should use GPU
-      stats.forEach(stat => {
+      stats.forEach((stat) => {
         expect(stat.usedGPU).toBe(true);
       });
-      
+
       // Each query should return results for all vectors
-      results.forEach(queryResults => {
+      results.forEach((queryResults) => {
         expect(queryResults).toHaveLength(2);
       });
     });
 
     it('should handle empty batch operations', async () => {
       const queryVectors: Float32Array[] = [];
-      
-      const { results, stats } = await engine.batchSearch(vectors, queryVectors, 2, 'cosine');
-      
+
+      const { results, stats } = await engine.batchSearch(
+        vectors,
+        queryVectors,
+        2,
+        'cosine',
+      );
+
       expect(results).toHaveLength(0);
       expect(stats).toHaveLength(0);
     });
@@ -358,18 +393,23 @@ describe('GPUSearchEngine', () => {
     it('should fallback for batch operations when needed', async () => {
       const fallbackEngine = new GPUSearchEngine({
         gpuThreshold: 10, // Force fallback
-        enableFallback: true
+        enableFallback: true,
       });
       await fallbackEngine.init();
 
       const queryVectors = [new Float32Array([1, 0])];
-      
-      const { results, stats } = await fallbackEngine.batchSearch(vectors, queryVectors, 2, 'cosine');
-      
+
+      const { results, stats } = await fallbackEngine.batchSearch(
+        vectors,
+        queryVectors,
+        2,
+        'cosine',
+      );
+
       expect(results).toHaveLength(1);
       expect(stats).toHaveLength(1);
       expect(stats[0]!.usedGPU).toBe(false);
-      
+
       await fallbackEngine.cleanup();
     });
   });
@@ -378,21 +418,23 @@ describe('GPUSearchEngine', () => {
     it('should handle search operations when GPU is not ready', async () => {
       // Removing WebGPU support to test fallback behavior
       (global as any).navigator = {};
-      
+
       const engine = new GPUSearchEngine({ enableFallback: true });
       await engine.init();
-      
-      const vectors = [{
-        id: 'v1',
-        vector: new Float32Array([1, 2]),
-        metadata: {},
-        magnitude: Math.sqrt(5),
-        timestamp: Date.now()
-      }];
+
+      const vectors = [
+        {
+          id: 'v1',
+          vector: new Float32Array([1, 2]),
+          metadata: {},
+          magnitude: Math.sqrt(5),
+          timestamp: Date.now(),
+        },
+      ];
       const queryVector = new Float32Array([1, 2]);
-      
+
       const { results, stats } = await engine.search(vectors, queryVector, 1, 'cosine');
-      
+
       expect(results).toHaveLength(1);
       expect(stats.usedGPU).toBe(false);
     });
@@ -400,13 +442,13 @@ describe('GPUSearchEngine', () => {
     it('should handle cleanup gracefully', async () => {
       mockWebGPU();
       const engine = new GPUSearchEngine();
-      
+
       await engine.init();
       expect(engine.isGPUReady()).toBe(true);
-      
+
       await engine.cleanup();
       expect(engine.isGPUReady()).toBe(false);
-      
+
       // Second cleanup should not throw
       await engine.cleanup();
     });
@@ -415,11 +457,11 @@ describe('GPUSearchEngine', () => {
       mockWebGPU();
       const engine = new GPUSearchEngine();
       await engine.init();
-      
+
       const { results } = await engine.search([], new Float32Array([1, 2]), 1, 'cosine');
-      
+
       expect(results).toHaveLength(0);
-      
+
       await engine.cleanup();
     });
   });
@@ -431,7 +473,7 @@ describe('GPUSearchEngine', () => {
       mockWebGPU();
       engine = new GPUSearchEngine({
         gpuThreshold: 1,
-        enableProfiling: true
+        enableProfiling: true,
       });
       await engine.init();
     });
@@ -441,17 +483,19 @@ describe('GPUSearchEngine', () => {
     });
 
     it('should provide detailed performance statistics', async () => {
-      const vectors = [{
-        id: 'v1',
-        vector: new Float32Array([1, 2, 3]),
-        metadata: {},
-        magnitude: Math.sqrt(14),
-        timestamp: Date.now()
-      }];
+      const vectors = [
+        {
+          id: 'v1',
+          vector: new Float32Array([1, 2, 3]),
+          metadata: {},
+          magnitude: Math.sqrt(14),
+          timestamp: Date.now(),
+        },
+      ];
       const queryVector = new Float32Array([1, 2, 3]);
-      
+
       const { results, stats } = await engine.search(vectors, queryVector, 1, 'cosine');
-      
+
       expect(results).toHaveLength(1);
       expect(stats!.usedGPU).toBe(true);
       expect(stats!.processingTime).toBeDefined();
@@ -464,7 +508,7 @@ describe('GPUSearchEngine', () => {
 
     it('should provide GPU capabilities information', async () => {
       const capabilities = engine.getGPUCapabilities();
-      
+
       expect(capabilities).toBeDefined();
       expect(capabilities?.maxBufferSize).toBeGreaterThan(0);
       expect(capabilities?.maxWorkgroupSize).toBeGreaterThan(0);

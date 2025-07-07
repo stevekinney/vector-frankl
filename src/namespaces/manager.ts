@@ -1,7 +1,7 @@
-import { NamespaceRegistry } from './registry.js';
-import { VectorNamespace } from './namespace.js';
 import { NamespaceNotFoundError } from '@/core/errors.js';
 import type { NamespaceConfig, NamespaceInfo, NamespaceStats } from '@/core/types.js';
+import { VectorNamespace } from './namespace.js';
+import { NamespaceRegistry } from './registry.js';
 
 /**
  * Manager for handling multiple vector namespaces
@@ -31,10 +31,7 @@ export class NamespaceManager {
   /**
    * Create a new namespace
    */
-  async createNamespace(
-    name: string,
-    config: NamespaceConfig
-  ): Promise<VectorNamespace> {
+  async createNamespace(name: string, config: NamespaceConfig): Promise<VectorNamespace> {
     await this.ensureInitialized();
 
     // Register the namespace first
@@ -76,12 +73,12 @@ export class NamespaceManager {
     // Create and cache namespace instance
     const namespace = new VectorNamespace(name, info.config, this.rootDatabaseName);
     await namespace.init();
-    
+
     this.namespaces.set(name, namespace);
-    
+
     // Update last accessed time
     await this.registry.updateStats(name, {
-      lastAccessed: Date.now()
+      lastAccessed: Date.now(),
     });
 
     return namespace;
@@ -109,7 +106,7 @@ export class NamespaceManager {
     // Delete the namespace database
     const namespaceDatabaseName = this.getNamespaceDatabaseName(name);
     const databaseToDelete = indexedDB.deleteDatabase(namespaceDatabaseName);
-    
+
     await new Promise<void>((resolve, reject) => {
       databaseToDelete.onsuccess = () => resolve();
       databaseToDelete.onerror = () => reject(databaseToDelete.error);
@@ -157,7 +154,10 @@ export class NamespaceManager {
   /**
    * Update namespace statistics
    */
-  async updateNamespaceStats(name: string, stats: Partial<NamespaceStats>): Promise<void> {
+  async updateNamespaceStats(
+    name: string,
+    stats: Partial<NamespaceStats>,
+  ): Promise<void> {
     await this.ensureInitialized();
     await this.registry.updateStats(name, stats);
   }
@@ -175,13 +175,13 @@ export class NamespaceManager {
    */
   async closeAll(): Promise<void> {
     // Close all cached namespaces
-    const closePromises = Array.from(this.namespaces.values()).map(
-      namespace => namespace.close()
+    const closePromises = Array.from(this.namespaces.values()).map((namespace) =>
+      namespace.close(),
     );
     await Promise.all(closePromises);
-    
+
     this.namespaces.clear();
-    
+
     // Close the registry
     await this.registry.close();
     this.initialized = false;
@@ -229,7 +229,7 @@ export class NamespaceManager {
     if (this.namespaces.has(name)) {
       const namespace = this.namespaces.get(name)!;
       // Don't await - just trigger close
-      namespace.close().catch(error => {
+      namespace.close().catch((error) => {
         console.error(`Error closing evicted namespace ${name}:`, error);
       });
       this.namespaces.delete(name);
@@ -253,7 +253,7 @@ export class NamespaceManager {
 
     // Get all namespace info with last accessed times
     const namespaceInfos = await this.listNamespaces();
-    
+
     // Sort by last accessed (oldest first)
     namespaceInfos.sort((a, b) => {
       const aTime = a.stats.lastAccessed || a.created;

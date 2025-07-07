@@ -34,22 +34,39 @@ export abstract class VectorDatabaseError extends Error {
   /**
    * Sanitize context to remove sensitive information
    */
-  private sanitizeContext(context?: Record<string, unknown>): Record<string, unknown> | undefined {
+  private sanitizeContext(
+    context?: Record<string, unknown>,
+  ): Record<string, unknown> | undefined {
     if (!context) return undefined;
 
     const sanitized: Record<string, unknown> = {};
     const sensitiveKeys = new Set([
-      'password', 'token', 'secret', 'key', 'auth', 'credential',
-      'privateKey', 'accessToken', 'refreshToken', 'sessionId',
-      'cookie', 'authorization', 'x-api-key', 'apiKey',
+      'password',
+      'token',
+      'secret',
+      'key',
+      'auth',
+      'credential',
+      'privateKey',
+      'accessToken',
+      'refreshToken',
+      'sessionId',
+      'cookie',
+      'authorization',
+      'x-api-key',
+      'apiKey',
       'originalError', // Remove nested error details that might contain sensitive info
     ]);
 
     for (const [key, value] of Object.entries(context)) {
       const lowerKey = key.toLowerCase();
-      
+
       // Skip sensitive keys
-      if (sensitiveKeys.has(lowerKey) || lowerKey.includes('password') || lowerKey.includes('secret')) {
+      if (
+        sensitiveKeys.has(lowerKey) ||
+        lowerKey.includes('password') ||
+        lowerKey.includes('secret')
+      ) {
         sanitized[key] = '[REDACTED]';
         continue;
       }
@@ -59,7 +76,8 @@ export abstract class VectorDatabaseError extends Error {
         sanitized[key] = this.sanitizeContext(value as Record<string, unknown>);
       } else if (typeof value === 'string') {
         // Truncate very long strings that might contain sensitive data
-        sanitized[key] = value.length > 1000 ? `${value.substring(0, 100)}... [TRUNCATED]` : value;
+        sanitized[key] =
+          value.length > 1000 ? `${value.substring(0, 100)}... [TRUNCATED]` : value;
       } else {
         sanitized[key] = value;
       }
@@ -80,7 +98,7 @@ export class DimensionMismatchError extends VectorDatabaseError {
     super(
       `Vector dimension mismatch: expected ${expected}, got ${actual}`,
       'DIMENSION_MISMATCH',
-      { vectorId }
+      { vectorId },
     );
     this.expected = expected;
     this.actual = actual;
@@ -100,7 +118,7 @@ export class QuotaExceededError extends VectorDatabaseError {
     super(
       `Storage quota exceeded: ${usage}/${quota} bytes (${percentage}%)`,
       'QUOTA_EXCEEDED',
-      { usage, quota, percentage }
+      { usage, quota, percentage },
     );
     this.usage = usage;
     this.quota = quota;
@@ -118,7 +136,7 @@ export class VectorNotFoundError extends VectorDatabaseError {
     super(
       `Vector with ID '${vectorId}' not found${namespace ? ` in namespace '${namespace}'` : ''}`,
       'VECTOR_NOT_FOUND',
-      { vectorId, namespace }
+      { vectorId, namespace },
     );
     this.vectorId = vectorId;
   }
@@ -135,7 +153,7 @@ export class InvalidFormatError extends VectorDatabaseError {
     super(
       `Invalid vector format '${format}'. Supported formats: ${supportedFormats.join(', ')}`,
       'INVALID_FORMAT',
-      { format, supportedFormats }
+      { format, supportedFormats },
     );
     this.format = format;
     this.supportedFormats = supportedFormats;
@@ -149,11 +167,7 @@ export class NamespaceExistsError extends VectorDatabaseError {
   public readonly namespace: string;
 
   constructor(namespace: string) {
-    super(
-      `Namespace '${namespace}' already exists`,
-      'NAMESPACE_EXISTS',
-      { namespace }
-    );
+    super(`Namespace '${namespace}' already exists`, 'NAMESPACE_EXISTS', { namespace });
     this.namespace = namespace;
   }
 }
@@ -165,11 +179,7 @@ export class NamespaceNotFoundError extends VectorDatabaseError {
   public readonly namespace: string;
 
   constructor(namespace: string) {
-    super(
-      `Namespace '${namespace}' not found`,
-      'NAMESPACE_NOT_FOUND',
-      { namespace }
-    );
+    super(`Namespace '${namespace}' not found`, 'NAMESPACE_NOT_FOUND', { namespace });
     this.namespace = namespace;
   }
 }
@@ -181,11 +191,9 @@ export class DatabaseInitializationError extends VectorDatabaseError {
   public readonly originalError?: Error | undefined;
 
   constructor(message: string, originalError?: Error) {
-    super(
-      `Database initialization failed: ${message}`,
-      'DATABASE_INIT_FAILED',
-      { originalError: originalError?.message }
-    );
+    super(`Database initialization failed: ${message}`, 'DATABASE_INIT_FAILED', {
+      originalError: originalError?.message,
+    });
     this.originalError = originalError;
   }
 }
@@ -198,11 +206,10 @@ export class TransactionError extends VectorDatabaseError {
   public readonly originalError?: Error | undefined;
 
   constructor(operation: string, message: string, originalError?: Error) {
-    super(
-      `Transaction failed during ${operation}: ${message}`,
-      'TRANSACTION_FAILED',
-      { operation, originalError: originalError?.message }
-    );
+    super(`Transaction failed during ${operation}: ${message}`, 'TRANSACTION_FAILED', {
+      operation,
+      originalError: originalError?.message,
+    });
     this.operation = operation;
     this.originalError = originalError;
   }
@@ -216,11 +223,15 @@ export class BatchOperationError extends VectorDatabaseError {
   public readonly failed: number;
   public readonly errors: Array<{ id: string; error: Error }>;
 
-  constructor(succeeded: number, failed: number, errors: Array<{ id: string; error: Error }>) {
+  constructor(
+    succeeded: number,
+    failed: number,
+    errors: Array<{ id: string; error: Error }>,
+  ) {
     super(
       `Batch operation partially failed: ${succeeded} succeeded, ${failed} failed`,
       'BATCH_OPERATION_FAILED',
-      { succeeded, failed, errorCount: errors.length }
+      { succeeded, failed, errorCount: errors.length },
     );
     this.succeeded = succeeded;
     this.failed = failed;
@@ -239,7 +250,7 @@ export class IndexError extends VectorDatabaseError {
     super(
       `Index operation '${operation}' failed for ${indexType}: ${message}`,
       'INDEX_ERROR',
-      { indexType, operation }
+      { indexType, operation },
     );
     this.indexType = indexType;
     this.operation = operation;
@@ -257,7 +268,7 @@ export class BrowserSupportError extends VectorDatabaseError {
     super(
       `Browser feature '${feature}' is not supported${browser ? ` in ${browser}` : ''}`,
       'BROWSER_NOT_SUPPORTED',
-      { feature, browser }
+      { feature, browser },
     );
     this.feature = feature;
     this.browser = browser;
@@ -274,22 +285,25 @@ export function isVectorDatabaseError(error: unknown): error is VectorDatabaseEr
 /**
  * Helper to create error from unknown type
  */
-export function toVectorDatabaseError(error: unknown, code = 'UNKNOWN_ERROR'): VectorDatabaseError {
+export function toVectorDatabaseError(
+  error: unknown,
+  code = 'UNKNOWN_ERROR',
+): VectorDatabaseError {
   if (isVectorDatabaseError(error)) {
     return error;
   }
 
   if (error instanceof Error) {
-    return new class extends VectorDatabaseError {
+    return new (class extends VectorDatabaseError {
       constructor() {
         super((error as Error).message, code, { originalError: (error as Error).name });
       }
-    }();
+    })();
   }
 
-  return new class extends VectorDatabaseError {
+  return new (class extends VectorDatabaseError {
     constructor() {
       super(String(error), code);
     }
-  }();
+  })();
 }

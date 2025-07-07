@@ -65,7 +65,7 @@ export abstract class BaseCompressor {
       level: config.level ?? 5,
       targetRatio: config.targetRatio ?? 2.0,
       maxPrecisionLoss: config.maxPrecisionLoss ?? 0.05,
-      validateQuality: config.validateQuality ?? true
+      validateQuality: config.validateQuality ?? true,
     };
   }
 
@@ -94,26 +94,25 @@ export abstract class BaseCompressor {
    */
   protected async validateCompressionQuality(
     original: Float32Array,
-    decompressed: Float32Array
+    decompressed: Float32Array,
   ): Promise<CompressionQuality> {
     const mse = this.calculateMSE(original, decompressed);
     const snr = this.calculateSNR(original, decompressed);
     const cosineSimilarity = this.calculateCosineSimilarity(original, decompressed);
     const euclideanError = this.calculateEuclideanError(original, decompressed);
-    
+
     // Calculate overall quality score (weighted combination)
-    const qualityScore = (
+    const qualityScore =
       0.3 * Math.max(0, 1 - mse) +
       0.3 * Math.max(0, Math.min(1, snr / 20)) +
-      0.4 * cosineSimilarity
-    );
+      0.4 * cosineSimilarity;
 
     return {
       snr,
       mse,
       cosineSimilarity,
       euclideanError,
-      qualityScore
+      qualityScore,
     };
   }
 
@@ -124,7 +123,7 @@ export abstract class BaseCompressor {
     if (original.length !== decompressed.length) {
       throw new Error('Array lengths must match for MSE calculation');
     }
-    
+
     let sum = 0;
     for (let i = 0; i < original.length; i++) {
       const diff = original[i]! - decompressed[i]!; // Safe after length check
@@ -139,25 +138,28 @@ export abstract class BaseCompressor {
   private calculateSNR(original: Float32Array, decompressed: Float32Array): number {
     const mse = this.calculateMSE(original, decompressed);
     if (mse === 0) return Infinity;
-    
+
     let signalPower = 0;
     for (let i = 0; i < original.length; i++) {
       const value = original[i]!; // Safe since MSE already validated array length
       signalPower += value * value;
     }
     signalPower /= original.length;
-    
+
     return 10 * Math.log10(signalPower / mse);
   }
 
   /**
    * Calculate cosine similarity
    */
-  private calculateCosineSimilarity(original: Float32Array, decompressed: Float32Array): number {
+  private calculateCosineSimilarity(
+    original: Float32Array,
+    decompressed: Float32Array,
+  ): number {
     if (original.length !== decompressed.length) {
       throw new Error('Array lengths must match for cosine similarity calculation');
     }
-    
+
     let dotProduct = 0;
     let normA = 0;
     let normB = 0;
@@ -177,11 +179,14 @@ export abstract class BaseCompressor {
   /**
    * Calculate Euclidean distance error
    */
-  private calculateEuclideanError(original: Float32Array, decompressed: Float32Array): number {
+  private calculateEuclideanError(
+    original: Float32Array,
+    decompressed: Float32Array,
+  ): number {
     if (original.length !== decompressed.length) {
       throw new Error('Array lengths must match for Euclidean error calculation');
     }
-    
+
     let sum = 0;
     for (let i = 0; i < original.length; i++) {
       const diff = original[i]! - decompressed[i]!; // Safe after length check
@@ -197,7 +202,7 @@ export abstract class BaseCompressor {
     originalSize: number,
     compressedSize: number,
     level: number,
-    precisionLoss: number
+    precisionLoss: number,
   ): CompressionMetadata {
     return {
       originalSize,
@@ -206,7 +211,7 @@ export abstract class BaseCompressor {
       algorithm: this.getAlgorithmName(),
       level,
       precisionLoss,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 

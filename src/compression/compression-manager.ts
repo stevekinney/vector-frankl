@@ -3,10 +3,14 @@
  */
 
 import type { CompressionStrategy } from '@/core/types.js';
-import { BaseCompressor, type CompressedVector, type CompressionConfig } from './base-compressor.js';
-import { ScalarQuantizer } from './scalar-quantizer.js';
-import { ProductQuantizer } from './product-quantizer.js';
+import {
+  BaseCompressor,
+  type CompressedVector,
+  type CompressionConfig,
+} from './base-compressor.js';
 import { calculateVectorStatistics, type VectorStatistics } from './compression-utils.js';
+import { ProductQuantizer } from './product-quantizer.js';
+import { ScalarQuantizer } from './scalar-quantizer.js';
 
 export interface CompressionManagerConfig {
   /** Default compression strategy */
@@ -103,7 +107,7 @@ export class CompressionManager {
       validateQuality: config.validateQuality ?? true,
       qualityBias: config.qualityBias ?? 0.5,
       memoryBudget: config.memoryBudget ?? 100 * 1024 * 1024, // 100MB default
-      adaptiveThresholds: config.adaptiveThresholds ?? true
+      adaptiveThresholds: config.adaptiveThresholds ?? true,
     };
 
     this.compressors = new Map();
@@ -111,10 +115,10 @@ export class CompressionManager {
     this.adaptiveThresholds = {
       sparsityThreshold: 0.8,
       complexityThreshold: 0.8, // As a fraction
-      dimensionThreshold: 512,  // Higher threshold for PQ
-      entropyThreshold: 4.0     // Higher threshold for PQ
+      dimensionThreshold: 512, // Higher threshold for PQ
+      entropyThreshold: 4.0, // Higher threshold for PQ
     };
-    
+
     this.initializeCompressors();
     this.initializePerformanceTracking();
   }
@@ -124,20 +128,26 @@ export class CompressionManager {
    */
   private initializeCompressors(): void {
     // Scalar quantization compressor
-    this.compressors.set('scalar', new ScalarQuantizer({
-      targetRatio: this.config.targetCompressionRatio,
-      maxPrecisionLoss: this.config.maxPrecisionLoss,
-      validateQuality: this.config.validateQuality
-    }));
+    this.compressors.set(
+      'scalar',
+      new ScalarQuantizer({
+        targetRatio: this.config.targetCompressionRatio,
+        maxPrecisionLoss: this.config.maxPrecisionLoss,
+        validateQuality: this.config.validateQuality,
+      }),
+    );
 
     // Product quantization compressor
-    this.compressors.set('product', new ProductQuantizer({
-      targetRatio: this.config.targetCompressionRatio,
-      maxPrecisionLoss: this.config.maxPrecisionLoss,
-      validateQuality: this.config.validateQuality,
-      subspaces: 8,
-      centroidsPerSubspace: 256
-    }));
+    this.compressors.set(
+      'product',
+      new ProductQuantizer({
+        targetRatio: this.config.targetCompressionRatio,
+        maxPrecisionLoss: this.config.maxPrecisionLoss,
+        validateQuality: this.config.validateQuality,
+        subspaces: 8,
+        centroidsPerSubspace: 256,
+      }),
+    );
 
     // Note: Binary quantization will be added in future phases
   }
@@ -151,7 +161,7 @@ export class CompressionManager {
         compressionTimes: [],
         ratios: [],
         qualityScores: [],
-        memoryUsage: []
+        memoryUsage: [],
       });
     }
   }
@@ -163,24 +173,24 @@ export class CompressionManager {
     vector: Float32Array,
     strategy?: CompressionStrategy,
     config?: CompressionConfig,
-    trainingVectors?: Float32Array[]
+    trainingVectors?: Float32Array[],
   ): Promise<CompressedVector> {
     // Check if compression is worthwhile
     if (vector.length < this.config.minSizeForCompression) {
       throw new Error(
-        `Vector too small for compression: ${vector.length} < ${this.config.minSizeForCompression}`
+        `Vector too small for compression: ${vector.length} < ${this.config.minSizeForCompression}`,
       );
     }
 
     // Auto-select strategy if not specified
-    const selectedStrategy = strategy || (
-      this.config.autoSelect
+    const selectedStrategy =
+      strategy ||
+      (this.config.autoSelect
         ? this.autoSelectStrategy(vector).strategy
-        : this.config.defaultStrategy
-    );
+        : this.config.defaultStrategy);
 
     const compressor = this.getCompressor(selectedStrategy);
-    
+
     // Update compressor config if provided
     if (config) {
       compressor.updateConfig(config);
@@ -191,7 +201,9 @@ export class CompressionManager {
       if (!compressor.isCodebookTrained()) {
         if (!trainingVectors || trainingVectors.length === 0) {
           // Fall back to scalar quantization if no training vectors available
-          console.warn('Product quantization selected but no training vectors provided, falling back to scalar quantization');
+          console.warn(
+            'Product quantization selected but no training vectors provided, falling back to scalar quantization',
+          );
           return this.compress(vector, 'scalar', config);
         }
         await compressor.trainCodebook(trainingVectors);
@@ -210,7 +222,7 @@ export class CompressionManager {
       throw new Error('Invalid compression algorithm in metadata');
     }
     const strategy = this.mapAlgorithmToStrategy(algorithmName);
-    
+
     const compressor = this.getCompressor(strategy);
     return compressor.decompress(compressed);
   }
@@ -221,18 +233,18 @@ export class CompressionManager {
   autoSelectStrategy(vector: Float32Array): CompressionRecommendation {
     const analysis = this.analyzeVector(vector);
     const candidates = this.evaluateAllStrategies(vector, analysis);
-    
+
     // Sort candidates by composite score
     candidates.sort((a, b) => b.score - a.score);
-    
+
     const best = candidates[0];
     if (!best) {
       throw new Error('No compression strategy candidates found');
     }
-    const alternatives = candidates.slice(1).map(c => ({
+    const alternatives = candidates.slice(1).map((c) => ({
       strategy: c.strategy,
       score: c.score,
-      reason: c.reasoning
+      reason: c.reasoning,
     }));
 
     // Update adaptive thresholds if enabled
@@ -248,7 +260,7 @@ export class CompressionManager {
       confidence: best.score,
       alternatives,
       estimatedCompressionTime: best.estimatedTime,
-      estimatedMemoryUsage: best.estimatedMemory
+      estimatedMemoryUsage: best.estimatedMemory,
     };
   }
 
@@ -262,7 +274,7 @@ export class CompressionManager {
     const complexity = this.calculateComplexity(vector);
     const clustering = this.analyzeValueClustering(vector);
     const patterns = this.detectPatterns(vector);
-    
+
     return {
       size: vector.length,
       stats,
@@ -272,7 +284,7 @@ export class CompressionManager {
       clustering,
       patterns,
       dynamicRange: stats.range,
-      variance: stats.std * stats.std
+      variance: stats.std * stats.std,
     };
   }
 
@@ -301,14 +313,18 @@ export class CompressionManager {
   /**
    * Evaluate a specific strategy for a vector
    */
-  private evaluateStrategy(strategy: CompressionStrategy, vector: Float32Array, analysis: VectorAnalysis) {
+  private evaluateStrategy(
+    strategy: CompressionStrategy,
+    vector: Float32Array,
+    analysis: VectorAnalysis,
+  ) {
     const stats = this.performanceStats.get(strategy);
     const baseScore = this.calculateBaseScore(strategy, analysis);
     const performanceBonus = this.calculatePerformanceBonus(strategy, stats);
     const memoryPenalty = this.calculateMemoryPenalty(strategy, vector.length);
-    
+
     const score = Math.max(0, Math.min(1, baseScore + performanceBonus - memoryPenalty));
-    
+
     return {
       strategy,
       score,
@@ -316,37 +332,42 @@ export class CompressionManager {
       estimatedPrecisionLoss: this.estimatePrecisionLoss(vector, strategy),
       estimatedTime: this.estimateCompressionTime(strategy, vector.length),
       estimatedMemory: this.estimateMemoryUsage(strategy, vector.length),
-      reasoning: this.generateReasoning(strategy, analysis, score)
+      reasoning: this.generateReasoning(strategy, analysis, score),
     };
   }
 
   /**
    * Calculate base score for a strategy based on vector characteristics
    */
-  private calculateBaseScore(strategy: CompressionStrategy, analysis: VectorAnalysis): number {
+  private calculateBaseScore(
+    strategy: CompressionStrategy,
+    analysis: VectorAnalysis,
+  ): number {
     let score = 0.3; // lower baseline
-    
+
     switch (strategy) {
       case 'scalar':
         // Scalar quantization is the default choice - give it a strong baseline
         score = 0.7; // High baseline for scalar
         // Additional bonuses for scalar-friendly characteristics
         if (analysis.size <= this.adaptiveThresholds.dimensionThreshold) score += 0.1;
-        if (analysis.complexity <= this.adaptiveThresholds.complexityThreshold) score += 0.1;
+        if (analysis.complexity <= this.adaptiveThresholds.complexityThreshold)
+          score += 0.1;
         if (this.config.qualityBias < 0.5) score += 0.05; // Speed preference
         if (analysis.sparsity < 0.3) score += 0.05; // Dense vectors
         break;
-        
+
       case 'product':
         // Product quantization only for clearly beneficial cases
         score = 0.3; // Lower baseline
         if (analysis.size >= this.adaptiveThresholds.dimensionThreshold) score += 0.4;
         if (analysis.entropy >= this.adaptiveThresholds.entropyThreshold) score += 0.2;
-        if (analysis.complexity > this.adaptiveThresholds.complexityThreshold) score += 0.2;
+        if (analysis.complexity > this.adaptiveThresholds.complexityThreshold)
+          score += 0.2;
         if (this.config.qualityBias > 0.7) score += 0.1; // Strong quality preference
         if (analysis.clustering.numClusters > 6) score += 0.1; // Very complex structure
         break;
-        
+
       case 'binary':
         // Binary quantization would be good for:
         // - Very sparse vectors
@@ -356,38 +377,46 @@ export class CompressionManager {
         score -= 0.5; // Not implemented yet
         break;
     }
-    
+
     return Math.max(0, Math.min(1, score));
   }
 
   /**
    * Calculate performance bonus based on historical data
    */
-  private calculatePerformanceBonus(_strategy: CompressionStrategy, stats: PerformanceStats | undefined): number {
+  private calculatePerformanceBonus(
+    _strategy: CompressionStrategy,
+    stats: PerformanceStats | undefined,
+  ): number {
     if (!stats || stats.ratios.length === 0) return 0;
-    
+
     const avgRatio = stats.ratios.reduce((a, b) => a + b, 0) / stats.ratios.length;
-    const avgQuality = stats.qualityScores.reduce((a, b) => a + b, 0) / stats.qualityScores.length;
-    const avgTime = stats.compressionTimes.reduce((a, b) => a + b, 0) / stats.compressionTimes.length;
-    
+    const avgQuality =
+      stats.qualityScores.reduce((a, b) => a + b, 0) / stats.qualityScores.length;
+    const avgTime =
+      stats.compressionTimes.reduce((a, b) => a + b, 0) / stats.compressionTimes.length;
+
     let bonus = 0;
-    
+
     // Reward good compression ratios
     if (avgRatio > this.config.targetCompressionRatio) bonus += 0.1;
-    
+
     // Reward good quality
     if (avgQuality > 0.8) bonus += 0.1;
-    
+
     // Reward fast compression (if speed is preferred)
     if (this.config.qualityBias < 0.5 && avgTime < 50) bonus += 0.05;
-    
+
     return bonus;
   }
 
   /**
    * Calculate memory penalty if strategy exceeds budget
    */
-  private calculateMemoryPenalty(strategy: CompressionStrategy, vectorSize: number): number {
+  private calculateMemoryPenalty(
+    strategy: CompressionStrategy,
+    vectorSize: number,
+  ): number {
     const estimatedMemory = this.estimateMemoryUsage(strategy, vectorSize);
     if (estimatedMemory > this.config.memoryBudget) {
       return 0.2; // Significant penalty for exceeding budget
@@ -398,32 +427,37 @@ export class CompressionManager {
   /**
    * Generate human-readable reasoning for strategy selection
    */
-  private generateReasoning(strategy: CompressionStrategy, analysis: VectorAnalysis, score: number): string {
+  private generateReasoning(
+    strategy: CompressionStrategy,
+    analysis: VectorAnalysis,
+    score: number,
+  ): string {
     const reasons: string[] = [];
-    
+
     if (analysis.size < 128) {
       reasons.push('small vector size');
     } else if (analysis.size >= 512) {
       reasons.push('large vector size');
     }
-    
+
     if (analysis.sparsity > 0.7) {
       reasons.push('high sparsity');
     } else if (analysis.sparsity < 0.2) {
       reasons.push('dense structure');
     }
-    
+
     if (analysis.complexity > this.adaptiveThresholds.complexityThreshold) {
       reasons.push('high complexity');
     }
-    
+
     if (analysis.entropy > this.adaptiveThresholds.entropyThreshold) {
       reasons.push('high entropy');
     }
-    
+
     const confidenceLevel = score > 0.8 ? 'high' : score > 0.6 ? 'medium' : 'low';
-    const primaryReason = reasons.length > 0 ? reasons.join(', ') : 'general characteristics';
-    
+    const primaryReason =
+      reasons.length > 0 ? reasons.join(', ') : 'general characteristics';
+
     return `${strategy} quantization selected (${confidenceLevel} confidence) due to ${primaryReason}`;
   }
 
@@ -437,35 +471,34 @@ export class CompressionManager {
   /**
    * Estimate compression ratio for a vector with given strategy
    */
-  estimateCompressionRatio(
-    vector: Float32Array,
-    strategy: CompressionStrategy
-  ): number {
+  estimateCompressionRatio(vector: Float32Array, strategy: CompressionStrategy): number {
     const compressor = this.getCompressor(strategy);
     const originalSize = vector.length * 4; // Float32 = 4 bytes
     const estimatedCompressedSize = compressor.estimateCompressedSize(vector);
-    
+
     return originalSize / estimatedCompressedSize;
   }
 
   /**
    * Compare compression strategies for a vector
    */
-  compareStrategies(vector: Float32Array): Map<CompressionStrategy, CompressionRecommendation> {
+  compareStrategies(
+    vector: Float32Array,
+  ): Map<CompressionStrategy, CompressionRecommendation> {
     const comparisons = new Map<CompressionStrategy, CompressionRecommendation>();
-    
+
     for (const [strategy] of this.compressors) {
       const ratio = this.estimateCompressionRatio(vector, strategy);
-      
+
       comparisons.set(strategy, {
         strategy,
         estimatedRatio: ratio,
         estimatedPrecisionLoss: this.estimatePrecisionLoss(vector, strategy),
         reasoning: this.getStrategyDescription(strategy),
-        confidence: 0.5 // Default confidence
+        confidence: 0.5, // Default confidence
       });
     }
-    
+
     return comparisons;
   }
 
@@ -475,7 +508,7 @@ export class CompressionManager {
   async compressBatch(
     vectors: Float32Array[],
     strategy?: CompressionStrategy,
-    config?: CompressionConfig
+    config?: CompressionConfig,
   ): Promise<CompressedVector[]> {
     if (vectors.length === 0) {
       return [];
@@ -486,15 +519,15 @@ export class CompressionManager {
     if (!firstVector) {
       throw new Error('No vectors provided for compression');
     }
-    
-    const selectedStrategy = strategy || (
-      this.config.autoSelect
+
+    const selectedStrategy =
+      strategy ||
+      (this.config.autoSelect
         ? this.autoSelectStrategy(firstVector).strategy
-        : this.config.defaultStrategy
-    );
+        : this.config.defaultStrategy);
 
     const compressor = this.getCompressor(selectedStrategy);
-    
+
     // Update compressor config if provided
     if (config) {
       compressor.updateConfig(config);
@@ -522,7 +555,7 @@ export class CompressionManager {
         throw new Error(`Vector too small for compression: ${vector.length}`);
       }
     }
-    
+
     return results;
   }
 
@@ -544,7 +577,7 @@ export class CompressionManager {
     if (algorithmName.startsWith('scalar')) return 'scalar';
     if (algorithmName.startsWith('product')) return 'product';
     if (algorithmName.startsWith('binary')) return 'binary';
-    
+
     return 'scalar'; // default fallback
   }
 
@@ -566,21 +599,21 @@ export class CompressionManager {
   private analyzeValueClustering(vector: Float32Array) {
     const values = Array.from(vector).sort((a, b) => a - b);
     const uniqueValues = [...new Set(values)];
-    
+
     // Simple clustering analysis
     let clusters = 1;
     const threshold = (values[values.length - 1]! - values[0]!) / 10;
-    
+
     for (let i = 1; i < uniqueValues.length; i++) {
       if (uniqueValues[i]! - uniqueValues[i - 1]! > threshold) {
         clusters++;
       }
     }
-    
+
     return {
       numClusters: clusters,
       uniqueValues: uniqueValues.length,
-      clusterRatio: clusters / uniqueValues.length
+      clusterRatio: clusters / uniqueValues.length,
     };
   }
 
@@ -590,10 +623,10 @@ export class CompressionManager {
   private detectPatterns(vector: Float32Array) {
     const values = Array.from(vector);
     const uniqueValues = [...new Set(values)];
-    
+
     // Check if values are binary-like (only 2-3 distinct values)
     const binaryLike = uniqueValues.length <= 3;
-    
+
     // Check for periodic patterns
     let periodicScore = 0;
     for (let period = 2; period <= Math.min(16, vector.length / 4); period++) {
@@ -605,30 +638,38 @@ export class CompressionManager {
       }
       periodicScore = Math.max(periodicScore, matches / (vector.length - period));
     }
-    
+
     return {
       binaryLike,
       periodic: periodicScore > 0.8,
-      periodicScore
+      periodicScore,
     };
   }
 
   /**
    * Estimate compression time for a strategy
    */
-  private estimateCompressionTime(strategy: CompressionStrategy, vectorSize: number): number {
+  private estimateCompressionTime(
+    strategy: CompressionStrategy,
+    vectorSize: number,
+  ): number {
     const stats = this.performanceStats.get(strategy);
     if (stats && stats.compressionTimes.length > 0) {
-      const avgTime = stats.compressionTimes.reduce((a, b) => a + b, 0) / stats.compressionTimes.length;
+      const avgTime =
+        stats.compressionTimes.reduce((a, b) => a + b, 0) / stats.compressionTimes.length;
       return avgTime * (vectorSize / 256); // Scale by vector size
     }
-    
+
     // Fallback estimates
     switch (strategy) {
-      case 'scalar': return vectorSize * 0.01; // Very fast
-      case 'product': return vectorSize * 0.1;  // Slower due to training
-      case 'binary': return vectorSize * 0.005; // Fastest
-      default: return vectorSize * 0.05;
+      case 'scalar':
+        return vectorSize * 0.01; // Very fast
+      case 'product':
+        return vectorSize * 0.1; // Slower due to training
+      case 'binary':
+        return vectorSize * 0.005; // Fastest
+      default:
+        return vectorSize * 0.05;
     }
   }
 
@@ -659,22 +700,23 @@ export class CompressionManager {
   private updateAdaptiveThresholds(analysis: VectorAnalysis): void {
     // Simple adaptive learning - adjust thresholds based on recent data
     const learningRate = 0.1;
-    
+
     // Adjust sparsity threshold
     if (analysis.sparsity > this.adaptiveThresholds.sparsityThreshold) {
-      this.adaptiveThresholds.sparsityThreshold += 
+      this.adaptiveThresholds.sparsityThreshold +=
         (analysis.sparsity - this.adaptiveThresholds.sparsityThreshold) * learningRate;
     }
-    
+
     // Adjust complexity threshold
     if (analysis.complexity !== this.adaptiveThresholds.complexityThreshold) {
-      this.adaptiveThresholds.complexityThreshold += 
-        (analysis.complexity - this.adaptiveThresholds.complexityThreshold) * learningRate;
+      this.adaptiveThresholds.complexityThreshold +=
+        (analysis.complexity - this.adaptiveThresholds.complexityThreshold) *
+        learningRate;
     }
-    
+
     // Adjust entropy threshold
     if (analysis.entropy !== this.adaptiveThresholds.entropyThreshold) {
-      this.adaptiveThresholds.entropyThreshold += 
+      this.adaptiveThresholds.entropyThreshold +=
         (analysis.entropy - this.adaptiveThresholds.entropyThreshold) * learningRate;
     }
   }
@@ -687,7 +729,7 @@ export class CompressionManager {
     compressionTime: number,
     ratio: number,
     qualityScore: number,
-    memoryUsage: number
+    memoryUsage: number,
   ): void {
     const stats = this.performanceStats.get(strategy);
     if (stats) {
@@ -695,7 +737,7 @@ export class CompressionManager {
       stats.ratios.push(ratio);
       stats.qualityScores.push(qualityScore);
       stats.memoryUsage.push(memoryUsage);
-      
+
       // Keep only recent data (last 100 operations)
       const maxHistory = 100;
       if (stats.compressionTimes.length > maxHistory) {
@@ -713,13 +755,13 @@ export class CompressionManager {
   private calculateSparsity(vector: Float32Array): number {
     const threshold = 1e-6;
     let zeroCount = 0;
-    
+
     for (let i = 0; i < vector.length; i++) {
       if (Math.abs(vector[i]!) < threshold) {
         zeroCount++;
       }
     }
-    
+
     return zeroCount / vector.length;
   }
 
@@ -732,12 +774,12 @@ export class CompressionManager {
     const stats = calculateVectorStatistics(vector);
     const binSize = stats.range / bins;
     const binCounts = new Array(bins).fill(0);
-    
+
     for (let i = 0; i < vector.length; i++) {
       const binIndex = Math.min(bins - 1, Math.floor((vector[i]! - stats.min) / binSize));
       binCounts[binIndex]++;
     }
-    
+
     let entropy = 0;
     for (const count of binCounts) {
       if (count > 0) {
@@ -745,14 +787,17 @@ export class CompressionManager {
         entropy -= probability * Math.log2(probability);
       }
     }
-    
+
     return entropy;
   }
 
   /**
    * Estimate precision loss for a strategy
    */
-  private estimatePrecisionLoss(vector: Float32Array, strategy: CompressionStrategy): number {
+  private estimatePrecisionLoss(
+    vector: Float32Array,
+    strategy: CompressionStrategy,
+  ): number {
     // Simplified estimation based on strategy characteristics
     switch (strategy) {
       case 'scalar':
@@ -761,10 +806,10 @@ export class CompressionManager {
         // PQ precision loss depends on vector dimension and subspace configuration
         const subspaces = 8;
         const subspaceDim = Math.ceil(vector.length / subspaces);
-        return Math.min(0.08, 0.02 + (subspaceDim / 1000)); // Higher loss for larger subspaces
+        return Math.min(0.08, 0.02 + subspaceDim / 1000); // Higher loss for larger subspaces
       }
       case 'binary':
-        return 0.1;  // ~10% precision loss for binary quantization
+        return 0.1; // ~10% precision loss for binary quantization
       default:
         return 0.05;
     }
@@ -791,13 +836,13 @@ export class CompressionManager {
    */
   updateConfig(config: Partial<CompressionManagerConfig>): void {
     this.config = { ...this.config, ...config };
-    
+
     // Update compressor configs if needed
     for (const compressor of this.compressors.values()) {
       compressor.updateConfig({
         targetRatio: this.config.targetCompressionRatio,
         maxPrecisionLoss: this.config.maxPrecisionLoss,
-        validateQuality: this.config.validateQuality
+        validateQuality: this.config.validateQuality,
       });
     }
   }

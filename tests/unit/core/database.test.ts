@@ -1,14 +1,26 @@
-import { describe, expect, test, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test';
+
 import { VectorDatabase } from '@/core/database.js';
 import type { DatabaseConfig } from '@/core/types.js';
-import { setupIndexedDBMocks, cleanupIndexedDBMocks } from '../../mocks/indexeddb-mock.js';
+import {
+  cleanupIndexedDBMocks,
+  setupIndexedDBMocks,
+} from '../../mocks/indexeddb-mock.js';
 
 describe('VectorDatabase', () => {
   let database: VectorDatabase;
   const testDbName = 'test-vector-db';
   const config: DatabaseConfig = {
     name: testDbName,
-    version: 1
+    version: 1,
   };
 
   beforeAll(() => {
@@ -26,7 +38,7 @@ describe('VectorDatabase', () => {
     } catch (_error) {
       // Ignore errors during cleanup
     }
-    
+
     database = new VectorDatabase(config);
   });
 
@@ -35,7 +47,7 @@ describe('VectorDatabase', () => {
     if (database.isInitialized()) {
       await database.close();
     }
-    
+
     try {
       indexedDB.deleteDatabase(testDbName);
     } catch (_error) {
@@ -58,7 +70,7 @@ describe('VectorDatabase', () => {
     test('should create required object stores', async () => {
       await database.init();
       const info = await database.getDatabaseInfo();
-      
+
       expect(info.stores).toContain(VectorDatabase.STORES.VECTORS);
       expect(info.stores).toContain(VectorDatabase.STORES.INDICES);
       expect(info.stores).toContain(VectorDatabase.STORES.CONFIG);
@@ -74,9 +86,9 @@ describe('VectorDatabase', () => {
     test('should create a read transaction', async () => {
       const transaction = await database.transaction(
         VectorDatabase.STORES.VECTORS,
-        'readonly'
+        'readonly',
       );
-      
+
       expect(transaction).toBeDefined();
       expect(transaction.mode).toBe('readonly');
     });
@@ -84,9 +96,9 @@ describe('VectorDatabase', () => {
     test('should create a write transaction', async () => {
       const transaction = await database.transaction(
         VectorDatabase.STORES.VECTORS,
-        'readwrite'
+        'readwrite',
       );
-      
+
       expect(transaction).toBeDefined();
       expect(transaction.mode).toBe('readwrite');
     });
@@ -94,9 +106,9 @@ describe('VectorDatabase', () => {
     test('should handle multiple stores in transaction', async () => {
       const transaction = await database.transaction(
         [VectorDatabase.STORES.VECTORS, VectorDatabase.STORES.CONFIG],
-        'readwrite'
+        'readwrite',
       );
-      
+
       expect(transaction).toBeDefined();
     });
 
@@ -106,15 +118,15 @@ describe('VectorDatabase', () => {
         'readwrite',
         async (transaction) => {
           const store = transaction.objectStore(VectorDatabase.STORES.CONFIG);
-          
+
           return new Promise<string>((resolve, reject) => {
             const request = store.put({ key: 'test', value: 'test-value' });
             request.onsuccess = () => resolve('success');
             request.onerror = () => reject(new Error('Failed'));
           });
-        }
+        },
       );
-      
+
       expect(result).toBe('success');
     });
   });
@@ -123,7 +135,7 @@ describe('VectorDatabase', () => {
     test('should close database', async () => {
       await database.init();
       expect(database.isInitialized()).toBe(true);
-      
+
       await database.close();
       expect(database.isInitialized()).toBe(false);
     });
@@ -131,9 +143,9 @@ describe('VectorDatabase', () => {
     test('should delete database', async () => {
       await database.init();
       await database.delete();
-      
+
       expect(database.isInitialized()).toBe(false);
-      
+
       // Verify database is deleted by trying to open it
       const openRequest = indexedDB.open(testDbName);
       await new Promise<void>((resolve) => {
@@ -150,7 +162,7 @@ describe('VectorDatabase', () => {
     test('should get database info', async () => {
       await database.init();
       const info = await database.getDatabaseInfo();
-      
+
       expect(info.name).toBe(testDbName);
       expect(info.version).toBe(1);
       expect(info.stores).toBeInstanceOf(Array);
@@ -164,9 +176,9 @@ describe('VectorDatabase', () => {
       const originalIndexedDB = globalThis.indexedDB;
       // @ts-expect-error - Temporarily remove indexedDB for testing
       globalThis.indexedDB = undefined;
-      
+
       expect(() => new VectorDatabase(config)).toThrow();
-      
+
       // Restore
       globalThis.indexedDB = originalIndexedDB;
     });

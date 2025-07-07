@@ -16,12 +16,12 @@ async function main() {
 
     // Create different namespaces for different embedding types
     console.log('\n1. Creating namespaces...');
-    
+
     // Products namespace - 384 dimensions (e.g., from sentence-transformers)
     const products = await db.createNamespace('products', {
       dimension: 384,
       distanceMetric: 'cosine',
-      description: 'Product embeddings from e-commerce catalog'
+      description: 'Product embeddings from e-commerce catalog',
     });
     console.log('✓ Created "products" namespace (384D)');
 
@@ -29,7 +29,7 @@ async function main() {
     const documents = await db.createNamespace('documents', {
       dimension: 768,
       distanceMetric: 'euclidean',
-      description: 'Document embeddings from knowledge base'
+      description: 'Document embeddings from knowledge base',
     });
     console.log('✓ Created "documents" namespace (768D)');
 
@@ -37,7 +37,7 @@ async function main() {
     const images = await db.createNamespace('images', {
       dimension: 512,
       distanceMetric: 'cosine',
-      description: 'Image embeddings from visual search'
+      description: 'Image embeddings from visual search',
     });
     console.log('✓ Created "images" namespace (512D)');
 
@@ -50,15 +50,11 @@ async function main() {
       { id: 'laptop-2', name: 'MacBook Pro', category: 'Electronics', price: 1999 },
       { id: 'phone-1', name: 'iPhone 15', category: 'Electronics', price: 999 },
       { id: 'shoe-1', name: 'Nike Air Max', category: 'Footwear', price: 150 },
-      { id: 'shoe-2', name: 'Adidas Ultra Boost', category: 'Footwear', price: 180 }
+      { id: 'shoe-2', name: 'Adidas Ultra Boost', category: 'Footwear', price: 180 },
     ];
 
     for (const product of productData) {
-      await products.addVector(
-        product.id,
-        VectorOperations.randomUnit(384),
-        product
-      );
+      await products.addVector(product.id, VectorOperations.randomUnit(384), product);
     }
     console.log(`✓ Added ${productData.length} products`);
 
@@ -66,37 +62,29 @@ async function main() {
     const docData = [
       { id: 'doc-1', title: 'User Manual', type: 'manual', language: 'en' },
       { id: 'doc-2', title: 'API Reference', type: 'technical', language: 'en' },
-      { id: 'doc-3', title: 'Tutorial Guide', type: 'tutorial', language: 'en' }
+      { id: 'doc-3', title: 'Tutorial Guide', type: 'tutorial', language: 'en' },
     ];
 
     for (const doc of docData) {
-      await documents.addVector(
-        doc.id,
-        VectorOperations.randomUnit(768),
-        doc
-      );
+      await documents.addVector(doc.id, VectorOperations.randomUnit(768), doc);
     }
     console.log(`✓ Added ${docData.length} documents`);
 
     // Add image embeddings
     const imageData = [
       { id: 'img-1', filename: 'product-photo-1.jpg', type: 'product', width: 1024 },
-      { id: 'img-2', filename: 'banner-hero.png', type: 'marketing', width: 1920 }
+      { id: 'img-2', filename: 'banner-hero.png', type: 'marketing', width: 1920 },
     ];
 
     for (const img of imageData) {
-      await images.addVector(
-        img.id,
-        VectorOperations.randomUnit(512),
-        img
-      );
+      await images.addVector(img.id, VectorOperations.randomUnit(512), img);
     }
     console.log(`✓ Added ${imageData.length} images`);
 
     // List all namespaces
     console.log('\n3. Listing all namespaces...');
     const namespaceList = await db.listNamespaces();
-    
+
     for (const ns of namespaceList) {
       console.log(`\nNamespace: ${ns.name}`);
       console.log(`  Dimension: ${ns.config.dimension}`);
@@ -113,22 +101,26 @@ async function main() {
     const productQuery = VectorOperations.randomUnit(384);
     const productResults = await products.search(productQuery, 3, {
       includeMetadata: true,
-      filter: { category: 'Electronics' }
+      filter: { category: 'Electronics' },
     });
 
     productResults.forEach((result, i) => {
-      console.log(`  ${i + 1}. ${result.metadata?.['name']} (score: ${result.score.toFixed(4)})`);
+      console.log(
+        `  ${i + 1}. ${result.metadata?.['name']} (score: ${result.score.toFixed(4)})`,
+      );
     });
 
     // Search for documents
     console.log('\nSearching in documents namespace:');
     const docQuery = VectorOperations.randomUnit(768);
     const docResults = await documents.search(docQuery, 2, {
-      includeMetadata: true
+      includeMetadata: true,
     });
 
     docResults.forEach((result, i) => {
-      console.log(`  ${i + 1}. ${result.metadata?.['title']} (score: ${result.score.toFixed(4)})`);
+      console.log(
+        `  ${i + 1}. ${result.metadata?.['title']} (score: ${result.score.toFixed(4)})`,
+      );
     });
 
     // Get namespace statistics
@@ -146,7 +138,7 @@ async function main() {
 
     // Namespace switching
     console.log('\n7. Switching between namespaces...');
-    
+
     // Get a namespace by name
     const productsNs = await db.getNamespace('products');
     const vector = await productsNs.getVector('laptop-1');
@@ -157,12 +149,14 @@ async function main() {
     // Check storage usage
     console.log('\n8. Storage usage...');
     const totalUsage = await db.getTotalStorageUsage();
-    console.log(`Total storage across all namespaces: ~${(totalUsage / 1024).toFixed(2)} KB`);
+    console.log(
+      `Total storage across all namespaces: ~${(totalUsage / 1024).toFixed(2)} KB`,
+    );
 
     // Cache management
     console.log('\n9. Cache management...');
     console.log(`Current cache size: ${db.getCacheSize()} namespaces`);
-    
+
     // Set cache limit (useful for memory management)
     await db.setCacheLimit(2);
     console.log('Cache limit set to 2 namespaces');
@@ -171,17 +165,18 @@ async function main() {
     console.log('\n10. Cleaning up...');
     console.log('Clearing images namespace...');
     await images.clear();
-    
+
     const imagesStats = await images.getStats();
     console.log(`Images namespace now has ${imagesStats.vectorCount} vectors`);
 
     // Delete a namespace
     console.log('\nDeleting images namespace...');
     await db.deleteNamespace('images');
-    
-    const remainingNamespaces = await db.listNamespaces();
-    console.log(`Remaining namespaces: ${remainingNamespaces.map(ns => ns.name).join(', ')}`);
 
+    const remainingNamespaces = await db.listNamespaces();
+    console.log(
+      `Remaining namespaces: ${remainingNamespaces.map((ns) => ns.name).join(', ')}`,
+    );
   } catch (error) {
     console.error('Error:', error);
   } finally {
@@ -195,7 +190,7 @@ async function main() {
 // Demonstrate error handling
 async function errorHandlingExample() {
   console.log('\n\nError Handling Example\n');
-  
+
   const db = new VectorFrankl();
   await db.init();
 
@@ -211,7 +206,7 @@ async function errorHandlingExample() {
     // Try to create duplicate namespace
     console.log('\nCreating test namespace...');
     await db.createNamespace('test', { dimension: 100 });
-    
+
     console.log('Attempting to create duplicate namespace...');
     await db.createNamespace('test', { dimension: 200 });
   } catch (error) {

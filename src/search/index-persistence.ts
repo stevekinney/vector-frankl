@@ -43,33 +43,34 @@ export class IndexPersistence {
   async saveIndex(
     indexId: string,
     index: HNSWIndex,
-    distanceMetric: string
+    distanceMetric: string,
   ): Promise<void> {
     const serializedIndex = await this.serializeIndex(index, distanceMetric);
-    
+
     await this.database.executeTransaction(
       IndexPersistence.STORE_NAME,
       'readwrite',
       async (transaction) => {
         const store = transaction.objectStore(IndexPersistence.STORE_NAME);
-        
+
         return new Promise<void>((resolve, reject) => {
           const request = store.put({
             id: indexId,
             data: serializedIndex,
-            timestamp: Date.now()
+            timestamp: Date.now(),
           });
-          
+
           request.onsuccess = () => resolve();
-          request.onerror = () => reject(
-            new TransactionError(
-              'save index',
-              `Failed to save index: ${indexId}`,
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'save index',
+                `Failed to save index: ${indexId}`,
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
   }
 
@@ -85,20 +86,23 @@ export class IndexPersistence {
       'readonly',
       async (transaction) => {
         const store = transaction.objectStore(IndexPersistence.STORE_NAME);
-        
-        return new Promise<{ id: string; data: SerializableHNSWIndex; timestamp: number } | undefined>((resolve, reject) => {
+
+        return new Promise<
+          { id: string; data: SerializableHNSWIndex; timestamp: number } | undefined
+        >((resolve, reject) => {
           const request = store.get(indexId);
-          
+
           request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(
-            new TransactionError(
-              'load index',
-              `Failed to load index: ${indexId}`,
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'load index',
+                `Failed to load index: ${indexId}`,
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
 
     if (!result || !result.data) {
@@ -107,10 +111,10 @@ export class IndexPersistence {
 
     const serializedIndex = result.data as SerializableHNSWIndex;
     const index = await this.deserializeIndex(serializedIndex);
-    
+
     return {
       index,
-      distanceMetric: serializedIndex.distanceMetric
+      distanceMetric: serializedIndex.distanceMetric,
     };
   }
 
@@ -123,58 +127,64 @@ export class IndexPersistence {
       'readwrite',
       async (transaction) => {
         const store = transaction.objectStore(IndexPersistence.STORE_NAME);
-        
+
         return new Promise<void>((resolve, reject) => {
           const request = store.delete(indexId);
-          
+
           request.onsuccess = () => resolve();
-          request.onerror = () => reject(
-            new TransactionError(
-              'delete index',
-              `Failed to delete index: ${indexId}`,
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'delete index',
+                `Failed to delete index: ${indexId}`,
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
   }
 
   /**
    * List all saved indices
    */
-  async listIndices(): Promise<Array<{
-    id: string;
-    timestamp: number;
-    nodeCount: number;
-    distanceMetric: string;
-  }>> {
+  async listIndices(): Promise<
+    Array<{
+      id: string;
+      timestamp: number;
+      nodeCount: number;
+      distanceMetric: string;
+    }>
+  > {
     const result = await this.database.executeTransaction(
       IndexPersistence.STORE_NAME,
       'readonly',
       async (transaction) => {
         const store = transaction.objectStore(IndexPersistence.STORE_NAME);
-        
-        return new Promise<Array<{ id: string; data: SerializableHNSWIndex; timestamp: number }>>((resolve, reject) => {
+
+        return new Promise<
+          Array<{ id: string; data: SerializableHNSWIndex; timestamp: number }>
+        >((resolve, reject) => {
           const request = store.getAll();
-          
+
           request.onsuccess = () => resolve(request.result || []);
-          request.onerror = () => reject(
-            new TransactionError(
-              'list indices',
-              'Failed to list indices',
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'list indices',
+                'Failed to list indices',
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
 
-    return result.map(item => ({
+    return result.map((item) => ({
       id: item.id,
       timestamp: item.timestamp,
       nodeCount: item.data.nodes.length,
-      distanceMetric: item.data.distanceMetric
+      distanceMetric: item.data.distanceMetric,
     }));
   }
 
@@ -186,15 +196,15 @@ export class IndexPersistence {
     estimatedBytes: number;
   }> {
     const indices = await this.listIndices();
-    
+
     // Rough estimation: each node ~200 bytes + vector data + connections
     const estimatedBytes = indices.reduce((total, index) => {
-      return total + (index.nodeCount * 500); // Conservative estimate
+      return total + index.nodeCount * 500; // Conservative estimate
     }, 0);
 
     return {
       indexCount: indices.length,
-      estimatedBytes
+      estimatedBytes,
     };
   }
 
@@ -202,13 +212,13 @@ export class IndexPersistence {
    * Serialize HNSW index for storage
    */
   private async serializeIndex(
-    index: HNSWIndex, 
-    distanceMetric: string
+    index: HNSWIndex,
+    distanceMetric: string,
   ): Promise<SerializableHNSWIndex> {
     // Extract index data using reflection/internal access
     // Note: This assumes HNSWIndex has a way to export its internal state
     const stats = index.getStats();
-    
+
     // For now, create a basic serialization structure
     // In a real implementation, HNSWIndex would need export methods
     return {
@@ -218,11 +228,11 @@ export class IndexPersistence {
         m: 16, // Would come from index.getConfig()
         mL: 2,
         efConstruction: 200,
-        maxLevel: 5
+        maxLevel: 5,
       },
       distanceMetric,
       version: IndexPersistence.VERSION,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
   }
 
@@ -232,17 +242,14 @@ export class IndexPersistence {
   private async deserializeIndex(data: SerializableHNSWIndex): Promise<HNSWIndex> {
     // Import the HNSWIndex class
     const { HNSWIndex } = await import('./hnsw-index.js');
-    
+
     // Create new index with saved config
-    const index = new HNSWIndex(
-      data.distanceMetric as any,
-      data.config
-    );
+    const index = new HNSWIndex(data.distanceMetric as any, data.config);
 
     // Restore nodes and connections
     // Note: This would require HNSWIndex to have import methods
     // For now, return empty index that would need to be rebuilt
-    
+
     return index;
   }
 }
@@ -251,12 +258,15 @@ export class IndexPersistence {
  * Index cache manager
  */
 export class IndexCache {
-  private cache = new Map<string, {
-    index: HNSWIndex;
-    distanceMetric: string;
-    lastAccess: number;
-    isDirty: boolean;
-  }>();
+  private cache = new Map<
+    string,
+    {
+      index: HNSWIndex;
+      distanceMetric: string;
+      lastAccess: number;
+      isDirty: boolean;
+    }
+  >();
 
   private maxCacheSize = 5; // Maximum number of cached indices
   private persistenceManager: IndexPersistence;
@@ -273,18 +283,18 @@ export class IndexCache {
     distanceMetric: string;
   } | null> {
     const cached = this.cache.get(indexId);
-    
+
     if (cached) {
       cached.lastAccess = Date.now();
       return {
         index: cached.index,
-        distanceMetric: cached.distanceMetric
+        distanceMetric: cached.distanceMetric,
       };
     }
 
     // Load from storage
     const loaded = await this.persistenceManager.loadIndex(indexId);
-    
+
     if (loaded) {
       this.putInCache(indexId, loaded.index, loaded.distanceMetric);
     }
@@ -299,7 +309,7 @@ export class IndexCache {
     indexId: string,
     index: HNSWIndex,
     distanceMetric: string,
-    isDirty = false
+    isDirty = false,
   ): void {
     // Evict old entries if cache is full
     if (this.cache.size >= this.maxCacheSize) {
@@ -310,7 +320,7 @@ export class IndexCache {
       index,
       distanceMetric,
       lastAccess: Date.now(),
-      isDirty
+      isDirty,
     });
   }
 
@@ -333,13 +343,11 @@ export class IndexCache {
     for (const [indexId, cached] of this.cache) {
       if (cached.isDirty) {
         promises.push(
-          this.persistenceManager.saveIndex(
-            indexId,
-            cached.index,
-            cached.distanceMetric
-          ).then(() => {
-            cached.isDirty = false;
-          })
+          this.persistenceManager
+            .saveIndex(indexId, cached.index, cached.distanceMetric)
+            .then(() => {
+              cached.isDirty = false;
+            }),
         );
       }
     }
@@ -373,16 +381,14 @@ export class IndexCache {
 
     if (oldestId) {
       const cached = this.cache.get(oldestId);
-      
+
       // Save if dirty before evicting
       if (cached?.isDirty) {
-        void this.persistenceManager.saveIndex(
-          oldestId,
-          cached.index,
-          cached.distanceMetric
-        ).catch(error => {
-          console.warn(`Failed to save index ${oldestId} during eviction:`, error);
-        });
+        void this.persistenceManager
+          .saveIndex(oldestId, cached.index, cached.distanceMetric)
+          .catch((error) => {
+            console.warn(`Failed to save index ${oldestId} during eviction:`, error);
+          });
       }
 
       this.cache.delete(oldestId);
@@ -405,7 +411,7 @@ export class IndexCache {
     return {
       cacheSize: this.cache.size,
       maxCacheSize: this.maxCacheSize,
-      dirtyCount
+      dirtyCount,
     };
   }
 }

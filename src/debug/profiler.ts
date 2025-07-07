@@ -2,9 +2,9 @@
  * Performance profiler for vector operations
  */
 
-import { debugManager } from './debug-manager.js';
 import { DebugContext } from './debug-context.js';
-import type { ProfileEntry, PerformanceStats, MemoryUsage } from './types.js';
+import { debugManager } from './debug-manager.js';
+import type { MemoryUsage, PerformanceStats, ProfileEntry } from './types.js';
 
 // Performance memory interface for Chrome's non-standard API
 interface PerformanceMemory {
@@ -40,17 +40,17 @@ export class Profiler {
     }
 
     const profileId = `${operation}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    
+
     const entry: ProfileEntry = {
       operation,
       startTime: performance.now(),
       metadata: {
         ...metadata,
-        context: this.context.getContextSummary()
+        context: this.context.getContextSummary(),
       },
       children: [],
       marks: new Map(),
-      metrics: new Map()
+      metrics: new Map(),
     };
 
     // Capture initial memory if tracking is enabled
@@ -120,10 +120,10 @@ export class Profiler {
         metadata: entry.metadata,
         marks: Object.fromEntries(entry.marks),
         metrics: Object.fromEntries(entry.metrics),
-        memory: entry.memory
+        memory: entry.memory,
       },
       ...(entry.duration !== undefined && { duration: entry.duration }),
-      ...(entry.memory?.end && { memoryUsage: entry.memory.end })
+      ...(entry.memory?.end && { memoryUsage: entry.memory.end }),
     });
 
     return entry;
@@ -155,16 +155,18 @@ export class Profiler {
   async profile<T>(
     operation: string,
     fn: () => T | Promise<T>,
-    metadata: Record<string, unknown> = {}
+    metadata: Record<string, unknown> = {},
   ): Promise<T> {
     const profileId = this.startProfile(operation, metadata);
-    
+
     try {
       const result = await fn();
       this.endProfile(profileId, result);
       return result;
     } catch (error) {
-      this.endProfile(profileId, { error: error instanceof Error ? error.message : String(error) });
+      this.endProfile(profileId, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -175,23 +177,25 @@ export class Profiler {
   async profileNested<T>(
     operation: string,
     fn: (profiler: NestedProfiler) => T | Promise<T>,
-    metadata: Record<string, unknown> = {}
+    metadata: Record<string, unknown> = {},
   ): Promise<T> {
     const profileId = this.startProfile(operation, metadata);
     const parentEntry = this.activeProfiles.get(profileId);
-    
+
     if (!parentEntry) {
       return fn(new NestedProfiler(this, null));
     }
 
     const nestedProfiler = new NestedProfiler(this, parentEntry);
-    
+
     try {
       const result = await fn(nestedProfiler);
       this.endProfile(profileId, result);
       return result;
     } catch (error) {
-      this.endProfile(profileId, { error: error instanceof Error ? error.message : String(error) });
+      this.endProfile(profileId, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   }
@@ -210,7 +214,7 @@ export class Profiler {
       heapUsed: memory.usedJSHeapSize,
       heapTotal: memory.totalJSHeapSize,
       external: memory.jsHeapSizeLimit - memory.totalJSHeapSize,
-      arrayBuffers: this.estimateArrayBufferUsage()
+      arrayBuffers: this.estimateArrayBufferUsage(),
     };
 
     // Calculate delta if we have previous measurements
@@ -220,7 +224,7 @@ export class Profiler {
         heapUsed: usage.heapUsed - lastMemory.heapUsed,
         heapTotal: usage.heapTotal - lastMemory.heapTotal,
         external: usage.external - lastMemory.external,
-        arrayBuffers: usage.arrayBuffers - lastMemory.arrayBuffers
+        arrayBuffers: usage.arrayBuffers - lastMemory.arrayBuffers,
       };
     }
 
@@ -251,10 +255,10 @@ export class Profiler {
     if (!this.performanceStats.has(operation)) {
       this.performanceStats.set(operation, []);
     }
-    
+
     const durations = this.performanceStats.get(operation)!;
     durations.push(duration);
-    
+
     // Keep only last 1000 measurements
     if (durations.length > 1000) {
       durations.shift();
@@ -265,11 +269,9 @@ export class Profiler {
    * Get performance statistics for an operation
    */
   getStats(operation?: string): PerformanceStats[] {
-    const operations = operation 
-      ? [operation] 
-      : Array.from(this.performanceStats.keys());
+    const operations = operation ? [operation] : Array.from(this.performanceStats.keys());
 
-    return operations.map(op => {
+    return operations.map((op) => {
       const durations = this.performanceStats.get(op) || [];
       if (durations.length === 0) {
         return {
@@ -279,7 +281,7 @@ export class Profiler {
           minDuration: 0,
           maxDuration: 0,
           avgDuration: 0,
-          percentiles: { p50: 0, p90: 0, p95: 0, p99: 0 }
+          percentiles: { p50: 0, p90: 0, p95: 0, p99: 0 },
         };
       }
 
@@ -297,8 +299,8 @@ export class Profiler {
           p50: this.percentile(sorted, 0.5),
           p90: this.percentile(sorted, 0.9),
           p95: this.percentile(sorted, 0.95),
-          p99: this.percentile(sorted, 0.99)
-        }
+          p99: this.percentile(sorted, 0.99),
+        },
       };
     });
   }
@@ -339,13 +341,13 @@ export class Profiler {
 
     if (filter) {
       if (filter.operation) {
-        filtered = filtered.filter(p => p.operation.includes(filter.operation!));
+        filtered = filtered.filter((p) => p.operation.includes(filter.operation!));
       }
       if (filter.minDuration !== undefined) {
-        filtered = filtered.filter(p => (p.duration || 0) >= filter.minDuration!);
+        filtered = filtered.filter((p) => (p.duration || 0) >= filter.minDuration!);
       }
       if (filter.maxDuration !== undefined) {
-        filtered = filtered.filter(p => (p.duration || 0) <= filter.maxDuration!);
+        filtered = filtered.filter((p) => (p.duration || 0) <= filter.maxDuration!);
       }
     }
 
@@ -359,16 +361,16 @@ export class Profiler {
 export class NestedProfiler {
   constructor(
     private profiler: Profiler,
-    private parentEntry: ProfileEntry | null
+    private parentEntry: ProfileEntry | null,
   ) {}
 
   async profile<T>(
     operation: string,
     fn: () => T | Promise<T>,
-    metadata: Record<string, unknown> = {}
+    metadata: Record<string, unknown> = {},
   ): Promise<T> {
     const result = await this.profiler.profile(operation, fn, metadata);
-    
+
     // Add to parent's children if exists
     if (this.parentEntry) {
       const completed = this.profiler.getCompletedProfiles({ operation }).pop();
@@ -376,7 +378,7 @@ export class NestedProfiler {
         this.parentEntry.children.push(completed);
       }
     }
-    
+
     return result;
   }
 }

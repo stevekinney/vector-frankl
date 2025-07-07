@@ -1,14 +1,14 @@
 /**
  * Debug and profiling module
- * 
+ *
  * Provides comprehensive debugging and profiling capabilities for Vector Frankl
  */
 
 // Core debug system
-import { debugManager, DebugManager } from './debug-manager.js';
-import { profiler, Profiler, NestedProfiler } from './profiler.js';
-import { DebugContext } from './debug-context.js';
 import { createDebugConsole } from './console.js';
+import { DebugContext } from './debug-context.js';
+import { debugManager, DebugManager } from './debug-manager.js';
+import { NestedProfiler, profiler, Profiler } from './profiler.js';
 
 export { debugManager, DebugManager };
 export { profiler, Profiler, NestedProfiler };
@@ -20,7 +20,7 @@ export type {
   TracerConsole,
   MemoryConsole,
   StatsConsole,
-  ContextConsole
+  ContextConsole,
 } from './console.js';
 
 // Debug hooks and utilities
@@ -35,7 +35,7 @@ export {
   createTimer,
   debugAssert,
   DebugBatch,
-  createBatch
+  createBatch,
 } from './hooks.js';
 
 // Types
@@ -48,7 +48,7 @@ export type {
   ProfileEntry,
   TraceEntry,
   PerformanceStats,
-  DebugReport
+  DebugReport,
 } from './types.js';
 
 // Convenience exports
@@ -56,7 +56,7 @@ export const debug = {
   manager: debugManager,
   profiler,
   context: DebugContext.getInstance(),
-  console: createDebugConsole()
+  console: createDebugConsole(),
 };
 
 // Initialize debug console in browser environment
@@ -70,16 +70,19 @@ if (typeof window !== 'undefined') {
   const windowWithDebug = window as VectorFranklWindow;
   windowWithDebug.vectorFrankl = windowWithDebug.vectorFrankl || {};
   windowWithDebug.vectorFrankl.debug = debug.console;
-  
+
   // Add debug mode detection
   const urlParams = new URLSearchParams(window.location.search);
-  if (urlParams.get('debug') === 'true' || localStorage.getItem('VECTOR_FRANKL_DEBUG') === 'true') {
+  if (
+    urlParams.get('debug') === 'true' ||
+    localStorage.getItem('VECTOR_FRANKL_DEBUG') === 'true'
+  ) {
     debugManager.enable({
       profile: urlParams.get('profile') === 'true',
       traceLevel: (urlParams.get('trace') as 'basic' | 'detailed' | 'verbose') || 'basic',
-      memoryTracking: urlParams.get('memory') === 'true'
+      memoryTracking: urlParams.get('memory') === 'true',
     });
-    
+
     console.log('Vector Frankl debug mode enabled');
     console.log('Use vectorFrankl.debug.* commands for debugging');
   }

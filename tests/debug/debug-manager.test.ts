@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+
 import { debugManager } from '@/debug/debug-manager.js';
 import type { DebugConfig } from '@/debug/types.js';
 
@@ -16,7 +17,7 @@ describe('DebugManager', () => {
       exportFormat: 'json',
       sampling: { rate: 1, threshold: 0 },
       maxEntries: 10000,
-      consoleOutput: true
+      consoleOutput: true,
     });
   });
 
@@ -28,7 +29,7 @@ describe('DebugManager', () => {
   describe('Configuration', () => {
     it('should have default configuration', () => {
       const config = debugManager.getConfig();
-      
+
       expect(config.enabled).toBe(false);
       expect(config.profile).toBe(false);
       expect(config.traceLevel).toBe('none');
@@ -42,7 +43,7 @@ describe('DebugManager', () => {
       const updates: Partial<DebugConfig> = {
         profile: true,
         traceLevel: 'verbose',
-        memoryTracking: true
+        memoryTracking: true,
       };
 
       debugManager.updateConfig(updates);
@@ -66,7 +67,7 @@ describe('DebugManager', () => {
     it('should enable with custom config', () => {
       debugManager.enable({
         profile: true,
-        traceLevel: 'detailed'
+        traceLevel: 'detailed',
       });
 
       const config = debugManager.getConfig();
@@ -86,7 +87,7 @@ describe('DebugManager', () => {
         type: 'info',
         operation: 'test-operation',
         level: 'basic',
-        data: { test: true }
+        data: { test: true },
       });
 
       const entries = debugManager.getEntries();
@@ -103,7 +104,7 @@ describe('DebugManager', () => {
         type: 'info',
         operation: 'test-operation',
         level: 'basic',
-        data: { test: true }
+        data: { test: true },
       });
 
       const entries = debugManager.getEntries();
@@ -118,7 +119,7 @@ describe('DebugManager', () => {
         type: 'info',
         operation: 'basic-op',
         level: 'basic',
-        data: {}
+        data: {},
       });
 
       // Should not be added (detailed level > basic)
@@ -126,7 +127,7 @@ describe('DebugManager', () => {
         type: 'info',
         operation: 'detailed-op',
         level: 'detailed',
-        data: {}
+        data: {},
       });
 
       const entries = debugManager.getEntries();
@@ -135,8 +136,8 @@ describe('DebugManager', () => {
     });
 
     it('should respect sampling rate', () => {
-      debugManager.updateConfig({ 
-        sampling: { rate: 10, threshold: 0 } 
+      debugManager.updateConfig({
+        sampling: { rate: 10, threshold: 0 },
       });
 
       // Add many entries - only some should be kept due to sampling
@@ -145,7 +146,7 @@ describe('DebugManager', () => {
           type: 'info',
           operation: `test-${i}`,
           level: 'basic',
-          data: {}
+          data: {},
         });
       }
 
@@ -162,7 +163,7 @@ describe('DebugManager', () => {
           type: 'info',
           operation: `test-${i}`,
           level: 'basic',
-          data: {}
+          data: {},
         });
       }
 
@@ -175,21 +176,21 @@ describe('DebugManager', () => {
         type: 'info',
         operation: 'search-vectors',
         level: 'basic',
-        data: {}
+        data: {},
       });
 
       debugManager.addEntry({
         type: 'error',
         operation: 'add-vector',
         level: 'basic',
-        data: {}
+        data: {},
       });
 
       debugManager.addEntry({
         type: 'profile',
         operation: 'search-vectors',
         level: 'basic',
-        data: {}
+        data: {},
       });
 
       // Filter by type
@@ -202,9 +203,9 @@ describe('DebugManager', () => {
       expect(searchEntries).toHaveLength(2);
 
       // Filter by type and operation
-      const searchInfoEntries = debugManager.getEntries({ 
-        type: 'info', 
-        operation: 'search' 
+      const searchInfoEntries = debugManager.getEntries({
+        type: 'info',
+        operation: 'search',
       });
       expect(searchInfoEntries).toHaveLength(1);
     });
@@ -214,7 +215,7 @@ describe('DebugManager', () => {
         type: 'info',
         operation: 'test',
         level: 'basic',
-        data: {}
+        data: {},
       });
 
       expect(debugManager.getEntries()).toHaveLength(1);
@@ -227,7 +228,7 @@ describe('DebugManager', () => {
   describe('Memory Usage', () => {
     it('should get memory usage if available', () => {
       const memory = debugManager.getMemoryUsage();
-      
+
       // Memory might not be available in test environment
       if (memory) {
         expect(typeof memory.heapUsed).toBe('number');
@@ -241,13 +242,13 @@ describe('DebugManager', () => {
   describe('Export', () => {
     beforeEach(() => {
       debugManager.enable();
-      
+
       // Add some test data
       debugManager.addEntry({
         type: 'info',
         operation: 'test-operation',
         level: 'basic',
-        data: { test: 'data' }
+        data: { test: 'data' },
       });
 
       debugManager.addEntry({
@@ -255,14 +256,14 @@ describe('DebugManager', () => {
         operation: 'vector-search',
         level: 'basic',
         data: { vectors: 100 },
-        duration: 25.5
+        duration: 25.5,
       });
     });
 
     it('should export as JSON', async () => {
       const exported = await debugManager.exportData('json');
       const data = JSON.parse(exported);
-      
+
       expect(Array.isArray(data)).toBe(true);
       expect(data).toHaveLength(2);
       expect(data[0].operation).toBe('test-operation');
@@ -271,7 +272,7 @@ describe('DebugManager', () => {
 
     it('should export as CSV', async () => {
       const exported = await debugManager.exportData('csv');
-      
+
       expect(typeof exported).toBe('string');
       expect(exported).toContain('id,timestamp,type,operation');
       expect(exported).toContain('test-operation');
@@ -281,7 +282,7 @@ describe('DebugManager', () => {
     it('should export as DevTools format', async () => {
       const exported = await debugManager.exportData('devtools');
       const data = JSON.parse(exported);
-      
+
       expect(data.traceEvents).toBeDefined();
       expect(Array.isArray(data.traceEvents)).toBe(true);
       expect(data.displayTimeUnit).toBe('ms');
@@ -289,7 +290,7 @@ describe('DebugManager', () => {
 
     it('should export as HTML', async () => {
       const exported = await debugManager.exportData('html');
-      
+
       expect(typeof exported).toBe('string');
       expect(exported).toContain('<!DOCTYPE html>');
       expect(exported).toContain('Vector Frankl Debug Report');

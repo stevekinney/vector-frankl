@@ -1,22 +1,26 @@
 import { VectorDatabase } from '@/core/database.js';
-import { VectorStorage } from '@/core/storage.js';
-import { VectorOperations } from '@/vectors/operations.js';
-import { VectorFormatHandler } from '@/vectors/formats.js';
 import { DimensionMismatchError } from '@/core/errors.js';
-import { SearchEngine } from '@/search/search-engine.js';
-import { StorageQuotaMonitor, type QuotaWarning } from '@/storage/quota-monitor.js';
-import { EvictionManager, type EvictionConfig, type EvictionResult } from '@/storage/eviction-policy.js';
-import { withContext, debugMethod } from '@/debug/hooks.js';
 import { InputValidator } from '@/core/input-validator.js';
-import type { 
-  DatabaseConfig, 
-  VectorFormat, 
-  VectorData,
-  SearchResult,
-  SearchOptions,
+import { VectorStorage } from '@/core/storage.js';
+import type {
   BatchOptions,
-  DistanceMetric 
+  DatabaseConfig,
+  DistanceMetric,
+  SearchOptions,
+  SearchResult,
+  VectorData,
+  VectorFormat,
 } from '@/core/types.js';
+import { debugMethod, withContext } from '@/debug/hooks.js';
+import { SearchEngine } from '@/search/search-engine.js';
+import {
+  EvictionManager,
+  type EvictionConfig,
+  type EvictionResult,
+} from '@/storage/eviction-policy.js';
+import { StorageQuotaMonitor, type QuotaWarning } from '@/storage/quota-monitor.js';
+import { VectorFormatHandler } from '@/vectors/formats.js';
+import { VectorOperations } from '@/vectors/operations.js';
 
 /**
  * Main API class for the vector database
@@ -35,7 +39,7 @@ export class VectorDB {
   constructor(
     private name: string,
     dimension: number,
-    options?: Partial<DatabaseConfig> & { 
+    options?: Partial<DatabaseConfig> & {
       distanceMetric?: DistanceMetric;
       useIndex?: boolean;
       indexConfig?: {
@@ -48,35 +52,30 @@ export class VectorDB {
         safetyMargin?: number;
         checkInterval?: number;
       };
-    }
+    },
   ) {
     // Validate inputs with comprehensive checks
     this.name = InputValidator.validateDatabaseName(name);
     this.dimension = InputValidator.validateDimension(dimension);
     this.distanceMetric = options?.distanceMetric || 'cosine';
     this.autoEviction = options?.autoEviction ?? true;
-    
+
     this.database = new VectorDatabase({
       name,
       version: options?.version ?? 1,
-      ...(options?.persistence !== undefined && { persistence: options.persistence })
+      ...(options?.persistence !== undefined && { persistence: options.persistence }),
     });
-    
+
     this.storage = new VectorStorage(this.database);
     this.evictionManager = new EvictionManager(this.storage);
     this.quotaMonitor = StorageQuotaMonitor.getInstance(options?.quotaConfig);
-    
-    this.searchEngine = new SearchEngine(
-      this.storage, 
-      dimension, 
-      this.distanceMetric,
-      {
-        ...(options?.useIndex !== undefined && { useIndex: options.useIndex }),
-        ...(options?.indexConfig !== undefined && { indexConfig: options.indexConfig }),
-        database: this.database,
-        indexId: `${this.name}-main`
-      }
-    );
+
+    this.searchEngine = new SearchEngine(this.storage, dimension, this.distanceMetric, {
+      ...(options?.useIndex !== undefined && { useIndex: options.useIndex }),
+      ...(options?.indexConfig !== undefined && { indexConfig: options.indexConfig }),
+      database: this.database,
+      indexId: `${this.name}-main`,
+    });
 
     // Set up quota monitoring
     this.setupQuotaMonitoring();
@@ -107,62 +106,71 @@ export class VectorDB {
   /**
    * Add a single vector
    */
-  @debugMethod('database.addVector', 'basic', { profileEnabled: true, captureArgs: false })
+  @debugMethod('database.addVector', 'basic', {
+    profileEnabled: true,
+    captureArgs: false,
+  })
   async addVector(
     id: string,
     vector: VectorFormat,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     // Validate all inputs
     const validatedId = InputValidator.validateVectorId(id);
     const validatedMetadata = InputValidator.validateMetadata(metadata);
-    
+
     // Validate vector format using existing validation
     VectorFormatHandler.validate(vector, this.dimension);
 
-    return withContext({
-      namespace: this.name,
-      operationType: 'addVector',
-      vectorDimensions: this.dimension,
-      vectorCount: 1,
-      metadata: { hasMetadata: !!validatedMetadata }
-    }, async () => {
-      await this.ensureInitialized();
+    return withContext(
+      {
+        namespace: this.name,
+        operationType: 'addVector',
+        vectorDimensions: this.dimension,
+        vectorCount: 1,
+        metadata: { hasMetadata: !!validatedMetadata },
+      },
+      async () => {
+        await this.ensureInitialized();
 
-    // Check quota before adding
-    await this.quotaMonitor.checkQuota();
+        // Check quota before adding
+        await this.quotaMonitor.checkQuota();
 
-    // Validate dimension
-    if (vector.length !== this.dimension) {
-      throw new DimensionMismatchError(this.dimension, vector.length);
-    }
+        // Validate dimension
+        if (vector.length !== this.dimension) {
+          throw new DimensionMismatchError(this.dimension, vector.length);
+        }
 
-    // Prepare vector for storage
-    const vectorData = await VectorOperations.prepareForStorage(
-      validatedId,
-      vector,
-      validatedMetadata,
-      { normalize: false }
+        // Prepare vector for storage
+        const vectorData = await VectorOperations.prepareForStorage(
+          validatedId,
+          vector,
+          validatedMetadata,
+          { normalize: false },
+        );
+
+        await this.storage.put(vectorData);
+
+        // Add to index if using HNSW
+        await this.searchEngine.addVectorToIndex(vectorData);
+      },
     );
-
-      await this.storage.put(vectorData);
-      
-      // Add to index if using HNSW
-      await this.searchEngine.addVectorToIndex(vectorData);
-    });
   }
 
   /**
    * Add multiple vectors
    */
-  @debugMethod('database.addBatch', 'basic', { profileEnabled: true, memoryTracking: true })
+  @debugMethod('database.addBatch', 'basic', {
+    profileEnabled: true,
+    memoryTracking: true,
+  })
   async addBatch(
     vectors: Array<{
       id: string;
       vector: VectorFormat;
       metadata?: Record<string, unknown>;
     }>,
-    options?: BatchOptions
+    options?: BatchOptions,
   ): Promise<void> {
     await this.ensureInitialized();
 
@@ -173,13 +181,10 @@ export class VectorDB {
           throw new DimensionMismatchError(this.dimension, vector.length);
         }
 
-        return VectorOperations.prepareForStorage(
-          id,
-          vector,
-          metadata,
-          { normalize: false }
-        );
-      })
+        return VectorOperations.prepareForStorage(id, vector, metadata, {
+          normalize: false,
+        });
+      }),
     );
 
     await this.storage.putBatch(preparedVectors, options);
@@ -192,7 +197,7 @@ export class VectorDB {
   async getVector(id: string): Promise<VectorData | null> {
     // Validate input
     const validatedId = InputValidator.validateVectorId(id);
-    
+
     await this.ensureInitialized();
 
     try {
@@ -212,10 +217,10 @@ export class VectorDB {
   async deleteVector(id: string): Promise<void> {
     // Validate input
     const validatedId = InputValidator.validateVectorId(id);
-    
+
     await this.ensureInitialized();
     await this.storage.delete(validatedId);
-    
+
     // Remove from index if using HNSW
     await this.searchEngine.removeVectorFromIndex(validatedId);
   }
@@ -226,12 +231,12 @@ export class VectorDB {
   async search(
     queryVector: VectorFormat,
     k: number = 10,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     // Validate inputs
     const validatedK = InputValidator.validateK(k);
     const validatedOptions = InputValidator.validateSearchOptions(options);
-    
+
     // Validate vector format and dimension
     VectorFormatHandler.validate(queryVector, this.dimension);
 
@@ -255,7 +260,7 @@ export class VectorDB {
   async searchRange(
     queryVector: VectorFormat,
     maxDistance: number,
-    options?: SearchOptions & { maxResults?: number }
+    options?: SearchOptions & { maxResults?: number },
   ): Promise<SearchResult[]> {
     await this.ensureInitialized();
 
@@ -276,11 +281,11 @@ export class VectorDB {
    */
   async *searchStream(
     queryVector: VectorFormat,
-    options?: SearchOptions & { 
-      batchSize?: number; 
+    options?: SearchOptions & {
+      batchSize?: number;
       maxResults?: number;
       progressive?: boolean;
-    }
+    },
   ): AsyncGenerator<SearchResult[], void, unknown> {
     await this.ensureInitialized();
 
@@ -310,7 +315,7 @@ export class VectorDB {
   async setIndexing(enabled: boolean): Promise<void> {
     await this.ensureInitialized();
     this.searchEngine.setIndexing(enabled, this.distanceMetric);
-    
+
     if (enabled) {
       // Rebuild index from existing vectors
       await this.searchEngine.rebuildIndex();
@@ -343,21 +348,29 @@ export class VectorDB {
   private setupQuotaMonitoring(): void {
     this.quotaMonitor.addListener(async (warning: QuotaWarning) => {
       console.warn(`Storage quota warning: ${warning.message}`);
-      
-      if (this.autoEviction && (warning.type === 'critical' || warning.type === 'emergency')) {
+
+      if (
+        this.autoEviction &&
+        (warning.type === 'critical' || warning.type === 'emergency')
+      ) {
         try {
           // Calculate target bytes to free
-          const targetBytes = warning.type === 'emergency' 
-            ? Math.floor(warning.quota * 0.2) // Free 20% of quota
-            : Math.floor(warning.quota * 0.1); // Free 10% of quota
+          const targetBytes =
+            warning.type === 'emergency'
+              ? Math.floor(warning.quota * 0.2) // Free 20% of quota
+              : Math.floor(warning.quota * 0.1); // Free 10% of quota
 
-          console.log(`Attempting automatic eviction to free ${this.formatBytes(targetBytes)}`);
-          
+          console.log(
+            `Attempting automatic eviction to free ${this.formatBytes(targetBytes)}`,
+          );
+
           const suggestion = await this.evictionManager.suggestStrategy(targetBytes);
           const result = await this.evictionManager.evict(suggestion.config);
-          
-          console.log(`Automatic eviction completed: freed ${this.formatBytes(result.freedBytes)} by removing ${result.evictedCount} vectors`);
-          
+
+          console.log(
+            `Automatic eviction completed: freed ${this.formatBytes(result.freedBytes)} by removing ${result.evictedCount} vectors`,
+          );
+
           // Update search index after eviction
           if (result.evictedCount > 0) {
             await this.searchEngine.rebuildIndex();
@@ -388,16 +401,16 @@ export class VectorDB {
     };
   } | null> {
     const quotaInfo = await this.quotaMonitor.forceCheck();
-    
+
     if (!quotaInfo) {
       return null;
     }
 
     const breakdown = await this.quotaMonitor.getStorageBreakdown();
-    
+
     return {
       ...quotaInfo,
-      breakdown
+      breakdown,
     };
   }
 
@@ -417,15 +430,15 @@ export class VectorDB {
    */
   async evictVectors(config?: Partial<EvictionConfig>): Promise<EvictionResult> {
     await this.ensureInitialized();
-    
+
     const evictionConfig: EvictionConfig = {
       strategy: 'hybrid',
       preservePermanent: true,
-      ...config
+      ...config,
     };
 
     const result = await this.evictionManager.evict(evictionConfig);
-    
+
     // Update search index after eviction
     if (result.evictedCount > 0) {
       await this.searchEngine.rebuildIndex();
@@ -453,16 +466,18 @@ export class VectorDB {
     };
   }> {
     await this.ensureInitialized();
-    
+
     const stats = await this.evictionManager.getEvictionStats();
-    
+
     // Only provide suggestion if there are vectors to potentially evict
-    let suggestion: {
-      strategy: EvictionConfig['strategy'];
-      config: EvictionConfig;
-      reasoning: string;
-    } | undefined = undefined;
-    
+    let suggestion:
+      | {
+          strategy: EvictionConfig['strategy'];
+          config: EvictionConfig;
+          reasoning: string;
+        }
+      | undefined = undefined;
+
     if (stats.totalVectors > 0) {
       // Suggest freeing 10% of current usage
       const targetBytes = Math.floor(stats.totalEstimatedBytes * 0.1);
@@ -507,12 +522,12 @@ export class VectorDB {
     const units = ['B', 'KB', 'MB', 'GB'];
     let size = bytes;
     let unitIndex = 0;
-    
+
     while (size >= 1024 && unitIndex < units.length - 1) {
       size /= 1024;
       unitIndex++;
     }
-    
+
     return `${size.toFixed(1)} ${units[unitIndex]}`;
   }
 
@@ -531,7 +546,7 @@ export class VectorDB {
     return {
       vectorCount,
       dimension: this.dimension,
-      initialized: this.initialized
+      initialized: this.initialized,
     };
   }
 
@@ -573,7 +588,7 @@ export class VectorDB {
   async getMany(ids: string[]): Promise<VectorData[]> {
     // Validate input
     const validatedIds = InputValidator.validateVectorIds(ids);
-    
+
     await this.ensureInitialized();
     return this.storage.getMany(validatedIds);
   }
@@ -598,12 +613,12 @@ export class VectorDB {
    * Update a vector's data
    */
   async updateVector(
-    id: string, 
+    id: string,
     vector: VectorFormat,
-    options?: { 
+    options?: {
       updateMagnitude?: boolean;
       updateTimestamp?: boolean;
-    }
+    },
   ): Promise<void> {
     await this.ensureInitialized();
 
@@ -627,7 +642,7 @@ export class VectorDB {
     options?: {
       merge?: boolean;
       updateTimestamp?: boolean;
-    }
+    },
   ): Promise<void> {
     await this.ensureInitialized();
     await this.storage.updateMetadata(id, metadata, options);
@@ -642,12 +657,16 @@ export class VectorDB {
       vector?: VectorFormat;
       metadata?: Record<string, unknown>;
     }>,
-    options?: BatchOptions
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+    options?: BatchOptions,
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     await this.ensureInitialized();
 
     // Validate and convert vectors
-    const processedUpdates = updates.map(update => {
+    const processedUpdates = updates.map((update) => {
       const processed: {
         id: string;
         vector?: Float32Array;

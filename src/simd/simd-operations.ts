@@ -47,7 +47,7 @@ export class SIMDOperations {
       enableSIMD: config.enableSIMD ?? true,
       simdThreshold: config.simdThreshold || 16,
       enableProfiling: config.enableProfiling ?? false,
-      chunkSize: config.chunkSize || 128
+      chunkSize: config.chunkSize || 128,
     };
 
     this.capabilities = this.detectCapabilities();
@@ -61,7 +61,7 @@ export class SIMDOperations {
       supported: false,
       instructionSets: [],
       optimalChunkSize: 4,
-      maxBatchSize: 1000
+      maxBatchSize: 1000,
     };
 
     // Check for various SIMD-like optimizations available in JavaScript
@@ -69,13 +69,13 @@ export class SIMDOperations {
       // TypedArray operations are heavily optimized in modern engines
       capabilities.supported = true;
       capabilities.instructionSets.push('TypedArray');
-      
+
       // Check for WebAssembly SIMD support
       if (typeof WebAssembly !== 'undefined' && WebAssembly.validate) {
         try {
           // Simple WebAssembly SIMD detection
           const wasmSIMDTest = new Uint8Array([
-            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
           ]);
           if (WebAssembly.validate(wasmSIMDTest)) {
             capabilities.instructionSets.push('WebAssembly');
@@ -87,8 +87,9 @@ export class SIMDOperations {
 
       // Determine optimal chunk size based on typical cache line sizes
       capabilities.optimalChunkSize = this.determineOptimalChunkSize();
-      capabilities.maxBatchSize = Math.floor(1024 * 1024 / (capabilities.optimalChunkSize * 4)); // 1MB / (chunk * 4 bytes)
-
+      capabilities.maxBatchSize = Math.floor(
+        (1024 * 1024) / (capabilities.optimalChunkSize * 4),
+      ); // 1MB / (chunk * 4 bytes)
     } catch {
       capabilities.supported = false;
     }
@@ -104,13 +105,13 @@ export class SIMDOperations {
     // Float32 = 4 bytes, so 16 floats per cache line
     // Use multiples of 16 for optimal memory access patterns
     const baseLine = 16;
-    
+
     // Adjust based on available memory and typical vector sizes
     if (typeof navigator !== 'undefined' && 'hardwareConcurrency' in navigator) {
       const cores = navigator.hardwareConcurrency || 4;
       return baseLine * Math.min(cores, 8); // Cap at 128 for very high-core systems
     }
-    
+
     return baseLine * 4; // 64 floats default
   }
 
@@ -142,10 +143,12 @@ export class SIMDOperations {
 
     const startTime = this.config.enableProfiling ? performance.now() : 0;
     const result = this.simdDotProduct(a, b);
-    
+
     if (this.config.enableProfiling) {
       const endTime = performance.now();
-      console.debug(`SIMD dot product: ${endTime - startTime}ms for ${a.length} elements`);
+      console.debug(
+        `SIMD dot product: ${endTime - startTime}ms for ${a.length} elements`,
+      );
     }
 
     return result;
@@ -165,10 +168,12 @@ export class SIMDOperations {
 
     const startTime = this.config.enableProfiling ? performance.now() : 0;
     const result = this.simdEuclideanDistance(a, b);
-    
+
     if (this.config.enableProfiling) {
       const endTime = performance.now();
-      console.debug(`SIMD Euclidean distance: ${endTime - startTime}ms for ${a.length} elements`);
+      console.debug(
+        `SIMD Euclidean distance: ${endTime - startTime}ms for ${a.length} elements`,
+      );
     }
 
     return result;
@@ -188,10 +193,12 @@ export class SIMDOperations {
 
     const startTime = this.config.enableProfiling ? performance.now() : 0;
     const result = this.simdManhattanDistance(a, b);
-    
+
     if (this.config.enableProfiling) {
       const endTime = performance.now();
-      console.debug(`SIMD Manhattan distance: ${endTime - startTime}ms for ${a.length} elements`);
+      console.debug(
+        `SIMD Manhattan distance: ${endTime - startTime}ms for ${a.length} elements`,
+      );
     }
 
     return result;
@@ -207,10 +214,12 @@ export class SIMDOperations {
 
     const startTime = this.config.enableProfiling ? performance.now() : 0;
     const result = this.simdNormalize(vector);
-    
+
     if (this.config.enableProfiling) {
       const endTime = performance.now();
-      console.debug(`SIMD normalize: ${endTime - startTime}ms for ${vector.length} elements`);
+      console.debug(
+        `SIMD normalize: ${endTime - startTime}ms for ${vector.length} elements`,
+      );
     }
 
     return result;
@@ -230,7 +239,7 @@ export class SIMDOperations {
     // Process in chunks for better cache utilization
     for (let i = 0; i < vectors.length; i += chunkSize) {
       const endIdx = Math.min(i + chunkSize, vectors.length);
-      
+
       for (let j = i; j < endIdx; j++) {
         const vector = vectors[j];
         if (vector) {
@@ -252,7 +261,7 @@ export class SIMDOperations {
     // Process in chunks for memory efficiency
     for (let i = 0; i < vectors.length; i += chunkSize) {
       const endIdx = Math.min(i + chunkSize, vectors.length);
-      
+
       for (let j = i; j < endIdx; j++) {
         const vector = vectors[j];
         if (vector) {
@@ -323,9 +332,11 @@ export class SIMDOperations {
   // Private SIMD implementations
 
   private shouldUseSIMD(length: number): boolean {
-    return this.config.enableSIMD && 
-           this.capabilities.supported && 
-           length >= this.config.simdThreshold;
+    return (
+      this.config.enableSIMD &&
+      this.capabilities.supported &&
+      length >= this.config.simdThreshold
+    );
   }
 
   private simdDotProduct(a: Float32Array, b: Float32Array): number {
@@ -341,10 +352,11 @@ export class SIMDOperations {
       for (let j = 0; j < chunkSize; j += 4) {
         const idx = i + j;
         if (idx + 3 < length) {
-          chunkSum += a[idx]! * b[idx]! + 
-                     a[idx + 1]! * b[idx + 1]! + 
-                     a[idx + 2]! * b[idx + 2]! + 
-                     a[idx + 3]! * b[idx + 3]!;
+          chunkSum +=
+            a[idx]! * b[idx]! +
+            a[idx + 1]! * b[idx + 1]! +
+            a[idx + 2]! * b[idx + 2]! +
+            a[idx + 3]! * b[idx + 3]!;
         }
       }
       sum += chunkSum;
@@ -398,10 +410,11 @@ export class SIMDOperations {
       for (let j = 0; j < chunkSize; j += 4) {
         const idx = i + j;
         if (idx + 3 < length) {
-          chunkSum += Math.abs(a[idx]! - b[idx]!) + 
-                     Math.abs(a[idx + 1]! - b[idx + 1]!) + 
-                     Math.abs(a[idx + 2]! - b[idx + 2]!) + 
-                     Math.abs(a[idx + 3]! - b[idx + 3]!);
+          chunkSum +=
+            Math.abs(a[idx]! - b[idx]!) +
+            Math.abs(a[idx + 1]! - b[idx + 1]!) +
+            Math.abs(a[idx + 2]! - b[idx + 2]!) +
+            Math.abs(a[idx + 3]! - b[idx + 3]!);
         }
       }
       sum += chunkSum;
@@ -417,7 +430,7 @@ export class SIMDOperations {
   private simdNormalize(vector: Float32Array): Float32Array {
     // First pass: compute magnitude using SIMD
     const magnitude = Math.sqrt(this.simdDotProduct(vector, vector));
-    
+
     if (magnitude === 0) {
       return new Float32Array(vector);
     }
@@ -426,7 +439,11 @@ export class SIMDOperations {
     return this.simdScalarMultiply(vector, 1 / magnitude);
   }
 
-  private simdFusedMultiplyAdd(a: Float32Array, b: Float32Array, c: Float32Array): Float32Array {
+  private simdFusedMultiplyAdd(
+    a: Float32Array,
+    b: Float32Array,
+    c: Float32Array,
+  ): Float32Array {
     const result = new Float32Array(a.length);
     const length = a.length;
     const chunkSize = this.capabilities.optimalChunkSize;
@@ -558,7 +575,7 @@ export class SIMDOperations {
     for (let i = 0; i < vector.length; i++) {
       sumSquares += vector[i]! * vector[i]!;
     }
-    
+
     const magnitude = Math.sqrt(sumSquares);
     if (magnitude === 0) return new Float32Array(vector);
 
@@ -569,7 +586,11 @@ export class SIMDOperations {
     return result;
   }
 
-  private scalarFusedMultiplyAdd(a: Float32Array, b: Float32Array, c: Float32Array): Float32Array {
+  private scalarFusedMultiplyAdd(
+    a: Float32Array,
+    b: Float32Array,
+    c: Float32Array,
+  ): Float32Array {
     const result = new Float32Array(a.length);
     for (let i = 0; i < a.length; i++) {
       result[i] = a[i]! * b[i]! + c[i]!;
@@ -604,14 +625,17 @@ export class SIMDOperations {
   /**
    * Benchmark SIMD vs scalar performance
    */
-  benchmark(vectorLength: number = 1000, iterations: number = 1000): {
+  benchmark(
+    vectorLength: number = 1000,
+    iterations: number = 1000,
+  ): {
     simd: SIMDPerformanceStats;
     scalar: SIMDPerformanceStats;
     speedup: number;
   } {
     const a = new Float32Array(vectorLength);
     const b = new Float32Array(vectorLength);
-    
+
     // Fill with random data
     for (let i = 0; i < vectorLength; i++) {
       a[i] = Math.random();
@@ -642,15 +666,15 @@ export class SIMDOperations {
         processingTime: simdTime,
         operationCount: iterations,
         operationsPerSecond: iterations / (simdTime / 1000),
-        memoryThroughput: totalData / (simdTime / 1000)
+        memoryThroughput: totalData / (simdTime / 1000),
       },
       scalar: {
         processingTime: scalarTime,
         operationCount: iterations,
         operationsPerSecond: iterations / (scalarTime / 1000),
-        memoryThroughput: totalData / (scalarTime / 1000)
+        memoryThroughput: totalData / (scalarTime / 1000),
       },
-      speedup: scalarTime / simdTime
+      speedup: scalarTime / simdTime,
     };
   }
 }
