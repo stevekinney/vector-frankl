@@ -1,8 +1,8 @@
-import { VectorFormatHandler } from './formats.js';
 import { DimensionMismatchError } from '@/core/errors.js';
-import type { VectorFormat, VectorData } from '@/core/types.js';
+import type { VectorData, VectorFormat } from '@/core/types.js';
 import { SIMDOperations } from '../simd/simd-operations.js';
 import { WASMOperations } from '../wasm/wasm-operations.js';
+import { VectorFormatHandler } from './formats.js';
 
 /**
  * Vector mathematical operations with WebAssembly and SIMD acceleration
@@ -75,7 +75,7 @@ export class VectorOperations {
   static getCapabilities() {
     return {
       wasm: this.wasmOps.getCapabilities(),
-      simd: this.simdOps.getCapabilities()
+      simd: this.simdOps.getCapabilities(),
     };
   }
   /**
@@ -86,7 +86,7 @@ export class VectorOperations {
     if (vector.length >= this.simdThreshold) {
       return Math.sqrt(this.simdOps.dotProduct(vector, vector));
     }
-    
+
     // Fallback to scalar implementation for small vectors
     let sum = 0;
     for (let i = 0; i < vector.length; i++) {
@@ -107,7 +107,7 @@ export class VectorOperations {
         // Fall through to synchronous calculation
       }
     }
-    
+
     // Use synchronous version for all other cases
     return this.magnitudeSync(vector);
   }
@@ -120,10 +120,10 @@ export class VectorOperations {
     if (vector.length >= this.simdThreshold) {
       return this.simdOps.normalize(vector);
     }
-    
+
     // Fallback to scalar implementation for small vectors
     const mag = this.magnitudeSync(vector);
-    
+
     if (mag === 0) {
       // Return zero vector if magnitude is 0
       return new Float32Array(vector.length);
@@ -133,7 +133,7 @@ export class VectorOperations {
     for (let i = 0; i < vector.length; i++) {
       normalized[i] = vector[i]! / mag;
     }
-    
+
     return normalized;
   }
 
@@ -149,7 +149,7 @@ export class VectorOperations {
         // Fall through to synchronous calculation
       }
     }
-    
+
     // Use synchronous version for all other cases
     return this.normalizeSync(vector);
   }
@@ -159,7 +159,7 @@ export class VectorOperations {
    */
   static async normalizeInPlace(vector: Float32Array): Promise<Float32Array> {
     const mag = await this.magnitude(vector);
-    
+
     if (mag === 0) {
       // Set to zero vector if magnitude is 0
       vector.fill(0);
@@ -169,7 +169,7 @@ export class VectorOperations {
     for (let i = 0; i < vector.length; i++) {
       vector[i]! /= mag;
     }
-    
+
     return vector;
   }
 
@@ -207,7 +207,7 @@ export class VectorOperations {
     for (let i = 0; i < vectorA.length; i++) {
       sum += vectorA[i]! * vectorB[i]!;
     }
-    
+
     return sum;
   }
 
@@ -250,7 +250,7 @@ export class VectorOperations {
     for (let i = 0; i < vectorA.length; i++) {
       result[i] = vectorA[i]! + vectorB[i]!;
     }
-    
+
     return result;
   }
 
@@ -278,7 +278,10 @@ export class VectorOperations {
   /**
    * Subtract vectorB from vectorA
    */
-  static async subtract(vectorA: Float32Array, vectorB: Float32Array): Promise<Float32Array> {
+  static async subtract(
+    vectorA: Float32Array,
+    vectorB: Float32Array,
+  ): Promise<Float32Array> {
     if (vectorA.length !== vectorB.length) {
       throw new DimensionMismatchError(vectorA.length, vectorB.length);
     }
@@ -301,7 +304,7 @@ export class VectorOperations {
     for (let i = 0; i < vectorA.length; i++) {
       result[i] = vectorA[i]! - vectorB[i]!;
     }
-    
+
     return result;
   }
 
@@ -327,7 +330,7 @@ export class VectorOperations {
     for (let i = 0; i < vector.length; i++) {
       result[i] = vector[i]! * scalar;
     }
-    
+
     return result;
   }
 
@@ -347,7 +350,7 @@ export class VectorOperations {
       if (vector.length !== dimension) {
         throw new DimensionMismatchError(dimension, vector.length);
       }
-      
+
       for (let i = 0; i < dimension; i++) {
         result[i]! += vector[i]!;
       }
@@ -378,7 +381,7 @@ export class VectorOperations {
       if (vector.length !== dimension) {
         throw new DimensionMismatchError(dimension, vector.length);
       }
-      
+
       for (let i = 0; i < dimension; i++) {
         const diff = vector[i]! - meanVector[i]!;
         result[i]! += diff * diff;
@@ -399,7 +402,7 @@ export class VectorOperations {
   static standardDeviation(vectors: Float32Array[], mean?: Float32Array): Float32Array {
     const variance = this.variance(vectors, mean);
     const result = new Float32Array(variance.length);
-    
+
     for (let i = 0; i < variance.length; i++) {
       result[i] = Math.sqrt(variance[i]!);
     }
@@ -430,7 +433,7 @@ export class VectorOperations {
   static random(dimension: number, min = -1, max = 1): Float32Array {
     const vector = new Float32Array(dimension);
     const range = max - min;
-    
+
     for (let i = 0; i < dimension; i++) {
       vector[i] = Math.random() * range + min;
     }
@@ -456,19 +459,19 @@ export class VectorOperations {
     options?: {
       normalize?: boolean;
       format?: string;
-    }
+    },
   ): Promise<VectorData> {
     // Convert to Float32Array
     const float32Vector = VectorFormatHandler.toFloat32Array(vector);
-    
+
     // Normalize if requested
-    const finalVector = options?.normalize 
+    const finalVector = options?.normalize
       ? await this.normalize(float32Vector)
       : float32Vector;
-    
+
     // Calculate magnitude
     const magnitude = await this.magnitude(finalVector);
-    
+
     return {
       id,
       vector: finalVector,
@@ -476,7 +479,7 @@ export class VectorOperations {
       timestamp: Date.now(),
       ...(metadata && { metadata }),
       ...(options?.format && { format: options.format }),
-      ...(options?.normalize && { normalized: options.normalize })
+      ...(options?.normalize && { normalized: options.normalize }),
     };
   }
 }

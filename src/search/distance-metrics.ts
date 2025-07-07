@@ -47,7 +47,7 @@ export class DistanceMetrics {
     if (!metric) {
       throw new InvalidFormatError(
         `Unknown distance metric: ${name}`,
-        Array.from(this.metrics.keys())
+        Array.from(this.metrics.keys()),
       );
     }
     return metric;
@@ -75,7 +75,7 @@ export class DistanceMetrics {
         }
         // Return distance (0 = identical, 2 = opposite)
         return 1 - dotProduct;
-      }
+      },
     });
 
     // Euclidean distance (L2 norm)
@@ -88,7 +88,7 @@ export class DistanceMetrics {
           sum += diff * diff;
         }
         return Math.sqrt(sum);
-      }
+      },
     });
 
     // Manhattan distance (L1 norm)
@@ -100,7 +100,7 @@ export class DistanceMetrics {
           sum += Math.abs(vectorA[i]! - vectorB[i]!);
         }
         return sum;
-      }
+      },
     });
 
     // Hamming distance (for binary vectors)
@@ -118,7 +118,7 @@ export class DistanceMetrics {
           }
         }
         return distance;
-      }
+      },
     });
 
     // Jaccard distance (for sparse/binary vectors)
@@ -132,7 +132,7 @@ export class DistanceMetrics {
         for (let i = 0; i < vectorA.length; i++) {
           const a = vectorA[i]! > 0 ? 1 : 0;
           const b = vectorB[i]! > 0 ? 1 : 0;
-          
+
           if (a || b) {
             union++;
             if (a && b) {
@@ -146,8 +146,8 @@ export class DistanceMetrics {
         }
 
         // Jaccard distance = 1 - Jaccard similarity
-        return 1 - (intersection / union);
-      }
+        return 1 - intersection / union;
+      },
     });
 
     // Dot product (not a distance, but useful for scoring)
@@ -160,7 +160,7 @@ export class DistanceMetrics {
         }
         // Return negative to maintain "lower is better" convention
         return -dotProduct;
-      }
+      },
     });
   }
 }
@@ -184,7 +184,7 @@ export class OptimizedDistanceMetrics {
       const diff1 = vectorA[i + 1]! - vectorB[i + 1]!;
       const diff2 = vectorA[i + 2]! - vectorB[i + 2]!;
       const diff3 = vectorA[i + 3]! - vectorB[i + 3]!;
-      
+
       sum += diff0 * diff0 + diff1 * diff1 + diff2 * diff2 + diff3 * diff3;
     }
 
@@ -208,10 +208,11 @@ export class OptimizedDistanceMetrics {
     // Process 4 elements at a time
     const unrollLimit = length - 3;
     for (; i < unrollLimit; i += 4) {
-      dotProduct += vectorA[i]! * vectorB[i]! +
-                   vectorA[i + 1]! * vectorB[i + 1]! +
-                   vectorA[i + 2]! * vectorB[i + 2]! +
-                   vectorA[i + 3]! * vectorB[i + 3]!;
+      dotProduct +=
+        vectorA[i]! * vectorB[i]! +
+        vectorA[i + 1]! * vectorB[i + 1]! +
+        vectorA[i + 2]! * vectorB[i + 2]! +
+        vectorA[i + 3]! * vectorB[i + 3]!;
     }
 
     // Process remaining elements
@@ -241,7 +242,7 @@ export class DistanceCalculator {
   calculate(vectorA: Float32Array, vectorB: Float32Array): number {
     if (vectorA.length !== vectorB.length) {
       throw new Error(
-        `Vector dimension mismatch: ${vectorA.length} vs ${vectorB.length}`
+        `Vector dimension mismatch: ${vectorA.length} vs ${vectorB.length}`,
       );
     }
 
@@ -262,16 +263,16 @@ export class DistanceCalculator {
    * Calculate distances from query to multiple vectors
    */
   calculateBatch(
-    query: Float32Array, 
-    vectors: Float32Array[], 
-    options?: { parallel?: boolean }
+    query: Float32Array,
+    vectors: Float32Array[],
+    options?: { parallel?: boolean },
   ): number[] {
     if (options?.parallel && vectors.length > 1000) {
       // For large batches, consider chunking
       return this.calculateBatchChunked(query, vectors);
     }
 
-    return vectors.map(vector => this.calculate(query, vector));
+    return vectors.map((vector) => this.calculate(query, vector));
   }
 
   /**
@@ -280,14 +281,14 @@ export class DistanceCalculator {
   private calculateBatchChunked(
     query: Float32Array,
     vectors: Float32Array[],
-    chunkSize = 1000
+    chunkSize = 1000,
   ): number[] {
     const results: number[] = new Array(vectors.length);
-    
+
     for (let i = 0; i < vectors.length; i += chunkSize) {
       const chunk = vectors.slice(i, i + chunkSize);
-      const chunkResults = chunk.map(vector => this.calculate(query, vector));
-      
+      const chunkResults = chunk.map((vector) => this.calculate(query, vector));
+
       for (let j = 0; j < chunkResults.length; j++) {
         results[i + j] = chunkResults[j]!;
       }
@@ -302,12 +303,12 @@ export class DistanceCalculator {
   findNearest(
     query: Float32Array,
     vectors: Array<{ id: string; vector: Float32Array }>,
-    k: number
+    k: number,
   ): Array<{ id: string; distance: number }> {
     // Calculate all distances
-    const distances = vectors.map(item => ({
+    const distances = vectors.map((item) => ({
       id: item.id,
-      distance: this.calculate(query, item.vector)
+      distance: this.calculate(query, item.vector),
     }));
 
     // Sort by distance and return top k
@@ -321,7 +322,7 @@ export class DistanceCalculator {
  */
 export function createDistanceCalculator(
   metricName: string,
-  options?: { optimize?: boolean }
+  options?: { optimize?: boolean },
 ): DistanceCalculator {
   return new DistanceCalculator(metricName, options);
 }

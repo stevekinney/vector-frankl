@@ -1,10 +1,6 @@
 import { VectorDatabase } from './database.js';
-import { 
-  VectorNotFoundError, 
-  TransactionError,
-  BatchOperationError 
-} from './errors.js';
-import type { VectorData, BatchOptions, BatchProgress } from './types.js';
+import { BatchOperationError, TransactionError, VectorNotFoundError } from './errors.js';
+import type { BatchOptions, BatchProgress, VectorData } from './types.js';
 
 // Default batch size constant
 const DEFAULT_BATCH_SIZE = 1000;
@@ -24,27 +20,28 @@ export class VectorStorage {
       'readwrite',
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         // Update timestamp
         const vectorToStore = {
           ...vector,
           timestamp: vector.timestamp || Date.now(),
-          lastAccessed: Date.now()
+          lastAccessed: Date.now(),
         };
 
         return new Promise<void>((resolve, reject) => {
           const request = store.put(vectorToStore);
-          
+
           request.onsuccess = () => resolve();
-          request.onerror = () => reject(
-            new TransactionError(
-              'put vector',
-              `Failed to store vector with ID: ${vector.id}`,
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'put vector',
+                `Failed to store vector with ID: ${vector.id}`,
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
   }
 
@@ -57,13 +54,13 @@ export class VectorStorage {
       'readwrite', // readwrite to update lastAccessed
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         return new Promise<VectorData>((resolve, reject) => {
           const request = store.get(id);
-          
+
           request.onsuccess = () => {
             const vector = request.result;
-            
+
             if (!vector) {
               reject(new VectorNotFoundError(id));
               return;
@@ -72,29 +69,31 @@ export class VectorStorage {
             // Update access metadata
             vector.lastAccessed = Date.now();
             vector.accessCount = (vector.accessCount || 0) + 1;
-            
+
             // Store updated metadata
             const updateRequest = store.put(vector);
-            
+
             updateRequest.onsuccess = () => resolve(vector);
-            updateRequest.onerror = () => reject(
-              new TransactionError(
-                'update access metadata',
-                `Failed to update access metadata for vector: ${id}`,
-                updateRequest.error || undefined
-              )
-            );
+            updateRequest.onerror = () =>
+              reject(
+                new TransactionError(
+                  'update access metadata',
+                  `Failed to update access metadata for vector: ${id}`,
+                  updateRequest.error || undefined,
+                ),
+              );
           };
-          
-          request.onerror = () => reject(
-            new TransactionError(
-              'get vector',
-              `Failed to retrieve vector with ID: ${id}`,
-              request.error || undefined
-            )
-          );
+
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'get vector',
+                `Failed to retrieve vector with ID: ${id}`,
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
 
     return result;
@@ -113,51 +112,54 @@ export class VectorStorage {
         const errors: Array<{ id: string; error: Error }> = [];
 
         await Promise.all(
-          ids.map(id => new Promise<void>((resolve) => {
-            const request = store.get(id);
-            
-            request.onsuccess = () => {
-              const vector = request.result;
-              
-              if (vector) {
-                // Update access metadata
-                vector.lastAccessed = Date.now();
-                vector.accessCount = (vector.accessCount || 0) + 1;
-                
-                const updateRequest = store.put(vector);
-                updateRequest.onsuccess = () => {
-                  vectors.push(vector);
-                  resolve();
+          ids.map(
+            (id) =>
+              new Promise<void>((resolve) => {
+                const request = store.get(id);
+
+                request.onsuccess = () => {
+                  const vector = request.result;
+
+                  if (vector) {
+                    // Update access metadata
+                    vector.lastAccessed = Date.now();
+                    vector.accessCount = (vector.accessCount || 0) + 1;
+
+                    const updateRequest = store.put(vector);
+                    updateRequest.onsuccess = () => {
+                      vectors.push(vector);
+                      resolve();
+                    };
+                    updateRequest.onerror = () => {
+                      errors.push({
+                        id,
+                        error: new TransactionError(
+                          'update access metadata',
+                          `Failed to update metadata for vector: ${id}`,
+                          updateRequest.error || undefined,
+                        ),
+                      });
+                      resolve();
+                    };
+                  } else {
+                    errors.push({ id, error: new VectorNotFoundError(id) });
+                    resolve();
+                  }
                 };
-                updateRequest.onerror = () => {
-                  errors.push({ 
-                    id, 
+
+                request.onerror = () => {
+                  errors.push({
+                    id,
                     error: new TransactionError(
-                      'update access metadata',
-                      `Failed to update metadata for vector: ${id}`,
-                      updateRequest.error || undefined
-                    )
+                      'get vector',
+                      `Failed to retrieve vector: ${id}`,
+                      request.error || undefined,
+                    ),
                   });
                   resolve();
                 };
-              } else {
-                errors.push({ id, error: new VectorNotFoundError(id) });
-                resolve();
-              }
-            };
-            
-            request.onerror = () => {
-              errors.push({ 
-                id, 
-                error: new TransactionError(
-                  'get vector',
-                  `Failed to retrieve vector: ${id}`,
-                  request.error || undefined
-                )
-              });
-              resolve();
-            };
-          }))
+              }),
+          ),
         );
 
         if (errors.length > 0 && errors.length === ids.length) {
@@ -165,11 +167,14 @@ export class VectorStorage {
         }
 
         return { vectors, errors };
-      }
+      },
     );
 
     if (results.errors.length > 0) {
-      console.warn(`Failed to retrieve ${results.errors.length} vectors:`, results.errors);
+      console.warn(
+        `Failed to retrieve ${results.errors.length} vectors:`,
+        results.errors,
+      );
     }
 
     return results.vectors;
@@ -184,20 +189,21 @@ export class VectorStorage {
       'readonly',
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         return new Promise<boolean>((resolve, reject) => {
           const request = store.count(id);
-          
+
           request.onsuccess = () => resolve(request.result > 0);
-          request.onerror = () => reject(
-            new TransactionError(
-              'check existence',
-              `Failed to check if vector exists: ${id}`,
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'check existence',
+                `Failed to check if vector exists: ${id}`,
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
   }
 
@@ -210,20 +216,21 @@ export class VectorStorage {
       'readwrite',
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         return new Promise<void>((resolve, reject) => {
           const request = store.delete(id);
-          
+
           request.onsuccess = () => resolve();
-          request.onerror = () => reject(
-            new TransactionError(
-              'delete vector',
-              `Failed to delete vector with ID: ${id}`,
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'delete vector',
+                `Failed to delete vector with ID: ${id}`,
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
   }
 
@@ -240,26 +247,29 @@ export class VectorStorage {
         const errors: Array<{ id: string; error: Error }> = [];
 
         await Promise.all(
-          ids.map(id => new Promise<void>((resolve) => {
-            const request = store.delete(id);
-            
-            request.onsuccess = () => {
-              deletedCount++;
-              resolve();
-            };
-            
-            request.onerror = () => {
-              errors.push({ 
-                id, 
-                error: new TransactionError(
-                  'delete vector',
-                  `Failed to delete vector: ${id}`,
-                  request.error || undefined
-                )
-              });
-              resolve();
-            };
-          }))
+          ids.map(
+            (id) =>
+              new Promise<void>((resolve) => {
+                const request = store.delete(id);
+
+                request.onsuccess = () => {
+                  deletedCount++;
+                  resolve();
+                };
+
+                request.onerror = () => {
+                  errors.push({
+                    id,
+                    error: new TransactionError(
+                      'delete vector',
+                      `Failed to delete vector: ${id}`,
+                      request.error || undefined,
+                    ),
+                  });
+                  resolve();
+                };
+              }),
+          ),
         );
 
         if (errors.length > 0 && errors.length === ids.length) {
@@ -267,7 +277,7 @@ export class VectorStorage {
         }
 
         return { deletedCount, errors };
-      }
+      },
     );
 
     if (result.errors.length > 0) {
@@ -286,20 +296,21 @@ export class VectorStorage {
       'readonly',
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         return new Promise<VectorData[]>((resolve, reject) => {
           const request = store.getAll();
-          
+
           request.onsuccess = () => resolve(request.result || []);
-          request.onerror = () => reject(
-            new TransactionError(
-              'get all vectors',
-              'Failed to retrieve all vectors',
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'get all vectors',
+                'Failed to retrieve all vectors',
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
   }
 
@@ -312,20 +323,21 @@ export class VectorStorage {
       'readonly',
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         return new Promise<number>((resolve, reject) => {
           const request = store.count();
-          
+
           request.onsuccess = () => resolve(request.result);
-          request.onerror = () => reject(
-            new TransactionError(
-              'count vectors',
-              'Failed to count vectors',
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'count vectors',
+                'Failed to count vectors',
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
   }
 
@@ -338,35 +350,29 @@ export class VectorStorage {
       'readwrite',
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         return new Promise<void>((resolve, reject) => {
           const request = store.clear();
-          
+
           request.onsuccess = () => resolve();
-          request.onerror = () => reject(
-            new TransactionError(
-              'clear vectors',
-              'Failed to clear all vectors',
-              request.error || undefined
-            )
-          );
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'clear vectors',
+                'Failed to clear all vectors',
+                request.error || undefined,
+              ),
+            );
         });
-      }
+      },
     );
   }
 
   /**
    * Batch put vectors with progress reporting
    */
-  async putBatch(
-    vectors: VectorData[], 
-    options: BatchOptions = {}
-  ): Promise<void> {
-    const { 
-      batchSize = 1000, 
-      onProgress,
-      abortSignal 
-    } = options;
+  async putBatch(vectors: VectorData[], options: BatchOptions = {}): Promise<void> {
+    const { batchSize = 1000, onProgress, abortSignal } = options;
 
     const total = vectors.length;
     let completed = 0;
@@ -381,7 +387,7 @@ export class VectorStorage {
 
       const batch = vectors.slice(i, i + batchSize);
       const batchResult = await this.processBatch(batch);
-      
+
       completed += batchResult.succeeded;
       failed += batchResult.failed;
       errors.push(...batchResult.errors);
@@ -393,7 +399,7 @@ export class VectorStorage {
           failed,
           percentage: Math.round((completed / total) * 100),
           currentBatch: Math.floor(i / batchSize) + 1,
-          totalBatches: Math.ceil(total / batchSize)
+          totalBatches: Math.ceil(total / batchSize),
         };
         onProgress(progress);
       }
@@ -407,9 +413,7 @@ export class VectorStorage {
   /**
    * Process a single batch of vectors
    */
-  private async processBatch(
-    vectors: VectorData[]
-  ): Promise<{
+  private async processBatch(vectors: VectorData[]): Promise<{
     succeeded: number;
     failed: number;
     errors: Array<{ id: string; error: Error }>;
@@ -424,53 +428,60 @@ export class VectorStorage {
         const errors: Array<{ id: string; error: Error }> = [];
 
         await Promise.all(
-          vectors.map(vector => new Promise<void>((resolve) => {
-            const vectorToStore = {
-              ...vector,
-              timestamp: vector.timestamp || Date.now(),
-              lastAccessed: Date.now()
-            };
+          vectors.map(
+            (vector) =>
+              new Promise<void>((resolve) => {
+                const vectorToStore = {
+                  ...vector,
+                  timestamp: vector.timestamp || Date.now(),
+                  lastAccessed: Date.now(),
+                };
 
-            const request = store.put(vectorToStore);
-            
-            request.onsuccess = () => {
-              succeeded++;
-              resolve();
-            };
-            
-            request.onerror = () => {
-              failed++;
-              errors.push({ 
-                id: vector.id, 
-                error: new TransactionError(
-                  'put vector',
-                  `Failed to store vector: ${vector.id}`,
-                  request.error || undefined
-                )
-              });
-              resolve();
-            };
-          }))
+                const request = store.put(vectorToStore);
+
+                request.onsuccess = () => {
+                  succeeded++;
+                  resolve();
+                };
+
+                request.onerror = () => {
+                  failed++;
+                  errors.push({
+                    id: vector.id,
+                    error: new TransactionError(
+                      'put vector',
+                      `Failed to store vector: ${vector.id}`,
+                      request.error || undefined,
+                    ),
+                  });
+                  resolve();
+                };
+              }),
+          ),
         );
 
         return { succeeded, failed, errors };
-      }
+      },
     );
   }
 
   /**
    * Update a vector's data
    */
-  async updateVector(id: string, vector: Float32Array, options?: { 
-    updateMagnitude?: boolean;
-    updateTimestamp?: boolean;
-  }): Promise<void> {
+  async updateVector(
+    id: string,
+    vector: Float32Array,
+    options?: {
+      updateMagnitude?: boolean;
+      updateTimestamp?: boolean;
+    },
+  ): Promise<void> {
     await this.database.executeTransaction(
       VectorDatabase.STORES.VECTORS,
       'readwrite',
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         const existingVector = await this.getVectorFromStore(store, id);
         if (!existingVector) {
           throw new VectorNotFoundError(id);
@@ -478,7 +489,7 @@ export class VectorStorage {
 
         // Update vector data
         existingVector.vector = vector;
-        
+
         // Update magnitude if requested or if it doesn't exist
         if (options?.updateMagnitude !== false || !existingVector.magnitude) {
           let magnitude = 0;
@@ -494,23 +505,27 @@ export class VectorStorage {
         }
 
         await this.putVectorInStore(store, existingVector);
-      }
+      },
     );
   }
 
   /**
    * Update a vector's metadata
    */
-  async updateMetadata(id: string, metadata: Record<string, unknown>, options?: {
-    merge?: boolean;
-    updateTimestamp?: boolean;
-  }): Promise<void> {
+  async updateMetadata(
+    id: string,
+    metadata: Record<string, unknown>,
+    options?: {
+      merge?: boolean;
+      updateTimestamp?: boolean;
+    },
+  ): Promise<void> {
     await this.database.executeTransaction(
       VectorDatabase.STORES.VECTORS,
       'readwrite',
       async (transaction) => {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
-        
+
         const existingVector = await this.getVectorFromStore(store, id);
         if (!existingVector) {
           throw new VectorNotFoundError(id);
@@ -520,7 +535,7 @@ export class VectorStorage {
         if (options?.merge !== false) {
           existingVector.metadata = {
             ...existingVector.metadata,
-            ...metadata
+            ...metadata,
           };
         } else {
           existingVector.metadata = metadata;
@@ -532,7 +547,7 @@ export class VectorStorage {
         }
 
         await this.putVectorInStore(store, existingVector);
-      }
+      },
     );
   }
 
@@ -545,11 +560,15 @@ export class VectorStorage {
       vector?: Float32Array;
       metadata?: Record<string, unknown>;
     }>,
-    options?: BatchOptions
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+    options?: BatchOptions,
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     const batchSize = options?.batchSize || DEFAULT_BATCH_SIZE;
     const chunks = [];
-    
+
     for (let i = 0; i < updates.length; i += batchSize) {
       chunks.push(updates.slice(i, i + batchSize));
     }
@@ -560,9 +579,11 @@ export class VectorStorage {
 
     for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
       const chunk = chunks[chunkIndex]!;
-      
+
       if (options?.abortSignal?.aborted) {
-        throw new BatchOperationError(succeeded, failed, [{ id: 'batch', error: new Error('Batch update aborted') }]);
+        throw new BatchOperationError(succeeded, failed, [
+          { id: 'batch', error: new Error('Batch update aborted') },
+        ]);
       }
 
       const result = await this.database.executeTransaction(
@@ -596,7 +617,7 @@ export class VectorStorage {
                 if (update.metadata !== undefined) {
                   existingVector.metadata = {
                     ...existingVector.metadata,
-                    ...update.metadata
+                    ...update.metadata,
                   };
                 }
 
@@ -606,16 +627,16 @@ export class VectorStorage {
                 await this.putVectorInStore(store, existingVector);
                 chunkSucceeded.push(update.id);
               } catch (error) {
-                chunkErrors.push({ 
-                  id: update.id, 
-                  error: error instanceof Error ? error : new Error(String(error))
+                chunkErrors.push({
+                  id: update.id,
+                  error: error instanceof Error ? error : new Error(String(error)),
                 });
               }
-            })
+            }),
           );
 
           return { succeeded: chunkSucceeded, errors: chunkErrors };
-        }
+        },
       );
 
       succeeded += result.succeeded.length;
@@ -632,7 +653,7 @@ export class VectorStorage {
           failed,
           percentage: Math.round((Math.min(completed, total) / total) * 100),
           currentBatch: chunkIndex + 1,
-          totalBatches: chunks.length
+          totalBatches: chunks.length,
         });
       }
     }
@@ -645,21 +666,23 @@ export class VectorStorage {
    */
   private async getVectorFromStore(
     store: IDBObjectStore,
-    id: string
+    id: string,
   ): Promise<VectorData | null> {
     return new Promise((resolve, reject) => {
       const request = store.get(id);
-      
+
       request.onsuccess = () => {
         resolve(request.result || null);
       };
-      
+
       request.onerror = () => {
-        reject(new TransactionError(
-          'get vector from store',
-          `Failed to get vector ${id} from store`,
-          request.error || undefined
-        ));
+        reject(
+          new TransactionError(
+            'get vector from store',
+            `Failed to get vector ${id} from store`,
+            request.error || undefined,
+          ),
+        );
       };
     });
   }
@@ -669,26 +692,28 @@ export class VectorStorage {
    */
   private async putVectorInStore(
     store: IDBObjectStore,
-    vector: VectorData
+    vector: VectorData,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       const vectorToStore = {
         ...vector,
-        lastAccessed: Date.now()
+        lastAccessed: Date.now(),
       };
-      
+
       const request = store.put(vectorToStore);
-      
+
       request.onsuccess = () => {
         resolve();
       };
-      
+
       request.onerror = () => {
-        reject(new TransactionError(
-          'put vector in store',
-          `Failed to put vector ${vector.id} into store`,
-          request.error || undefined
-        ));
+        reject(
+          new TransactionError(
+            'put vector in store',
+            `Failed to put vector ${vector.id} into store`,
+            request.error || undefined,
+          ),
+        );
       };
     });
   }

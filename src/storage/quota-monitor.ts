@@ -34,7 +34,7 @@ export interface StorageBreakdown {
  */
 export class StorageQuotaMonitor {
   private static instance: StorageQuotaMonitor | null = null;
-  
+
   private safetyMargin: number;
   private checkInterval: number;
   private operationCount = 0;
@@ -43,10 +43,12 @@ export class StorageQuotaMonitor {
   private usageHistory: Array<{ timestamp: number; usage: number }> = [];
   private maxHistoryEntries = 100;
 
-  private constructor(options: {
-    safetyMargin?: number;
-    initialCheckInterval?: number;
-  } = {}) {
+  private constructor(
+    options: {
+      safetyMargin?: number;
+      initialCheckInterval?: number;
+    } = {},
+  ) {
     this.safetyMargin = options.safetyMargin ?? 0.15; // 15% safety buffer
     this.checkInterval = options.initialCheckInterval ?? 1000; // Check every 1000 operations initially
   }
@@ -82,7 +84,7 @@ export class StorageQuotaMonitor {
    * Emit a quota warning to all listeners
    */
   private emit(warning: QuotaWarning): void {
-    this.listeners.forEach(callback => {
+    this.listeners.forEach((callback) => {
       try {
         callback(warning);
       } catch (error) {
@@ -119,7 +121,7 @@ export class StorageQuotaMonitor {
         usage,
         quota,
         usageRatio: usage / quota,
-        available: quota - usage
+        available: quota - usage,
       };
 
       this.lastCheck = quotaEstimate;
@@ -140,7 +142,7 @@ export class StorageQuotaMonitor {
   private updateUsageHistory(usage: number): void {
     this.usageHistory.push({
       timestamp: Date.now(),
-      usage
+      usage,
     });
 
     // Keep only recent history
@@ -181,7 +183,7 @@ export class StorageQuotaMonitor {
         quota,
         usageRatio,
         availableBytes: available,
-        message: `EMERGENCY: Storage critically low! Only ${this.formatBytes(available)} remaining (${(usageRatio * 100).toFixed(1)}% used). Immediate action required.`
+        message: `EMERGENCY: Storage critically low! Only ${this.formatBytes(available)} remaining (${(usageRatio * 100).toFixed(1)}% used). Immediate action required.`,
       };
       const estimatedTime = this.estimateTimeToFull();
       if (estimatedTime !== undefined) {
@@ -196,7 +198,7 @@ export class StorageQuotaMonitor {
         quota,
         usageRatio,
         availableBytes: available,
-        message: `CRITICAL: Storage space running low! Only ${this.formatBytes(available)} remaining (${(usageRatio * 100).toFixed(1)}% used). Consider cleaning up data.`
+        message: `CRITICAL: Storage space running low! Only ${this.formatBytes(available)} remaining (${(usageRatio * 100).toFixed(1)}% used). Consider cleaning up data.`,
       };
       const estimatedTime = this.estimateTimeToFull();
       if (estimatedTime !== undefined) {
@@ -211,7 +213,7 @@ export class StorageQuotaMonitor {
         quota,
         usageRatio,
         availableBytes: available,
-        message: `WARNING: Storage usage is high. ${this.formatBytes(available)} remaining (${(usageRatio * 100).toFixed(1)}% used). Monitor usage closely.`
+        message: `WARNING: Storage usage is high. ${this.formatBytes(available)} remaining (${(usageRatio * 100).toFixed(1)}% used). Monitor usage closely.`,
       };
       const estimatedTime = this.estimateTimeToFull();
       if (estimatedTime !== undefined) {
@@ -233,11 +235,11 @@ export class StorageQuotaMonitor {
     const recentHistory = this.usageHistory.slice(-10);
     const oldestEntry = recentHistory[0];
     const newestEntry = recentHistory[recentHistory.length - 1];
-    
+
     if (!oldestEntry || !newestEntry) {
       return undefined;
     }
-    
+
     const timeDelta = newestEntry.timestamp - oldestEntry.timestamp;
     const usageDelta = newestEntry.usage - oldestEntry.usage;
 
@@ -246,8 +248,8 @@ export class StorageQuotaMonitor {
     }
 
     const usageRate = usageDelta / timeDelta; // bytes per millisecond
-    const remainingBytes = (this.lastCheck?.available || 0);
-    
+    const remainingBytes = this.lastCheck?.available || 0;
+
     return remainingBytes / usageRate; // milliseconds until full
   }
 
@@ -259,20 +261,20 @@ export class StorageQuotaMonitor {
       // Get list of all IndexedDB databases
       const databases = await indexedDB.databases();
       const vectorDatabases: StorageBreakdown['vectorDatabases'] = [];
-      
+
       let totalVectorDBSize = 0;
 
       for (const dbInfo of databases) {
         if (dbInfo.name?.includes('vector-frankl') || dbInfo.name?.includes('-ns-')) {
           const size = await this.estimateDBSize(dbInfo.name);
           const vectorCount = await this.getVectorCount(dbInfo.name);
-          
+
           vectorDatabases.push({
             name: dbInfo.name,
             estimatedSize: size,
-            vectorCount
+            vectorCount,
           });
-          
+
           totalVectorDBSize += size;
         }
       }
@@ -283,14 +285,14 @@ export class StorageQuotaMonitor {
       return {
         totalUsage,
         vectorDatabases,
-        otherOriginData
+        otherOriginData,
       };
     } catch (error) {
       console.error('Failed to get storage breakdown:', error);
       return {
         totalUsage: this.lastCheck?.usage || 0,
         vectorDatabases: [],
-        otherOriginData: this.lastCheck?.usage || 0
+        otherOriginData: this.lastCheck?.usage || 0,
       };
     }
   }
@@ -302,7 +304,7 @@ export class StorageQuotaMonitor {
     try {
       return new Promise((resolve, reject) => {
         const request = indexedDB.open(dbName);
-        
+
         request.onsuccess = () => {
           const db = request.result;
           let totalSize = 0;
@@ -316,14 +318,16 @@ export class StorageQuotaMonitor {
               promises.push(this.estimateStoreSize(store));
             }
 
-            Promise.all(promises).then(sizes => {
-              totalSize = sizes.reduce((sum, size) => sum + size, 0);
-              db.close();
-              resolve(totalSize);
-            }).catch(error => {
-              db.close();
-              reject(error);
-            });
+            Promise.all(promises)
+              .then((sizes) => {
+                totalSize = sizes.reduce((sum, size) => sum + size, 0);
+                db.close();
+                resolve(totalSize);
+              })
+              .catch((error) => {
+                db.close();
+                reject(error);
+              });
           } catch (error) {
             db.close();
             reject(error);
@@ -350,7 +354,7 @@ export class StorageQuotaMonitor {
 
       request.onsuccess = () => {
         const cursor = request.result;
-        
+
         if (cursor) {
           // Rough size estimation
           const value = cursor.value;
@@ -394,7 +398,7 @@ export class StorageQuotaMonitor {
         if (Array.isArray(obj)) {
           return obj.reduce((sum, item) => sum + this.estimateObjectSize(item), 0) + 24; // Array overhead
         }
-        
+
         // Regular object
         const objAsRecord = obj as Record<string, unknown>;
         for (const key in objAsRecord) {
@@ -414,10 +418,10 @@ export class StorageQuotaMonitor {
     try {
       return new Promise((resolve, reject) => {
         const request = indexedDB.open(dbName);
-        
+
         request.onsuccess = () => {
           const db = request.result;
-          
+
           try {
             if (db.objectStoreNames.contains('vectors')) {
               const transaction = db.transaction(['vectors'], 'readonly');
@@ -458,11 +462,11 @@ export class StorageQuotaMonitor {
    */
   private formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
-    
+
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     const k = 1024;
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    
+
     return `${(bytes / Math.pow(k, i)).toFixed(1)} ${units[i]}`;
   }
 
@@ -518,7 +522,8 @@ export class StorageQuotaMonitor {
     const ratePerHour = ratePerMs * 3600000; // Convert to per hour
     const confidence = Math.min(recentEntries.length / 10, 1); // More data = higher confidence
 
-    if (Math.abs(ratePerHour) < 1024) { // Less than 1KB/hour change
+    if (Math.abs(ratePerHour) < 1024) {
+      // Less than 1KB/hour change
       return { trend: 'stable', rate: ratePerHour, confidence };
     } else if (ratePerHour > 0) {
       return { trend: 'increasing', rate: ratePerHour, confidence };

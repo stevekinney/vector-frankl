@@ -1,11 +1,11 @@
 import { VectorDB } from '@/api/database.js';
-import type { 
-  NamespaceConfig, 
-  VectorFormat, 
-  VectorData,
-  SearchResult,
+import type {
+  BatchOptions,
+  NamespaceConfig,
   SearchOptions,
-  BatchOptions 
+  SearchResult,
+  VectorData,
+  VectorFormat,
 } from '@/core/types.js';
 
 /**
@@ -18,20 +18,16 @@ export class VectorNamespace {
   constructor(
     public readonly name: string,
     public readonly config: NamespaceConfig,
-    rootDatabaseName: string
+    rootDatabaseName: string,
   ) {
     // Create a unique database name for this namespace
     this.databaseName = `${rootDatabaseName}-ns-${name}`;
-    
+
     // Create the vector database with namespace config
-    this.vectorDatabase = new VectorDB(
-      this.databaseName,
-      config.dimension,
-      {
-        name: this.databaseName,
-        version: 1
-      }
-    );
+    this.vectorDatabase = new VectorDB(this.databaseName, config.dimension, {
+      name: this.databaseName,
+      version: 1,
+    });
   }
 
   /**
@@ -47,7 +43,7 @@ export class VectorNamespace {
   async addVector(
     id: string,
     vector: VectorFormat,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     return this.vectorDatabase.addVector(id, vector, metadata);
   }
@@ -61,7 +57,7 @@ export class VectorNamespace {
       vector: VectorFormat;
       metadata?: Record<string, unknown>;
     }>,
-    options?: BatchOptions
+    options?: BatchOptions,
   ): Promise<void> {
     return this.vectorDatabase.addBatch(vectors, options);
   }
@@ -86,7 +82,7 @@ export class VectorNamespace {
   async search(
     queryVector: VectorFormat,
     k: number = 10,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     return this.vectorDatabase.search(queryVector, k, options);
   }
@@ -97,7 +93,7 @@ export class VectorNamespace {
   async searchRange(
     queryVector: VectorFormat,
     maxDistance: number,
-    options?: SearchOptions & { maxResults?: number }
+    options?: SearchOptions & { maxResults?: number },
   ): Promise<SearchResult[]> {
     return this.vectorDatabase.searchRange(queryVector, maxDistance, options);
   }
@@ -107,11 +103,11 @@ export class VectorNamespace {
    */
   async *searchStream(
     queryVector: VectorFormat,
-    options?: SearchOptions & { 
-      batchSize?: number; 
+    options?: SearchOptions & {
+      batchSize?: number;
       maxResults?: number;
       progressive?: boolean;
-    }
+    },
   ): AsyncGenerator<SearchResult[], void, unknown> {
     yield* this.vectorDatabase.searchStream(queryVector, options);
   }
@@ -126,11 +122,11 @@ export class VectorNamespace {
     description?: string;
   }> {
     const baseStats = await this.vectorDatabase.getStats();
-    
+
     return {
       ...baseStats,
       distanceMetric: this.config.distanceMetric || 'cosine',
-      ...(this.config.description && { description: this.config.description })
+      ...(this.config.description && { description: this.config.description }),
     };
   }
 
@@ -192,16 +188,16 @@ export class VectorNamespace {
   }> {
     const stats = await this.getStats();
     const vectors = stats.vectorCount;
-    
+
     // Estimate: vector size + metadata + overhead
     // Float32Array = 4 bytes per dimension
     // Plus ~200 bytes overhead per vector for metadata and indices
-    const bytesPerVector = (this.config.dimension * 4) + 200;
+    const bytesPerVector = this.config.dimension * 4 + 200;
     const estimatedBytes = vectors * bytesPerVector;
-    
+
     return {
       vectorCount: vectors,
-      estimatedBytes
+      estimatedBytes,
     };
   }
 
@@ -239,10 +235,10 @@ export class VectorNamespace {
   async updateVector(
     id: string,
     vector: VectorFormat,
-    options?: { 
+    options?: {
       updateMagnitude?: boolean;
       updateTimestamp?: boolean;
-    }
+    },
   ): Promise<void> {
     return this.vectorDatabase.updateVector(id, vector, options);
   }
@@ -256,7 +252,7 @@ export class VectorNamespace {
     options?: {
       merge?: boolean;
       updateTimestamp?: boolean;
-    }
+    },
   ): Promise<void> {
     return this.vectorDatabase.updateMetadata(id, metadata, options);
   }
@@ -270,8 +266,12 @@ export class VectorNamespace {
       vector?: VectorFormat;
       metadata?: Record<string, unknown>;
     }>,
-    options?: BatchOptions
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+    options?: BatchOptions,
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     return this.vectorDatabase.updateBatch(updates, options);
   }
 }

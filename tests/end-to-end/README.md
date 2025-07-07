@@ -5,6 +5,7 @@ This directory contains Playwright end-to-end tests that verify the vector datab
 ## Test Coverage
 
 ### 🚀 Basic Operations (`basic-operations.spec.ts`)
+
 - Database initialization and cleanup
 - CRUD operations (Create, Read, Update, Delete)
 - Vector search with different distance metrics
@@ -12,6 +13,7 @@ This directory contains Playwright end-to-end tests that verify the vector datab
 - Error handling
 
 ### 💾 IndexedDB Storage (`indexeddb-storage.spec.ts`)
+
 - Data persistence across page reloads
 - Large vector storage and retrieval
 - Database versioning and migrations
@@ -20,12 +22,14 @@ This directory contains Playwright end-to-end tests that verify the vector datab
 - Error recovery
 
 ### 👷 Web Workers (`web-workers.spec.ts`)
+
 - Web Worker support detection
 - Worker pool operations
 - SharedArrayBuffer functionality
 - Worker error handling and termination
 
 ### ⚡ WASM Operations (`wasm-operations.spec.ts`)
+
 - WebAssembly support detection
 - WASM module compilation and instantiation
 - Memory operations
@@ -33,6 +37,7 @@ This directory contains Playwright end-to-end tests that verify the vector datab
 - Error handling and performance testing
 
 ### 🌐 Cross-Browser Compatibility (`cross-browser-compatibility.spec.ts`)
+
 - Testing across Chrome, Firefox, Safari
 - Mobile device testing (iPhone, Android)
 - Browser capability detection
@@ -81,18 +86,21 @@ bunx playwright test --debug
 ## Test Environment
 
 ### Server Setup
+
 - Tests run against a local Bun server (`server.ts`)
 - Server serves built files from `dist/` directory
 - Cross-origin isolation headers for SharedArrayBuffer support
 - Static file serving for test assets
 
 ### Browser Configuration
+
 - **Chromium**: Full feature testing including SharedArrayBuffer
 - **Firefox**: Standard web APIs, some limitations
 - **WebKit/Safari**: Conservative testing, stricter security
 - **Mobile**: Memory-constrained testing, touch interactions
 
 ### Test Data
+
 - Vector dimensions: Typically 384 for realistic embeddings
 - Test vectors: Random or structured data for consistent results
 - Metadata: Various types to test filtering and storage
@@ -101,24 +109,28 @@ bunx playwright test --debug
 ## Browser-Specific Considerations
 
 ### Chrome/Chromium
+
 - Full SharedArrayBuffer support with proper headers
 - WebGPU support (where available)
 - Best WASM performance
 - Generous storage quotas
 
 ### Firefox
+
 - Standard web APIs
 - Good IndexedDB performance
 - Limited SharedArrayBuffer (requires headers)
 - Memory monitoring via performance.memory not available
 
 ### Safari/WebKit
+
 - Stricter security policies
 - Limited SharedArrayBuffer support
 - Different storage quota behavior
 - May require fallbacks for some APIs
 
 ### Mobile Browsers
+
 - Memory constraints require smaller test vectors
 - Touch-specific interactions
 - Battery optimization affects performance
@@ -139,13 +151,13 @@ test.describe('Feature Tests', () => {
     // Initialize database
     await page.click('#init-db');
     await expect(page.locator('#db-status')).toContainText('Initialized');
-    
+
     // Run test logic in browser context
     await page.evaluate(async () => {
       // Test implementation
       window.addTestResult('Test Name', 'success', 'Details');
     });
-    
+
     // Verify results
     await expect(page.locator('#test-results')).toContainText('Test Name: SUCCESS');
   });
@@ -155,17 +167,20 @@ test.describe('Feature Tests', () => {
 ## Debugging Tests
 
 ### Browser DevTools
+
 ```bash
 # Open browser with DevTools
 bunx playwright test --headed --slowMo=1000
 ```
 
 ### Screenshots and Videos
+
 - Automatic screenshots on failure
 - Videos for failed tests
 - Traces for debugging (stored in `test-results/`)
 
 ### Logging
+
 - Browser console logs captured automatically
 - Custom logging via `window.log()` function
 - Test results displayed in both browser and test output
@@ -182,12 +197,14 @@ Tests include performance measurements:
 ## CI/CD Integration
 
 ### GitHub Actions
+
 - Runs on `ubuntu-latest` with multiple browser matrix
 - Separate job for mobile testing
 - Artifacts uploaded on failure
 - Cross-browser compatibility verified
 
 ### Local CI Testing
+
 ```bash
 # Simulate CI environment
 CI=true bunx playwright test
@@ -198,14 +215,17 @@ CI=true bunx playwright test
 ### Common Issues
 
 1. **SharedArrayBuffer not available**
+
    - Check COOP/COEP headers in server.ts
    - Some browsers require HTTPS in production
 
 2. **WASM compilation failures**
+
    - Normal for complex modules in some browsers
    - Tests include fallback mechanisms
 
 3. **IndexedDB quota exceeded**
+
    - Tests clean up after themselves
    - Clear browser data if issues persist
 
@@ -214,6 +234,7 @@ CI=true bunx playwright test
    - Verify worker script syntax
 
 ### Debug Commands
+
 ```bash
 # Check server is running
 curl http://localhost:8201

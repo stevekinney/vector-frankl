@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'bun:test';
-import { BenchmarkSuite, BenchmarkRunner, QuickBenchmark } from './index.js';
+import { describe, expect, it } from 'bun:test';
+
 import type { DistanceMetric } from '@/core/types.js';
+import { BenchmarkRunner, BenchmarkSuite, QuickBenchmark } from './index.js';
 
 describe('Benchmark Infrastructure', () => {
   it('should create a benchmark suite with default config', () => {
@@ -13,14 +14,14 @@ describe('Benchmark Infrastructure', () => {
       dimensions: [64],
       datasetSizes: [10],
       distanceMetrics: ['cosine'],
-      verbose: false
+      verbose: false,
     });
     expect(suite).toBeDefined();
   });
 
   it('should create a benchmark runner', () => {
     const runner = new BenchmarkRunner({
-      outputFormat: 'console'
+      outputFormat: 'console',
     });
     expect(runner).toBeDefined();
   });
@@ -28,7 +29,7 @@ describe('Benchmark Infrastructure', () => {
   it('should create a benchmark runner with JSON output', () => {
     const runner = new BenchmarkRunner({
       outputFormat: 'json',
-      exportPath: 'test-results.json'
+      exportPath: 'test-results.json',
     });
     expect(runner).toBeDefined();
   });
@@ -36,7 +37,7 @@ describe('Benchmark Infrastructure', () => {
   it('should create a benchmark runner with CSV output', () => {
     const runner = new BenchmarkRunner({
       outputFormat: 'csv',
-      exportPath: 'test-results.csv'
+      exportPath: 'test-results.csv',
     });
     expect(runner).toBeDefined();
   });
@@ -60,7 +61,7 @@ describe('Benchmark Infrastructure', () => {
       testCompression: false,
       testFormats: false,
       testIndexing: false,
-      verbose: true
+      verbose: true,
     };
 
     const suite = new BenchmarkSuite(config);
@@ -69,13 +70,9 @@ describe('Benchmark Infrastructure', () => {
 
   it('should provide type safety for benchmark categories', () => {
     // These should compile without errors
-    const categories: Array<'search' | 'database-ops' | 'indexing' | 'formats' | 'compression'> = [
-      'search',
-      'database-ops', 
-      'indexing',
-      'formats',
-      'compression'
-    ];
+    const categories: Array<
+      'search' | 'database-ops' | 'indexing' | 'formats' | 'compression'
+    > = ['search', 'database-ops', 'indexing', 'formats', 'compression'];
 
     expect(categories).toHaveLength(5);
     expect(categories.includes('search')).toBe(true);
@@ -89,7 +86,7 @@ describe('Benchmark Infrastructure', () => {
       category: 'test',
       duration: 100,
       operationsPerSecond: 10,
-      metadata: { test: true }
+      metadata: { test: true },
     };
 
     expect(mockResult.testName).toBe('Test');
@@ -107,7 +104,7 @@ describe('Benchmark Infrastructure', () => {
       totalDuration: 1000,
       results: [],
       categories: {},
-      recommendations: ['Use indexing for large datasets']
+      recommendations: ['Use indexing for large datasets'],
     };
 
     expect(mockSummary.totalTests).toBe(10);

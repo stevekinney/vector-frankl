@@ -185,6 +185,7 @@ The codebase includes Bun-specific utilities for maximum performance:
 ## Vector Database Features
 
 ### Core Capabilities
+
 - **Multiple Vector Formats**: Float32Array, Float64Array, Int8Array, Uint8Array, regular arrays
 - **Distance Metrics**: Cosine, Euclidean, Manhattan, Hamming, Jaccard
 - **Compression**: Scalar quantization, product quantization, binary compression
@@ -192,6 +193,7 @@ The codebase includes Bun-specific utilities for maximum performance:
 - **Storage Management**: Quota monitoring, LRU/LFU/TTL eviction policies
 
 ### Performance Acceleration
+
 - **SIMD Operations**: Automatic detection and fallback
 - **WebGPU**: GPU-accelerated similarity search
 - **WebAssembly**: High-performance vector operations
@@ -211,7 +213,7 @@ const vf = new VectorFrankl();
 await vf.init();
 const products = await vf.createNamespace('products', {
   dimension: 384,
-  distanceMetric: 'cosine'
+  distanceMetric: 'cosine',
 });
 ```
 

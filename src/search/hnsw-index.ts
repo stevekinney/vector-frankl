@@ -1,5 +1,5 @@
+import type { DistanceMetric, VectorData } from '@/core/types.js';
 import { createDistanceCalculator, DistanceCalculator } from './distance-metrics.js';
-import type { VectorData, DistanceMetric } from '@/core/types.js';
 
 /**
  * HNSW (Hierarchical Navigable Small World) Index Node
@@ -35,7 +35,7 @@ export class HNSWIndex {
 
   constructor(
     distanceMetric: DistanceMetric = 'cosine',
-    config: Partial<HNSWConfig> = {}
+    config: Partial<HNSWConfig> = {},
   ) {
     this.distanceCalculator = createDistanceCalculator(distanceMetric);
     this.config = {
@@ -44,9 +44,9 @@ export class HNSWIndex {
       efConstruction: 200,
       maxLevel: 5,
       seed: 42,
-      ...config
+      ...config,
     };
-    
+
     // Simple seeded random number generator
     this.rng = this.createSeededRNG(this.config.seed || 42);
   }
@@ -61,7 +61,7 @@ export class HNSWIndex {
       vector: vectorData.vector,
       level,
       connections: new Map(),
-      ...(vectorData.metadata && { metadata: vectorData.metadata })
+      ...(vectorData.metadata && { metadata: vectorData.metadata }),
     };
 
     // Initialize connections for each level
@@ -80,14 +80,18 @@ export class HNSWIndex {
 
     // Find closest nodes for each level
     let currentClosest = this.entryPoint!;
-    
+
     // Search from top to level+1
-    for (let currentLevel = this.getNodeLevel(currentClosest); currentLevel > level; currentLevel--) {
+    for (
+      let currentLevel = this.getNodeLevel(currentClosest);
+      currentLevel > level;
+      currentLevel--
+    ) {
       const searchResults = this.searchLevel(
         node.vector,
         currentClosest,
         1,
-        currentLevel
+        currentLevel,
       );
       if (searchResults.length > 0) {
         currentClosest = searchResults[0]!;
@@ -95,26 +99,30 @@ export class HNSWIndex {
     }
 
     // Search and connect from level down to 0
-    for (let currentLevel = Math.min(level, this.getNodeLevel(currentClosest)); currentLevel >= 0; currentLevel--) {
+    for (
+      let currentLevel = Math.min(level, this.getNodeLevel(currentClosest));
+      currentLevel >= 0;
+      currentLevel--
+    ) {
       const candidates = this.searchLevel(
         node.vector,
         currentClosest,
         this.config.efConstruction,
-        currentLevel
+        currentLevel,
       );
 
       // Select diverse connections
       const connections = this.selectConnections(
         node.vector,
         candidates,
-        currentLevel === 0 ? this.config.m * 2 : this.config.m
+        currentLevel === 0 ? this.config.m * 2 : this.config.m,
       );
 
       // Add bidirectional connections
       for (const candidateId of connections) {
         this.addConnection(node.id, candidateId, currentLevel);
         this.addConnection(candidateId, node.id, currentLevel);
-        
+
         // Prune connections if needed
         this.pruneConnections(candidateId, currentLevel);
       }
@@ -136,8 +144,10 @@ export class HNSWIndex {
   async search(
     queryVector: Float32Array,
     k: number,
-    ef: number = this.config.efConstruction
-  ): Promise<Array<{ id: string; distance: number; metadata?: Record<string, unknown> }>> {
+    ef: number = this.config.efConstruction,
+  ): Promise<
+    Array<{ id: string; distance: number; metadata?: Record<string, unknown> }>
+  > {
     if (this.nodes.size === 0 || !this.entryPoint) {
       return [];
     }
@@ -155,16 +165,14 @@ export class HNSWIndex {
     const candidates = this.searchLevel(queryVector, currentClosest, Math.max(ef, k), 0);
 
     // Return top k results
-    return candidates
-      .slice(0, k)
-      .map(nodeId => {
-        const node = this.nodes.get(nodeId)!;
-        return {
-          id: nodeId,
-          distance: this.distanceCalculator.calculate(queryVector, node.vector),
-          ...(node.metadata && { metadata: node.metadata })
-        };
-      });
+    return candidates.slice(0, k).map((nodeId) => {
+      const node = this.nodes.get(nodeId)!;
+      return {
+        id: nodeId,
+        distance: this.distanceCalculator.calculate(queryVector, node.vector),
+        ...(node.metadata && { metadata: node.metadata }),
+      };
+    });
   }
 
   /**
@@ -212,7 +220,7 @@ export class HNSWIndex {
       nodeCount: this.nodes.size,
       levels,
       entryPoint: this.entryPoint,
-      avgConnections: this.nodes.size > 0 ? totalConnections / this.nodes.size : 0
+      avgConnections: this.nodes.size > 0 ? totalConnections / this.nodes.size : 0,
     };
   }
 
@@ -223,7 +231,7 @@ export class HNSWIndex {
     queryVector: Float32Array,
     entryPoint: string,
     ef: number,
-    level: number
+    level: number,
   ): string[] {
     const visited = new Set<string>();
     const candidates = new Set<string>();
@@ -232,9 +240,9 @@ export class HNSWIndex {
     // Initialize with entry point
     const entryDistance = this.distanceCalculator.calculate(
       queryVector,
-      this.nodes.get(entryPoint)!.vector
+      this.nodes.get(entryPoint)!.vector,
     );
-    
+
     candidates.add(entryPoint);
     w.set(entryPoint, entryDistance);
     visited.add(entryPoint);
@@ -243,7 +251,7 @@ export class HNSWIndex {
       // Get closest candidate
       let closest = '';
       let closestDistance = Infinity;
-      
+
       for (const nodeId of candidates) {
         const distance = w.get(nodeId)!;
         if (distance < closestDistance) {
@@ -265,16 +273,16 @@ export class HNSWIndex {
       // Explore neighbors
       const node = this.nodes.get(closest)!;
       const connections = node.connections.get(level) || new Set<string>();
-      
+
       for (const neighborId of connections) {
         if (!visited.has(neighborId)) {
           visited.add(neighborId);
-          
+
           const neighborDistance = this.distanceCalculator.calculate(
             queryVector,
-            this.nodes.get(neighborId)!.vector
+            this.nodes.get(neighborId)!.vector,
           );
-          
+
           candidates.add(neighborId);
           w.set(neighborId, neighborDistance);
         }
@@ -294,17 +302,20 @@ export class HNSWIndex {
   private selectConnections(
     queryVector: Float32Array,
     candidates: string[],
-    m: number
+    m: number,
   ): string[] {
     // Simple: just take the closest m candidates
     return candidates
-      .map(nodeId => ({
+      .map((nodeId) => ({
         id: nodeId,
-        distance: this.distanceCalculator.calculate(queryVector, this.nodes.get(nodeId)!.vector)
+        distance: this.distanceCalculator.calculate(
+          queryVector,
+          this.nodes.get(nodeId)!.vector,
+        ),
       }))
       .sort((a, b) => a.distance - b.distance)
       .slice(0, m)
-      .map(candidate => candidate.id);
+      .map((candidate) => candidate.id);
   }
 
   /**
@@ -348,7 +359,7 @@ export class HNSWIndex {
     // Select best connections to keep
     const candidates = Array.from(connections);
     const selected = this.selectConnections(node.vector, candidates, maxConnections);
-    
+
     // Remove excess connections
     for (const connectedId of connections) {
       if (!selected.includes(connectedId)) {

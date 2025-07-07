@@ -2,9 +2,9 @@
  * Debug console commands for browser integration
  */
 
+import { DebugContext } from './debug-context.js';
 import { debugManager } from './debug-manager.js';
 import { profiler } from './profiler.js';
-import { DebugContext } from './debug-context.js';
 import type { DebugConfig, DebugLevel, ExportFormat } from './types.js';
 
 export interface DebugConsole {
@@ -111,14 +111,16 @@ export function createDebugConsole(): DebugConsole {
         return;
       }
 
-      console.table(stats.map(s => ({
-        operation: s.operation,
-        count: s.count,
-        avg: `${s.avgDuration.toFixed(2)}ms`,
-        min: `${s.minDuration.toFixed(2)}ms`,
-        max: `${s.maxDuration.toFixed(2)}ms`,
-        p95: `${s.percentiles.p95.toFixed(2)}ms`
-      })));
+      console.table(
+        stats.map((s) => ({
+          operation: s.operation,
+          count: s.count,
+          avg: `${s.avgDuration.toFixed(2)}ms`,
+          min: `${s.minDuration.toFixed(2)}ms`,
+          max: `${s.maxDuration.toFixed(2)}ms`,
+          p95: `${s.percentiles.p95.toFixed(2)}ms`,
+        })),
+      );
     },
 
     clear: () => {
@@ -135,7 +137,7 @@ export function createDebugConsole(): DebugConsole {
         console.log(`Completed: ${name} (${latest.avgDuration.toFixed(2)}ms)`);
       }
       return result;
-    }
+    },
   };
 
   const tracerConsole: TracerConsole = {
@@ -147,7 +149,7 @@ export function createDebugConsole(): DebugConsole {
     show: (operation?: string) => {
       const entries = debugManager.getEntries({
         type: 'trace',
-        ...(operation && { operation })
+        ...(operation && { operation }),
       });
 
       if (entries.length === 0) {
@@ -156,7 +158,7 @@ export function createDebugConsole(): DebugConsole {
       }
 
       console.group('Trace Entries');
-      entries.forEach(entry => {
+      entries.forEach((entry) => {
         console.log(`[${entry.timestamp.toFixed(2)}ms] ${entry.operation}`, entry.data);
       });
       console.groupEnd();
@@ -166,7 +168,7 @@ export function createDebugConsole(): DebugConsole {
       const entries = debugManager.getEntries({ type: 'trace' });
       debugManager.clearEntries();
       console.log(`Cleared ${entries.length} trace entries`);
-    }
+    },
   };
 
   const memoryConsole: MemoryConsole = {
@@ -181,7 +183,7 @@ export function createDebugConsole(): DebugConsole {
         'Heap Used': `${(memory.heapUsed / 1024 / 1024).toFixed(2)} MB`,
         'Heap Total': `${(memory.heapTotal / 1024 / 1024).toFixed(2)} MB`,
         'Heap Limit': `${(memory.external / 1024 / 1024).toFixed(2)} MB`,
-        'Array Buffers': `${(memory.arrayBuffers / 1024 / 1024).toFixed(2)} MB`
+        'Array Buffers': `${(memory.arrayBuffers / 1024 / 1024).toFixed(2)} MB`,
       });
     },
 
@@ -192,20 +194,23 @@ export function createDebugConsole(): DebugConsole {
         return;
       }
 
-      const analysis = memoryEntries.reduce((acc, entry) => {
-        if (entry.memoryUsage?.delta) {
-          acc.totalHeapDelta += entry.memoryUsage.delta.heapUsed;
-          acc.totalArrayBufferDelta += entry.memoryUsage.delta.arrayBuffers;
-          acc.operations++;
-        }
-        return acc;
-      }, { totalHeapDelta: 0, totalArrayBufferDelta: 0, operations: 0 });
+      const analysis = memoryEntries.reduce(
+        (acc, entry) => {
+          if (entry.memoryUsage?.delta) {
+            acc.totalHeapDelta += entry.memoryUsage.delta.heapUsed;
+            acc.totalArrayBufferDelta += entry.memoryUsage.delta.arrayBuffers;
+            acc.operations++;
+          }
+          return acc;
+        },
+        { totalHeapDelta: 0, totalArrayBufferDelta: 0, operations: 0 },
+      );
 
       console.log('Memory Analysis:');
       console.table({
-        'Operations': analysis.operations,
+        Operations: analysis.operations,
         'Avg Heap Delta': `${(analysis.totalHeapDelta / analysis.operations / 1024).toFixed(2)} KB`,
-        'Avg Buffer Delta': `${(analysis.totalArrayBufferDelta / analysis.operations / 1024).toFixed(2)} KB`
+        'Avg Buffer Delta': `${(analysis.totalArrayBufferDelta / analysis.operations / 1024).toFixed(2)} KB`,
       });
     },
 
@@ -217,13 +222,15 @@ export function createDebugConsole(): DebugConsole {
       }
 
       console.log('Memory Timeline:');
-      memoryEntries.forEach(entry => {
+      memoryEntries.forEach((entry) => {
         if (entry.memoryUsage) {
           const heap = (entry.memoryUsage.heapUsed / 1024 / 1024).toFixed(2);
-          console.log(`[${entry.timestamp.toFixed(2)}ms] ${entry.operation}: ${heap}MB heap`);
+          console.log(
+            `[${entry.timestamp.toFixed(2)}ms] ${entry.operation}: ${heap}MB heap`,
+          );
         }
       });
-    }
+    },
   };
 
   const statsConsole: StatsConsole = {
@@ -233,18 +240,24 @@ export function createDebugConsole(): DebugConsole {
 
     operations: () => {
       const entries = debugManager.getEntries();
-      const operationCounts = entries.reduce((acc, entry) => {
-        acc[entry.operation] = (acc[entry.operation] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      const operationCounts = entries.reduce(
+        (acc, entry) => {
+          acc[entry.operation] = (acc[entry.operation] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
       console.table(
         Object.entries(operationCounts)
-          .sort(([,a], [,b]) => b - a)
-          .reduce((acc, [op, count]) => {
-            acc[op] = count;
-            return acc;
-          }, {} as Record<string, number>)
+          .sort(([, a], [, b]) => b - a)
+          .reduce(
+            (acc, [op, count]) => {
+              acc[op] = count;
+              return acc;
+            },
+            {} as Record<string, number>,
+          ),
       );
     },
 
@@ -255,22 +268,29 @@ export function createDebugConsole(): DebugConsole {
         return;
       }
 
-      const errorGroups = errorEntries.reduce((acc, entry) => {
-        const key = entry.operation;
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(entry);
-        return acc;
-      }, {} as Record<string, typeof errorEntries>);
+      const errorGroups = errorEntries.reduce(
+        (acc, entry) => {
+          const key = entry.operation;
+          if (!acc[key]) acc[key] = [];
+          acc[key].push(entry);
+          return acc;
+        },
+        {} as Record<string, typeof errorEntries>,
+      );
 
       console.log('Error Summary:');
       Object.entries(errorGroups).forEach(([operation, errors]) => {
         console.group(`${operation} (${errors.length} errors)`);
-        errors.forEach(error => {
-          console.error(`[${error.timestamp.toFixed(2)}ms]`, error.error?.message, error.data);
+        errors.forEach((error) => {
+          console.error(
+            `[${error.timestamp.toFixed(2)}ms]`,
+            error.error?.message,
+            error.data,
+          );
         });
         console.groupEnd();
       });
-    }
+    },
   };
 
   const contextConsole: ContextConsole = {
@@ -282,10 +302,10 @@ export function createDebugConsole(): DebugConsole {
       }
 
       console.table({
-        'Namespace': currentContext.namespace || 'N/A',
+        Namespace: currentContext.namespace || 'N/A',
         'Operation Type': currentContext.operationType || 'N/A',
         'Vector Dimensions': currentContext.vectorDimensions || 'N/A',
-        'Vector Count': currentContext.vectorCount || 'N/A'
+        'Vector Count': currentContext.vectorCount || 'N/A',
       });
 
       if (currentContext.tags.size > 0) {
@@ -310,7 +330,7 @@ export function createDebugConsole(): DebugConsole {
     clear: () => {
       context.clearAll();
       console.log('Context cleared');
-    }
+    },
   };
 
   return {
@@ -354,10 +374,10 @@ export function createDebugConsole(): DebugConsole {
       }
 
       const data = await debugManager.exportData(format);
-      const blob = new Blob([data], { 
-        type: format === 'json' ? 'application/json' : 'text/plain' 
+      const blob = new Blob([data], {
+        type: format === 'json' ? 'application/json' : 'text/plain',
       });
-      
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -366,7 +386,7 @@ export function createDebugConsole(): DebugConsole {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
+
       console.log(`Debug data downloaded as ${a.download}`);
     },
 
@@ -374,12 +394,13 @@ export function createDebugConsole(): DebugConsole {
     trace: tracerConsole,
     memory: memoryConsole,
     stats: statsConsole,
-    context: contextConsole
+    context: contextConsole,
   };
 }
 
 // Global debug console (if in browser)
 if (typeof window !== 'undefined') {
   // Add to window object for easy access
-  (window as Window & { vectorFranklDebug?: DebugConsole }).vectorFranklDebug = createDebugConsole();
+  (window as Window & { vectorFranklDebug?: DebugConsole }).vectorFranklDebug =
+    createDebugConsole();
 }

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0-beta.1] - 2024-01-07
 
 ### Added
+
 - Initial beta release of Vector Frankl
 - Core vector database functionality with IndexedDB storage
 - Multiple namespace support for isolated vector collections
@@ -30,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Security best practices guide
 
 ### Security
+
 - Input validation for all user inputs
 - ReDoS protection with timeout and pattern validation
 - Memory limits to prevent exhaustion attacks
@@ -37,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sanitized error messages to prevent information leakage
 
 ### Performance
+
 - Synchronous vector operations for 30-50% performance improvement
 - Automatic batch size optimization
 - Adaptive index strategy selection
@@ -44,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Efficient storage with compression options
 
 ### Known Issues
+
 - SharedArrayBuffer support limited in some browser contexts
 - WebGPU requires compatible hardware and browser
 - Some advanced features may not work in all environments

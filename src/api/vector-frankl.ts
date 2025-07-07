@@ -1,15 +1,15 @@
+import type {
+  BatchOptions,
+  NamespaceConfig,
+  NamespaceInfo,
+  SearchOptions,
+  SearchResult,
+  VectorData,
+  VectorFormat,
+} from '@/core/types.js';
 import { NamespaceManager } from '@/namespaces/manager.js';
 import { VectorNamespace } from '@/namespaces/namespace.js';
 import { VectorDB } from './database.js';
-import type { 
-  NamespaceConfig, 
-  NamespaceInfo,
-  VectorFormat,
-  VectorData,
-  SearchResult,
-  SearchOptions,
-  BatchOptions
-} from '@/core/types.js';
 
 /**
  * Main API for Vector Frankl - A browser-based vector database
@@ -21,7 +21,7 @@ export class VectorFrankl {
 
   constructor(
     private _rootDatabaseName = 'vector-frankl',
-    private defaultDimension?: number
+    private defaultDimension?: number,
   ) {
     this.namespaceManager = new NamespaceManager(this._rootDatabaseName);
   }
@@ -35,18 +35,18 @@ export class VectorFrankl {
     }
 
     await this.namespaceManager.init();
-    
+
     // If a default dimension is provided, create a default namespace
     if (this.defaultDimension) {
       // Check if default namespace exists
       const defaultExists = await this.namespaceManager.namespaceExists('default');
-      
+
       if (!defaultExists) {
         // Create default namespace
         this.defaultNamespace = await this.namespaceManager.createNamespace('default', {
           dimension: this.defaultDimension,
           distanceMetric: 'cosine',
-          description: 'Default namespace'
+          description: 'Default namespace',
         });
       } else {
         // Load existing default namespace
@@ -62,10 +62,7 @@ export class VectorFrankl {
   /**
    * Create a new namespace
    */
-  async createNamespace(
-    name: string,
-    config: NamespaceConfig
-  ): Promise<VectorNamespace> {
+  async createNamespace(name: string, config: NamespaceConfig): Promise<VectorNamespace> {
     await this.ensureInitialized();
     return this.namespaceManager.createNamespace(name, config);
   }
@@ -83,12 +80,12 @@ export class VectorFrankl {
    */
   async deleteNamespace(name: string): Promise<void> {
     await this.ensureInitialized();
-    
+
     // Prevent deleting the default namespace if it's in use
     if (name === 'default' && this.defaultNamespace) {
       throw new Error('Cannot delete the default namespace while it is in use');
     }
-    
+
     return this.namespaceManager.deleteNamespace(name);
   }
 
@@ -124,7 +121,7 @@ export class VectorFrankl {
   async addVector(
     id: string,
     vector: VectorFormat,
-    metadata?: Record<string, unknown>
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     await this.ensureInitialized();
     const ns = await this.getDefaultNamespace();
@@ -140,7 +137,7 @@ export class VectorFrankl {
       vector: VectorFormat;
       metadata?: Record<string, unknown>;
     }>,
-    options?: BatchOptions
+    options?: BatchOptions,
   ): Promise<void> {
     await this.ensureInitialized();
     const ns = await this.getDefaultNamespace();
@@ -171,7 +168,7 @@ export class VectorFrankl {
   async search(
     queryVector: VectorFormat,
     k: number = 10,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     await this.ensureInitialized();
     const ns = await this.getDefaultNamespace();
@@ -259,18 +256,18 @@ export class VectorFrankl {
     if (!this.defaultDimension) {
       throw new Error(
         'No default dimension specified. Either provide a dimension in the constructor ' +
-        'or use namespace operations directly.'
+          'or use namespace operations directly.',
       );
     }
 
     // Create default namespace on demand
     const exists = await this.namespaceManager.namespaceExists('default');
-    
+
     if (!exists) {
       this.defaultNamespace = await this.namespaceManager.createNamespace('default', {
         dimension: this.defaultDimension,
         distanceMetric: 'cosine',
-        description: 'Default namespace'
+        description: 'Default namespace',
       });
     } else {
       this.defaultNamespace = await this.namespaceManager.getNamespace('default');

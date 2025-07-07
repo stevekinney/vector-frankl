@@ -2,13 +2,13 @@
  * GPU-accelerated vector search engine using WebGPU compute shaders
  */
 
-import { WebGPUManager } from './webgpu-manager.js';
-import type { 
-  VectorData, 
-  SearchResult, 
+import type {
   DistanceMetric,
-  SearchOptions 
+  SearchOptions,
+  SearchResult,
+  VectorData,
 } from '../core/types.js';
+import { WebGPUManager } from './webgpu-manager.js';
 
 export interface GPUSearchConfig {
   /** Minimum dataset size to use GPU acceleration */
@@ -59,12 +59,12 @@ export class GPUSearchEngine {
       enableFallback: config.enableFallback ?? true,
       batchSize: config.batchSize || 1024,
       enableProfiling: config.enableProfiling ?? false,
-      webGPUConfig: config.webGPUConfig || {}
+      webGPUConfig: config.webGPUConfig || {},
     };
 
     this.webGPUManager = new WebGPUManager({
       ...this.config.webGPUConfig,
-      enableProfiling: this.config.enableProfiling
+      enableProfiling: this.config.enableProfiling,
     });
   }
 
@@ -102,7 +102,7 @@ export class GPUSearchEngine {
     queryVector: Float32Array,
     k: number,
     metric: DistanceMetric = 'cosine',
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<{ results: SearchResult[]; stats: GPUSearchStats }> {
     const startTime = this.config.enableProfiling ? performance.now() : 0;
 
@@ -112,12 +112,24 @@ export class GPUSearchEngine {
 
     try {
       if (shouldUseGPU) {
-        const gpuResults = await this.searchWithGPU(vectors, queryVector, k, metric, options);
+        const gpuResults = await this.searchWithGPU(
+          vectors,
+          queryVector,
+          k,
+          metric,
+          options,
+        );
         stats = {
           usedGPU: true,
-          ...(gpuResults.stats.processingTime !== undefined && { processingTime: gpuResults.stats.processingTime }),
-          ...(gpuResults.stats.memoryUsage !== undefined && { memoryUsage: gpuResults.stats.memoryUsage }),
-          ...(this.webGPUManager.getCapabilities() && { gpuCapabilities: this.webGPUManager.getCapabilities()! })
+          ...(gpuResults.stats.processingTime !== undefined && {
+            processingTime: gpuResults.stats.processingTime,
+          }),
+          ...(gpuResults.stats.memoryUsage !== undefined && {
+            memoryUsage: gpuResults.stats.memoryUsage,
+          }),
+          ...(this.webGPUManager.getCapabilities() && {
+            gpuCapabilities: this.webGPUManager.getCapabilities()!,
+          }),
         };
         return { results: gpuResults.results, stats };
       }
@@ -130,7 +142,7 @@ export class GPUSearchEngine {
 
     // Fallback to CPU search
     const cpuResults = await this.searchWithCPU(vectors, queryVector, k, metric, options);
-    
+
     if (this.config.enableProfiling) {
       stats.processingTime = performance.now() - startTime;
     }
@@ -146,11 +158,14 @@ export class GPUSearchEngine {
     queryVectors: Float32Array[],
     k: number,
     metric: DistanceMetric = 'cosine',
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<{ results: SearchResult[][]; stats: GPUSearchStats[] }> {
     // Check if we should use GPU for batch operations
-    const shouldUseGPU = this.shouldUseGPUAcceleration(vectors.length * queryVectors.length, metric);
-    
+    const shouldUseGPU = this.shouldUseGPUAcceleration(
+      vectors.length * queryVectors.length,
+      metric,
+    );
+
     if (shouldUseGPU) {
       try {
         return await this.batchSearchWithGPU(vectors, queryVectors, k, metric, options);
@@ -197,7 +212,7 @@ export class GPUSearchEngine {
     } catch (error) {
       console.warn('Failed to initialize GPU acceleration:', error);
       this.isGPUAvailable = false;
-      
+
       if (!this.config.enableFallback) {
         throw error;
       }
@@ -213,7 +228,12 @@ export class GPUSearchEngine {
     }
 
     // Check if metric is supported on GPU
-    const supportedMetrics: DistanceMetric[] = ['cosine', 'euclidean', 'manhattan', 'dot'];
+    const supportedMetrics: DistanceMetric[] = [
+      'cosine',
+      'euclidean',
+      'manhattan',
+      'dot',
+    ];
     if (!supportedMetrics.includes(metric)) {
       return false;
     }
@@ -230,16 +250,16 @@ export class GPUSearchEngine {
     queryVector: Float32Array,
     k: number,
     metric: DistanceMetric,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<{ results: SearchResult[]; stats: GPUSearchStats }> {
     // Extract vector data
-    const vectorsData = vectors.map(v => v.vector);
-    
+    const vectorsData = vectors.map((v) => v.vector);
+
     // Compute similarities on GPU
     const computeResult = await this.webGPUManager.computeSimilarity(
       vectorsData,
       queryVector,
-      metric
+      metric,
     );
 
     // Convert GPU results to search results
@@ -250,11 +270,11 @@ export class GPUSearchEngine {
       const score = scores[i]!;
       const distance = this.scoreToDistance(score, metric);
       const vectorData = vectors[i]!;
-      
+
       const result: SearchResult = {
         id: vectorData.id,
         score,
-        distance
+        distance,
       };
       if (options?.includeMetadata && vectorData.metadata !== undefined) {
         result.metadata = vectorData.metadata;
@@ -270,7 +290,7 @@ export class GPUSearchEngine {
     const topK = results.slice(0, k);
 
     const stats: GPUSearchStats = {
-      usedGPU: true
+      usedGPU: true,
     };
     if (computeResult.processingTime !== undefined) {
       stats.processingTime = computeResult.processingTime;
@@ -294,15 +314,15 @@ export class GPUSearchEngine {
     queryVectors: Float32Array[],
     k: number,
     metric: DistanceMetric,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<{ results: SearchResult[][]; stats: GPUSearchStats[] }> {
-    const vectorsData = vectors.map(v => v.vector);
-    
+    const vectorsData = vectors.map((v) => v.vector);
+
     // Compute batch similarities on GPU
     const computeResults = await this.webGPUManager.computeBatchSimilarity(
       vectorsData,
       queryVectors,
-      metric
+      metric,
     );
 
     const results: SearchResult[][] = [];
@@ -311,18 +331,18 @@ export class GPUSearchEngine {
     for (let q = 0; q < queryVectors.length; q++) {
       const computeResult = computeResults[q]!;
       const scores = computeResult.scores;
-      
+
       const queryResults: SearchResult[] = [];
-      
+
       for (let i = 0; i < vectors.length; i++) {
         const score = scores[i]!;
         const distance = this.scoreToDistance(score, metric);
         const vectorData = vectors[i]!;
-        
+
         const result: SearchResult = {
           id: vectorData.id,
           score,
-          distance
+          distance,
         };
         if (options?.includeMetadata && vectorData.metadata !== undefined) {
           result.metadata = vectorData.metadata;
@@ -338,7 +358,7 @@ export class GPUSearchEngine {
       results.push(queryResults.slice(0, k));
 
       const stat: GPUSearchStats = {
-        usedGPU: true
+        usedGPU: true,
       };
       if (computeResult.processingTime !== undefined) {
         stat.processingTime = computeResult.processingTime;
@@ -364,7 +384,7 @@ export class GPUSearchEngine {
     queryVector: Float32Array,
     k: number,
     metric: DistanceMetric,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     // Simple CPU implementation for fallback
     const results: SearchResult[] = [];
@@ -376,7 +396,7 @@ export class GPUSearchEngine {
       const result: SearchResult = {
         id: vector.id,
         score,
-        distance
+        distance,
       };
       if (options?.includeMetadata && vector.metadata !== undefined) {
         result.metadata = vector.metadata;
@@ -395,7 +415,11 @@ export class GPUSearchEngine {
   /**
    * Calculate distance between two vectors
    */
-  private calculateDistance(a: Float32Array, b: Float32Array, metric: DistanceMetric): number {
+  private calculateDistance(
+    a: Float32Array,
+    b: Float32Array,
+    metric: DistanceMetric,
+  ): number {
     switch (metric) {
       case 'cosine':
         return this.cosineDistance(a, b);
@@ -420,7 +444,7 @@ export class GPUSearchEngine {
   private distanceToScore(distance: number, metric: DistanceMetric): number {
     switch (metric) {
       case 'cosine':
-        return 1 - (distance / 2);
+        return 1 - distance / 2;
       case 'dot':
         return -distance;
       case 'euclidean':
@@ -444,7 +468,7 @@ export class GPUSearchEngine {
       case 'manhattan':
         return -Math.log(score);
       default:
-        return (1 / score) - 1;
+        return 1 / score - 1;
     }
   }
 
@@ -461,7 +485,7 @@ export class GPUSearchEngine {
     }
 
     const magnitude = Math.sqrt(normA * normB);
-    return magnitude > 0 ? 1 - (dotProduct / magnitude) : 1;
+    return magnitude > 0 ? 1 - dotProduct / magnitude : 1;
   }
 
   private euclideanDistance(a: Float32Array, b: Float32Array): number {

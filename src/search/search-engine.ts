@@ -1,20 +1,19 @@
-import { VectorStorage } from '@/core/storage.js';
-import { VectorOperations } from '@/vectors/operations.js';
 import { DimensionMismatchError } from '@/core/errors.js';
+import { VectorStorage } from '@/core/storage.js';
+import type {
+  DistanceMetric as DistanceMetricType,
+  MetadataFilter,
+  SearchOptions,
+  SearchResult,
+  VectorData,
+} from '@/core/types.js';
+import { GPUSearchEngine, type GPUSearchConfig } from '@/gpu/gpu-search-engine.js';
+import { VectorOperations } from '@/vectors/operations.js';
+import { WorkerPool } from '@/workers/worker-pool.js';
 import { createDistanceCalculator, DistanceCalculator } from './distance-metrics.js';
-import { MetadataFilterCompiler } from './metadata-filter.js';
 import { HNSWIndex } from './hnsw-index.js';
 import { IndexCache } from './index-persistence.js';
-import { WorkerPool } from '@/workers/worker-pool.js';
-import { GPUSearchEngine } from '@/gpu/gpu-search-engine.js';
-import type { GPUSearchConfig } from '@/gpu/gpu-search-engine.js';
-import type { 
-  VectorData, 
-  SearchOptions, 
-  SearchResult, 
-  DistanceMetric as DistanceMetricType,
-  MetadataFilter 
-} from '@/core/types.js';
+import { MetadataFilterCompiler } from './metadata-filter.js';
 
 /**
  * Search engine for vector similarity search
@@ -60,7 +59,7 @@ export class SearchEngine {
       };
       useGPU?: boolean;
       gpuConfig?: GPUSearchConfig;
-    }
+    },
   ) {
     this.dimension = dimension;
     this.distanceCalculator = createDistanceCalculator(distanceMetric);
@@ -70,10 +69,10 @@ export class SearchEngine {
     this.parallelThreshold = options?.workerConfig?.parallelThreshold ?? 1000;
     this.useGPU = options?.useGPU ?? true;
     this.gpuThreshold = options?.gpuConfig?.gpuThreshold ?? 5000;
-    
+
     if (this.useIndex) {
       this.hnswIndex = new HNSWIndex(distanceMetric, options?.indexConfig);
-      
+
       if (options?.database) {
         this.indexCache = new IndexCache(options.database as any);
       }
@@ -96,7 +95,7 @@ export class SearchEngine {
   async search(
     queryVector: Float32Array,
     k: number = 10,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     // Validate dimension
     if (queryVector.length !== this.dimension) {
@@ -118,14 +117,14 @@ export class SearchEngine {
   private async searchWithIndex(
     queryVector: Float32Array,
     k: number,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     if (!this.hnswIndex) {
       throw new Error('HNSW index not initialized');
     }
 
     const metric = (this.distanceCalculator as any)['metric'];
-    const processedQuery = metric?.requiresNormalized 
+    const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
 
@@ -133,24 +132,26 @@ export class SearchEngine {
     const indexResults = await this.hnswIndex.search(processedQuery, k);
 
     // Convert to search results
-    const results = await Promise.all(indexResults.map(async result => {
-      const searchResult: SearchResult = {
-        id: result.id,
-        score: this.distanceToScore(result.distance, metric?.name || 'cosine'),
-        distance: result.distance
-      };
-      if (options?.includeMetadata && result.metadata) {
-        searchResult.metadata = result.metadata;
-      }
-      if (options?.includeVector) {
-        const vector = await this.getVectorById(result.id);
-        if (vector) {
-          searchResult.vector = vector;
+    const results = await Promise.all(
+      indexResults.map(async (result) => {
+        const searchResult: SearchResult = {
+          id: result.id,
+          score: this.distanceToScore(result.distance, metric?.name || 'cosine'),
+          distance: result.distance,
+        };
+        if (options?.includeMetadata && result.metadata) {
+          searchResult.metadata = result.metadata;
         }
-      }
-      return searchResult;
-    }));
-    
+        if (options?.includeVector) {
+          const vector = await this.getVectorById(result.id);
+          if (vector) {
+            searchResult.vector = vector;
+          }
+        }
+        return searchResult;
+      }),
+    );
+
     return results;
   }
 
@@ -160,17 +161,17 @@ export class SearchEngine {
   private async searchBruteForce(
     queryVector: Float32Array,
     k: number,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     // Normalize query if needed for cosine similarity
     const metric = (this.distanceCalculator as any)['metric'];
-    const processedQuery = metric?.requiresNormalized 
+    const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
 
     // Get candidates (all vectors for now, will be optimized with indexing)
     const candidates = await this.getCandidates(options?.filter);
-    
+
     if (candidates.length === 0) {
       return [];
     }
@@ -193,11 +194,11 @@ export class SearchEngine {
     const topK = scoredCandidates.slice(0, k);
 
     // Convert to search results
-    return topK.map(candidate => {
+    return topK.map((candidate) => {
       const searchResult: SearchResult = {
         id: candidate.id,
         score: this.distanceToScore(candidate.distance, metric?.name || 'cosine'),
-        distance: candidate.distance
+        distance: candidate.distance,
       };
       if (options?.includeMetadata && candidate.metadata) {
         searchResult.metadata = candidate.metadata;
@@ -217,7 +218,7 @@ export class SearchEngine {
     candidates: VectorData[],
     k: number,
     metric: { name: string; requiresNormalized?: boolean },
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     if (!this.gpuSearchEngine) {
       throw new Error('GPU search engine not initialized');
@@ -238,11 +239,10 @@ export class SearchEngine {
         queryVector,
         k,
         metric.name as DistanceMetricType,
-        options
+        options,
       );
 
       return results;
-
     } catch (error) {
       console.warn('GPU search failed, falling back:', error);
       return this.fallbackFromGPU(queryVector, candidates, k, options);
@@ -256,7 +256,7 @@ export class SearchEngine {
     queryVector: Float32Array,
     candidates: VectorData[],
     k: number,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     // Try workers first
     if (this.workerPool && candidates.length >= this.parallelThreshold) {
@@ -274,7 +274,7 @@ export class SearchEngine {
     queryVector: Float32Array,
     candidates: VectorData[],
     k: number,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     if (!this.workerPool) {
       throw new Error('Worker pool not initialized');
@@ -284,12 +284,15 @@ export class SearchEngine {
     try {
       await this.workerPool.init();
     } catch (error) {
-      console.warn('Failed to initialize worker pool, falling back to sequential search:', error);
+      console.warn(
+        'Failed to initialize worker pool, falling back to sequential search:',
+        error,
+      );
       return this.searchSequential(queryVector, candidates, k, options);
     }
 
     const metric = (this.distanceCalculator as any)['metric'];
-    
+
     // Compile filter function if needed
     let filterFn: ((metadata: Record<string, unknown>) => boolean) | undefined;
     if (options?.filter) {
@@ -303,28 +306,27 @@ export class SearchEngine {
         queryVector,
         k,
         metric?.name as DistanceMetricType,
-        filterFn
+        filterFn,
       );
 
       // Convert to search results format
-      return results.map(result => {
+      return results.map((result) => {
         const searchResult: SearchResult = {
           id: result.id,
           score: result.score,
-          distance: result.distance
+          distance: result.distance,
         };
         if (options?.includeMetadata && result.metadata) {
           searchResult.metadata = result.metadata;
         }
         if (options?.includeVector) {
-          const candidate = candidates.find(c => c.id === result.id);
+          const candidate = candidates.find((c) => c.id === result.id);
           if (candidate?.vector) {
             searchResult.vector = candidate.vector;
           }
         }
         return searchResult;
       });
-
     } catch (error) {
       console.warn('Worker search failed, falling back to sequential search:', error);
       return this.searchSequential(queryVector, candidates, k, options);
@@ -338,7 +340,7 @@ export class SearchEngine {
     queryVector: Float32Array,
     candidates: VectorData[],
     k: number,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): SearchResult[] {
     const metric = (this.distanceCalculator as any)['metric'];
     const scoredCandidates = this.scoreVectors(queryVector, candidates, metric);
@@ -348,11 +350,11 @@ export class SearchEngine {
     const topK = scoredCandidates.slice(0, k);
 
     // Convert to search results
-    return topK.map(candidate => {
+    return topK.map((candidate) => {
       const searchResult: SearchResult = {
         id: candidate.id,
         score: this.distanceToScore(candidate.distance, metric?.name || 'cosine'),
-        distance: candidate.distance
+        distance: candidate.distance,
       };
       if (options?.includeMetadata && candidate.metadata) {
         searchResult.metadata = candidate.metadata;
@@ -370,7 +372,7 @@ export class SearchEngine {
   async searchRange(
     queryVector: Float32Array,
     maxDistance: number,
-    options?: SearchOptions & { maxResults?: number }
+    options?: SearchOptions & { maxResults?: number },
   ): Promise<SearchResult[]> {
     // Validate dimension
     if (queryVector.length !== this.dimension) {
@@ -378,7 +380,7 @@ export class SearchEngine {
     }
 
     const metric = (this.distanceCalculator as any)['metric'];
-    const processedQuery = metric?.requiresNormalized 
+    const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
 
@@ -400,7 +402,7 @@ export class SearchEngine {
         const searchResult: SearchResult = {
           id: candidate.id,
           score: this.distanceToScore(distance, metric?.name || 'cosine'),
-          distance
+          distance,
         };
         if (options?.includeMetadata && candidate.metadata) {
           searchResult.metadata = candidate.metadata;
@@ -427,15 +429,15 @@ export class SearchEngine {
    */
   async *searchStream(
     queryVector: Float32Array,
-    options?: SearchOptions & { 
-      batchSize?: number; 
+    options?: SearchOptions & {
+      batchSize?: number;
       maxResults?: number;
       progressive?: boolean;
-    }
+    },
   ): AsyncGenerator<SearchResult[], void, unknown> {
     const batchSize = options?.batchSize || 10;
     const maxResults = options?.maxResults || Infinity;
-    
+
     // For progressive search, start with smaller candidate sets
     if (options?.progressive) {
       yield* this.progressiveSearch(queryVector, batchSize, maxResults, options);
@@ -444,7 +446,7 @@ export class SearchEngine {
 
     // Regular streaming search
     const results = await this.search(queryVector, maxResults, options);
-    
+
     // Yield results in batches
     for (let i = 0; i < results.length; i += batchSize) {
       yield results.slice(i, i + batchSize);
@@ -458,17 +460,17 @@ export class SearchEngine {
     queryVector: Float32Array,
     batchSize: number,
     maxResults: number,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): AsyncGenerator<SearchResult[], void, unknown> {
     const candidates = await this.getCandidates(options?.filter);
     const totalCandidates = candidates.length;
-    
+
     // Start with a sample and progressively search more
     const sampleSizes = [
       Math.min(100, totalCandidates),
       Math.min(1000, totalCandidates),
       Math.min(10000, totalCandidates),
-      totalCandidates
+      totalCandidates,
     ];
 
     const seenIds = new Set<string>();
@@ -479,22 +481,22 @@ export class SearchEngine {
 
       // Get sample of candidates
       const sample = candidates.slice(0, sampleSize);
-      
+
       // Search within sample
       const results = await this.searchInCandidates(
-        queryVector, 
-        sample, 
+        queryVector,
+        sample,
         Math.min(batchSize * 2, maxResults - yielded),
-        options
+        options,
       );
 
       // Filter out already seen results
-      const newResults = results.filter(r => !seenIds.has(r.id));
-      
+      const newResults = results.filter((r) => !seenIds.has(r.id));
+
       if (newResults.length > 0) {
         // Mark as seen
-        newResults.forEach(r => seenIds.add(r.id));
-        
+        newResults.forEach((r) => seenIds.add(r.id));
+
         // Yield batch
         const batch = newResults.slice(0, Math.min(batchSize, maxResults - yielded));
         yield batch;
@@ -520,9 +522,7 @@ export class SearchEngine {
     // For now, get all and filter in memory
     // TODO: Optimize with metadata indices
     const allVectors = await this.storage.getAll();
-    return allVectors.filter(vector => 
-      matcher(vector.metadata || {})
-    );
+    return allVectors.filter((vector) => matcher(vector.metadata || {}));
   }
 
   /**
@@ -531,9 +531,9 @@ export class SearchEngine {
   private scoreVectors(
     query: Float32Array,
     candidates: VectorData[],
-    metric: { name: string; requiresNormalized?: boolean }
+    metric: { name: string; requiresNormalized?: boolean },
   ): Array<VectorData & { distance: number }> {
-    return candidates.map(candidate => {
+    return candidates.map((candidate) => {
       // Process vector if needed
       const processedVector = metric?.requiresNormalized
         ? VectorOperations.normalizeSync(candidate.vector)
@@ -553,24 +553,24 @@ export class SearchEngine {
     queryVector: Float32Array,
     candidates: VectorData[],
     k: number,
-    options?: SearchOptions
+    options?: SearchOptions,
   ): Promise<SearchResult[]> {
     const metric = (this.distanceCalculator as any)['metric'];
-    const processedQuery = metric?.requiresNormalized 
+    const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
 
     const scoredCandidates = this.scoreVectors(processedQuery, candidates, metric);
-    
+
     // Sort and take top k
     scoredCandidates.sort((a, b) => a.distance - b.distance);
     const topK = scoredCandidates.slice(0, k);
 
-    return topK.map(candidate => {
+    return topK.map((candidate) => {
       const searchResult: SearchResult = {
         id: candidate.id,
         score: this.distanceToScore(candidate.distance, metric?.name || 'cosine'),
-        distance: candidate.distance
+        distance: candidate.distance,
       };
       if (options?.includeMetadata && candidate.metadata) {
         searchResult.metadata = candidate.metadata;
@@ -589,28 +589,27 @@ export class SearchEngine {
     switch (metricName) {
       case 'cosine':
         // Cosine distance is in range [0, 2], convert to similarity [0, 1]
-        return 1 - (distance / 2);
-      
+        return 1 - distance / 2;
+
       case 'dot':
         // Dot product is negative distance, convert back
         return -distance;
-      
+
       case 'euclidean':
       case 'manhattan':
         // Convert distance to similarity using exponential decay
         return Math.exp(-distance);
-      
+
       case 'hamming':
       case 'jaccard':
         // These are already in [0, 1] range
         return 1 - distance;
-      
+
       default:
         // Generic conversion
         return 1 / (1 + distance);
     }
   }
-
 
   /**
    * Add vector to index (if using HNSW)
@@ -667,7 +666,7 @@ export class SearchEngine {
    */
   setIndexing(enabled: boolean, distanceMetric?: DistanceMetricType): void {
     this.useIndex = enabled;
-    
+
     if (enabled && !this.hnswIndex) {
       this.hnswIndex = new HNSWIndex(distanceMetric || 'cosine');
     } else if (!enabled) {
@@ -693,7 +692,7 @@ export class SearchEngine {
       enabled: true,
       nodeCount: stats.nodeCount,
       levels: stats.levels,
-      avgConnections: stats.avgConnections
+      avgConnections: stats.avgConnections,
     };
   }
 
@@ -733,7 +732,9 @@ export class SearchEngine {
     const cached = await this.indexCache.getIndex(this.indexId);
     if (cached) {
       this.hnswIndex = cached.index;
-      this.distanceCalculator = createDistanceCalculator(cached.distanceMetric as DistanceMetricType);
+      this.distanceCalculator = createDistanceCalculator(
+        cached.distanceMetric as DistanceMetricType,
+      );
       return true;
     }
 
@@ -745,7 +746,7 @@ export class SearchEngine {
    */
   setDistanceMetric(metric: DistanceMetricType): void {
     this.distanceCalculator = createDistanceCalculator(metric);
-    
+
     // Recreate index with new metric if enabled
     if (this.useIndex) {
       this.hnswIndex = new HNSWIndex(metric);
@@ -755,14 +756,17 @@ export class SearchEngine {
   /**
    * Enable or disable parallel processing with workers
    */
-  setWorkerPoolEnabled(enabled: boolean, config?: {
-    maxWorkers?: number;
-    workerScript?: string;
-    timeout?: number;
-    parallelThreshold?: number;
-  }): void {
+  setWorkerPoolEnabled(
+    enabled: boolean,
+    config?: {
+      maxWorkers?: number;
+      workerScript?: string;
+      timeout?: number;
+      parallelThreshold?: number;
+    },
+  ): void {
     this.useWorkers = enabled;
-    
+
     if (enabled && !this.workerPool && typeof Worker !== 'undefined') {
       this.workerPool = new WorkerPool(config);
       if (config?.parallelThreshold) {
@@ -797,7 +801,7 @@ export class SearchEngine {
     return {
       enabled: this.useWorkers,
       initialized: this.workerPool !== null,
-      ...(this.workerPool && { stats: this.workerPool.getStats() })
+      ...(this.workerPool && { stats: this.workerPool.getStats() }),
     };
   }
 
@@ -819,7 +823,7 @@ export class SearchEngine {
       enabled: this.useGPU,
       initialized: this.gpuSearchEngine !== null,
       available: this.gpuSearchEngine?.isGPUReady() ?? false,
-      ...(capabilities && { capabilities })
+      ...(capabilities && { capabilities }),
     };
   }
 
@@ -837,7 +841,7 @@ export class SearchEngine {
     }
 
     // Fallback to sequential normalization
-    return vectors.map(vector => VectorOperations.normalizeSync(vector));
+    return vectors.map((vector) => VectorOperations.normalizeSync(vector));
   }
 
   /**
@@ -846,14 +850,17 @@ export class SearchEngine {
   async batchSimilarity(
     vectors: VectorData[],
     queries: Float32Array[],
-    metric: DistanceMetricType = 'cosine'
+    metric: DistanceMetricType = 'cosine',
   ): Promise<number[][]> {
     if (this.workerPool && vectors.length * queries.length >= 10000) {
       try {
         await this.workerPool.init();
         return await this.workerPool.batchSimilarity(vectors, queries, metric);
       } catch (error) {
-        console.warn('Worker batch similarity failed, falling back to sequential:', error);
+        console.warn(
+          'Worker batch similarity failed, falling back to sequential:',
+          error,
+        );
       }
     }
 
@@ -881,7 +888,7 @@ export class SearchEngine {
     vectors: Float32Array[],
     queryVector: Float32Array,
     k: number,
-    metric: DistanceMetricType = 'cosine'
+    metric: DistanceMetricType = 'cosine',
   ): Promise<Array<{ index: number; distance: number; score: number }>> {
     if (!this.workerPool || typeof SharedArrayBuffer === 'undefined') {
       throw new Error('SharedArrayBuffer support or worker pool not available');
@@ -900,8 +907,13 @@ export class SearchEngine {
    */
   setGPUAcceleration(enabled: boolean, config?: GPUSearchConfig): void {
     this.useGPU = enabled;
-    
-    if (enabled && !this.gpuSearchEngine && typeof navigator !== 'undefined' && 'gpu' in navigator) {
+
+    if (
+      enabled &&
+      !this.gpuSearchEngine &&
+      typeof navigator !== 'undefined' &&
+      'gpu' in navigator
+    ) {
       this.gpuSearchEngine = new GPUSearchEngine(config);
       if (config?.gpuThreshold) {
         this.gpuThreshold = config.gpuThreshold;
@@ -915,11 +927,14 @@ export class SearchEngine {
   /**
    * Enable or disable shared memory optimizations
    */
-  setSharedMemoryOptimizations(enabled: boolean, config?: {
-    maxPoolSize?: number;
-    enableOptimizations?: boolean;
-    chunkSize?: number;
-  }): void {
+  setSharedMemoryOptimizations(
+    enabled: boolean,
+    config?: {
+      maxPoolSize?: number;
+      enableOptimizations?: boolean;
+      chunkSize?: number;
+    },
+  ): void {
     if (this.workerPool) {
       this.workerPool.setSharedMemoryOptimizations(enabled, config);
     }
@@ -942,7 +957,7 @@ export class SearchEngine {
       await this.workerPool.terminate();
       this.workerPool = null;
     }
-    
+
     if (this.gpuSearchEngine) {
       await this.gpuSearchEngine.cleanup();
       this.gpuSearchEngine = null;

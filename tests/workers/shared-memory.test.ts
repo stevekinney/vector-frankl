@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'bun:test';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
+
 import { SharedMemoryManager } from '../../src/workers/shared-memory.js';
-import { setupIndexedDBMocks, cleanupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
+import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
 
 describe('SharedMemoryManager', () => {
   beforeAll(() => {
@@ -15,13 +16,15 @@ describe('SharedMemoryManager', () => {
     it('should initialize with default configuration', () => {
       // Skip if SharedArrayBuffer is not available
       if (typeof SharedArrayBuffer === 'undefined') {
-        expect(() => new SharedMemoryManager()).toThrow('SharedArrayBuffer is not supported');
+        expect(() => new SharedMemoryManager()).toThrow(
+          'SharedArrayBuffer is not supported',
+        );
         return;
       }
 
       const manager = new SharedMemoryManager();
       expect(manager).toBeDefined();
-      
+
       const stats = manager.getStats();
       expect(stats.totalAllocated).toBe(0);
       expect(stats.totalUsed).toBe(0);
@@ -37,7 +40,7 @@ describe('SharedMemoryManager', () => {
         maxPoolSize: 50 * 1024 * 1024, // 50MB
         initialBufferSize: 512 * 1024, // 512KB
         alignment: 16,
-        enableStats: true
+        enableStats: true,
       };
 
       const manager = new SharedMemoryManager(config);
@@ -54,7 +57,7 @@ describe('SharedMemoryManager', () => {
       }
       manager = new SharedMemoryManager({
         maxPoolSize: 10 * 1024 * 1024,
-        enableStats: true
+        enableStats: true,
       });
     });
 
@@ -76,7 +79,9 @@ describe('SharedMemoryManager', () => {
 
       // Verify buffer size is sufficient
       const expectedDataSize = vectorCount * dimension * 4;
-      expect(buffer.byteLength).toBeGreaterThanOrEqual(expectedDataSize + layout.headerSize);
+      expect(buffer.byteLength).toBeGreaterThanOrEqual(
+        expectedDataSize + layout.headerSize,
+      );
     });
 
     it('should reuse buffers from memory pool', () => {
@@ -86,16 +91,16 @@ describe('SharedMemoryManager', () => {
 
       // Allocate a buffer
       const { buffer: buffer1 } = manager.allocateVectorBuffer(50, 128);
-      
+
       // Release it
       manager.releaseBuffer(buffer1);
-      
+
       // Allocate a similar sized buffer - should reuse
       const { buffer: buffer2 } = manager.allocateVectorBuffer(40, 128);
-      
+
       // They should be the same buffer
       expect(buffer2).toBe(buffer1);
-      
+
       const stats = manager.getStats();
       expect(stats.poolHits).toBe(1);
     });
@@ -106,14 +111,14 @@ describe('SharedMemoryManager', () => {
       }
 
       const { buffer } = manager.allocateVectorBuffer(100, 256);
-      
+
       const stats = manager.getStats();
       expect(stats.totalAllocated).toBeGreaterThan(0);
       expect(stats.totalUsed).toBeGreaterThan(0);
       expect(stats.activeBlocks).toBe(1);
-      
+
       manager.releaseBuffer(buffer);
-      
+
       const statsAfter = manager.getStats();
       expect(statsAfter.totalUsed).toBe(0);
       expect(statsAfter.activeBlocks).toBe(0);
@@ -138,16 +143,16 @@ describe('SharedMemoryManager', () => {
       const vectors = [
         new Float32Array([1, 2, 3, 4]),
         new Float32Array([5, 6, 7, 8]),
-        new Float32Array([9, 10, 11, 12])
+        new Float32Array([9, 10, 11, 12]),
       ];
 
       const { buffer, layout } = manager.allocateVectorBuffer(3, 4);
-      
+
       manager.copyVectorsToSharedMemory(vectors, buffer, layout);
 
       // Verify data was copied correctly
       const dataView = new Float32Array(buffer, layout.dataOffset);
-      
+
       for (let i = 0; i < vectors.length; i++) {
         for (let j = 0; j < 4; j++) {
           const expectedValue = vectors[i]![j]!;
@@ -162,10 +167,7 @@ describe('SharedMemoryManager', () => {
         return;
       }
 
-      const vectors = [
-        new Float32Array([1, 2, 3]),
-        new Float32Array([4, 5, 6])
-      ];
+      const vectors = [new Float32Array([1, 2, 3]), new Float32Array([4, 5, 6])];
 
       const { buffer, layout } = manager.allocateVectorBuffer(2, 3);
       manager.copyVectorsToSharedMemory(vectors, buffer, layout);
@@ -192,7 +194,7 @@ describe('SharedMemoryManager', () => {
         new Float32Array([1, 2]),
         new Float32Array([3, 4]),
         new Float32Array([5, 6]),
-        new Float32Array([7, 8])
+        new Float32Array([7, 8]),
       ];
 
       const { buffer, layout } = manager.allocateVectorBuffer(4, 2);
@@ -200,7 +202,7 @@ describe('SharedMemoryManager', () => {
 
       // Create views for middle 2 vectors
       const views = manager.createBatchVectorViews(buffer, layout, 1, 2);
-      
+
       expect(views).toHaveLength(2);
       expect(views[0]![0]).toBeCloseTo(3, 5);
       expect(views[0]![1]).toBeCloseTo(4, 5);
@@ -217,7 +219,7 @@ describe('SharedMemoryManager', () => {
         return;
       }
       manager = new SharedMemoryManager({
-        enableStats: true
+        enableStats: true,
       });
     });
 
@@ -234,7 +236,7 @@ describe('SharedMemoryManager', () => {
       expect(manager.getStats().totalAllocated).toBeGreaterThan(0);
 
       // Add a small delay to ensure timestamp difference
-      await new Promise(resolve => setTimeout(resolve, 1));
+      await new Promise((resolve) => setTimeout(resolve, 1));
 
       // Cleanup with very short max age should remove it
       manager.cleanup(0);
@@ -281,22 +283,22 @@ describe('SharedMemoryManager', () => {
       const batches = [
         {
           vectors: [new Float32Array([1, 2]), new Float32Array([3, 4])],
-          queryVectors: [new Float32Array([5, 6])]
+          queryVectors: [new Float32Array([5, 6])],
         },
         {
           vectors: [new Float32Array([7, 8])],
-          queryVectors: [new Float32Array([9, 10]), new Float32Array([11, 12])]
-        }
+          queryVectors: [new Float32Array([9, 10]), new Float32Array([11, 12])],
+        },
       ];
 
       const result = manager.createBatchLayout(batches, {
         interleaveData: true,
-        alignVectors: true
+        alignVectors: true,
       });
 
       expect(result.buffer).toBeInstanceOf(SharedArrayBuffer);
       expect(result.layout.batches).toHaveLength(2);
-      
+
       // Check first batch layout
       const batch0 = result.layout.batches[0];
       expect(batch0).toBeDefined();

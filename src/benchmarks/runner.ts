@@ -2,8 +2,12 @@
  * Benchmark runner and CLI interface
  */
 
-import { BenchmarkSuite, type BenchmarkConfig, type BenchmarkSummary } from './benchmark-suite.js';
 import type { DistanceMetric } from '@/core/types.js';
+import {
+  BenchmarkSuite,
+  type BenchmarkConfig,
+  type BenchmarkSummary,
+} from './benchmark-suite.js';
 
 export interface BenchmarkRunnerOptions {
   /** Configuration for the benchmark suite */
@@ -35,23 +39,23 @@ export class BenchmarkRunner {
    */
   async run(): Promise<BenchmarkSummary> {
     const startTime = Date.now();
-    
+
     console.log('🎯 Vector Frankl Performance Benchmark Suite');
     console.log('============================================');
     console.log();
-    
+
     try {
       const summary = await this.suite.runSuite();
-      
+
       const endTime = Date.now();
       const totalTime = endTime - startTime;
-      
+
       console.log();
       console.log('📈 Benchmark Results Summary');
       console.log('============================');
-      
+
       await this.outputResults(summary, totalTime);
-      
+
       return summary;
     } catch (error) {
       console.error('❌ Benchmark suite failed:', error);
@@ -62,7 +66,10 @@ export class BenchmarkRunner {
   /**
    * Output results in specified format
    */
-  private async outputResults(summary: BenchmarkSummary, totalTime: number): Promise<void> {
+  private async outputResults(
+    summary: BenchmarkSummary,
+    totalTime: number,
+  ): Promise<void> {
     switch (this.options.outputFormat) {
       case 'json':
         await this.outputJSON(summary, totalTime);
@@ -84,49 +91,58 @@ export class BenchmarkRunner {
     console.log(`Failed: ${summary.failedTests} ❌`);
     console.log(`Total Time: ${(totalTime / 1000).toFixed(2)}s`);
     console.log();
-    
+
     // Category performance overview
     console.log('📊 Performance by Category:');
     console.log('---------------------------');
     for (const [category, stats] of Object.entries(summary.categories)) {
-      console.log(`${category.padEnd(15)}: ${stats.averageOps.toFixed(1)} ops/sec (${stats.testCount} tests)`);
+      console.log(
+        `${category.padEnd(15)}: ${stats.averageOps.toFixed(1)} ops/sec (${stats.testCount} tests)`,
+      );
     }
     console.log();
-    
+
     // Top performing tests
     const topTests = summary.results
-      .filter(r => !r.error)
+      .filter((r) => !r.error)
       .sort((a, b) => b.operationsPerSecond - a.operationsPerSecond)
       .slice(0, 5);
-    
+
     console.log('🏆 Top 5 Performing Tests:');
     console.log('---------------------------');
     topTests.forEach((test, i) => {
-      console.log(`${i + 1}. ${test.testName}: ${test.operationsPerSecond.toFixed(1)} ops/sec`);
+      console.log(
+        `${i + 1}. ${test.testName}: ${test.operationsPerSecond.toFixed(1)} ops/sec`,
+      );
     });
     console.log();
-    
+
     // Slowest tests
     const slowTests = summary.results
-      .filter(r => !r.error)
+      .filter((r) => !r.error)
       .sort((a, b) => a.operationsPerSecond - b.operationsPerSecond)
       .slice(0, 5);
-    
+
     console.log('🐌 Slowest 5 Tests:');
     console.log('--------------------');
     slowTests.forEach((test, i) => {
-      console.log(`${i + 1}. ${test.testName}: ${test.operationsPerSecond.toFixed(1)} ops/sec`);
+      console.log(
+        `${i + 1}. ${test.testName}: ${test.operationsPerSecond.toFixed(1)} ops/sec`,
+      );
     });
     console.log();
-    
+
     // Memory usage summary
-    const memoryTests = summary.results.filter(r => r.memoryUsage);
+    const memoryTests = summary.results.filter((r) => r.memoryUsage);
     if (memoryTests.length > 0) {
-      const totalMemory = memoryTests.reduce((sum, r) => sum + (r.memoryUsage?.heapUsed || 0), 0);
+      const totalMemory = memoryTests.reduce(
+        (sum, r) => sum + (r.memoryUsage?.heapUsed || 0),
+        0,
+      );
       console.log(`💾 Total Memory Impact: ${this.formatBytes(totalMemory)}`);
       console.log();
     }
-    
+
     // Recommendations
     if (summary.recommendations.length > 0) {
       console.log('💡 Performance Recommendations:');
@@ -136,13 +152,13 @@ export class BenchmarkRunner {
       });
       console.log();
     }
-    
+
     // Failed tests
     if (summary.failedTests > 0) {
       console.log('❌ Failed Tests:');
       console.log('----------------');
-      const failedResults = summary.results.filter(r => r.error);
-      failedResults.forEach(test => {
+      const failedResults = summary.results.filter((r) => r.error);
+      failedResults.forEach((test) => {
         console.log(`- ${test.testName}: ${test.error}`);
       });
       console.log();
@@ -160,17 +176,17 @@ export class BenchmarkRunner {
       environment: {
         userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'Node.js',
         platform: typeof process !== 'undefined' ? process.platform : 'browser',
-        nodeVersion: typeof process !== 'undefined' ? process.version : undefined
-      }
+        nodeVersion: typeof process !== 'undefined' ? process.version : undefined,
+      },
     };
-    
+
     const jsonOutput = JSON.stringify(output, null, 2);
-    
+
     if (this.options.exportPath) {
       // In a real implementation, you'd write to file here
       console.log(`JSON results would be exported to: ${this.options.exportPath}`);
     }
-    
+
     console.log(jsonOutput);
   }
 
@@ -187,10 +203,10 @@ export class BenchmarkRunner {
       'heapTotal',
       'external',
       'error',
-      'metadata'
+      'metadata',
     ];
-    
-    const rows = summary.results.map(result => [
+
+    const rows = summary.results.map((result) => [
       result.testName,
       result.category,
       result.duration.toString(),
@@ -199,18 +215,18 @@ export class BenchmarkRunner {
       (result.memoryUsage?.heapTotal || '').toString(),
       (result.memoryUsage?.external || '').toString(),
       result.error || '',
-      JSON.stringify(result.metadata)
+      JSON.stringify(result.metadata),
     ]);
-    
+
     const csvContent = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
     ].join('\n');
-    
+
     if (this.options.exportPath) {
       console.log(`CSV results would be exported to: ${this.options.exportPath}`);
     }
-    
+
     console.log(csvContent);
   }
 
@@ -221,12 +237,12 @@ export class BenchmarkRunner {
     const units = ['B', 'KB', 'MB', 'GB'];
     let size = bytes;
     let unitIndex = 0;
-    
+
     while (size >= 1024 && unitIndex < units.length - 1) {
       size /= 1024;
       unitIndex++;
     }
-    
+
     return `${size.toFixed(1)} ${units[unitIndex]}`;
   }
 }
@@ -238,11 +254,13 @@ export class QuickBenchmark {
   /**
    * Run a quick performance test with minimal configuration
    */
-  static async runQuick(options: {
-    dimensions?: number[];
-    datasetSizes?: number[];
-    distanceMetrics?: string[];
-  } = {}): Promise<void> {
+  static async runQuick(
+    options: {
+      dimensions?: number[];
+      datasetSizes?: number[];
+      distanceMetrics?: string[];
+    } = {},
+  ): Promise<void> {
     const config: BenchmarkConfig = {
       dimensions: options.dimensions || [128, 256],
       datasetSizes: options.datasetSizes || [100, 1000],
@@ -254,14 +272,14 @@ export class QuickBenchmark {
       testCompression: false,
       testFormats: false,
       testIndexing: false,
-      verbose: true
+      verbose: true,
     };
-    
+
     const runner = new BenchmarkRunner({
       config,
-      outputFormat: 'console'
+      outputFormat: 'console',
     });
-    
+
     await runner.run();
   }
 
@@ -271,24 +289,26 @@ export class QuickBenchmark {
   static async runFull(): Promise<void> {
     const runner = new BenchmarkRunner({
       config: {
-        verbose: true
+        verbose: true,
       },
-      outputFormat: 'console'
+      outputFormat: 'console',
     });
-    
+
     await runner.run();
   }
 
   /**
    * Run benchmarks for specific categories
    */
-  static async runCategory(category: 'search' | 'database-ops' | 'indexing' | 'formats' | 'compression'): Promise<void> {
+  static async runCategory(
+    category: 'search' | 'database-ops' | 'indexing' | 'formats' | 'compression',
+  ): Promise<void> {
     const config: BenchmarkConfig = {
       dimensions: [256],
       datasetSizes: [1000],
-      verbose: true
+      verbose: true,
     };
-    
+
     // Adjust config based on category
     switch (category) {
       case 'search':
@@ -313,12 +333,12 @@ export class QuickBenchmark {
         config.testIndexing = false;
         break;
     }
-    
+
     const runner = new BenchmarkRunner({
       config,
-      outputFormat: 'console'
+      outputFormat: 'console',
     });
-    
+
     await runner.run();
   }
 }

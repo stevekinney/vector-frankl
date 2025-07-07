@@ -1,6 +1,6 @@
 /**
  * Vector Database for IndexedDB
- * 
+ *
  * A high-performance vector database that runs entirely in the browser,
  * built on top of IndexedDB for persistent storage.
  */
@@ -22,25 +22,25 @@ export type {
   DatabaseConfig,
   VectorData,
   VectorFormat,
-  
+
   // Namespace types
   NamespaceConfig,
   NamespaceInfo,
   NamespaceStats,
-  
+
   // Search types
   SearchOptions,
   SearchResult,
   DistanceMetric,
   MetadataFilter,
-  
+
   // Batch operations
   BatchOptions,
   BatchProgress,
-  
+
   // Storage types
   StorageEstimate,
-  
+
   // Index types
   IndexStrategy,
   IndexConfig,
@@ -70,29 +70,29 @@ export { VectorFormatHandler } from './vectors/formats.js';
 
 // Search utilities
 export { SearchEngine } from './search/search-engine.js';
-export { 
-  DistanceMetrics, 
-  DistanceCalculator, 
-  createDistanceCalculator, 
-  registerCustomMetric, 
-  listAvailableMetrics 
+export {
+  DistanceMetrics,
+  DistanceCalculator,
+  createDistanceCalculator,
+  registerCustomMetric,
+  listAvailableMetrics,
 } from './search/distance-metrics.js';
-export { 
-  MetadataFilterCompiler, 
-  MetadataRangeQuery, 
-  metadataQuery 
+export {
+  MetadataFilterCompiler,
+  MetadataRangeQuery,
+  metadataQuery,
 } from './search/metadata-filter.js';
 export { HNSWIndex } from './search/hnsw-index.js';
 export { IndexPersistence, IndexCache } from './search/index-persistence.js';
 
 // Storage management utilities
-export { 
+export {
   StorageQuotaMonitor,
   type QuotaEstimate,
   type QuotaWarning,
-  type StorageBreakdown
+  type StorageBreakdown,
 } from './storage/quota-monitor.js';
-export { 
+export {
   EvictionManager,
   LRUEvictionPolicy,
   LFUEvictionPolicy,
@@ -100,15 +100,15 @@ export {
   ScoreBasedEvictionPolicy,
   HybridEvictionPolicy,
   type EvictionConfig,
-  type EvictionResult
+  type EvictionResult,
 } from './storage/eviction-policy.js';
 
 // Worker management utilities
-export { 
+export {
   WorkerPool,
   type WorkerTask,
   type WorkerResponse,
-  type PoolConfig
+  type PoolConfig,
 } from './workers/worker-pool.js';
 export {
   SharedMemoryManager,
@@ -116,7 +116,7 @@ export {
   type SharedMemoryConfig,
   type MemoryBlock,
   type SharedMemoryLayout,
-  type SharedMemoryStats
+  type SharedMemoryStats,
 } from './workers/shared-memory.js';
 
 // GPU acceleration utilities
@@ -125,12 +125,12 @@ export {
   webGPUManager,
   type WebGPUConfig,
   type GPUComputeResult,
-  type GPUCapabilities
+  type GPUCapabilities,
 } from './gpu/webgpu-manager.js';
 export {
   GPUSearchEngine,
   type GPUSearchConfig,
-  type GPUSearchStats
+  type GPUSearchStats,
 } from './gpu/gpu-search-engine.js';
 
 // Vector compression utilities
@@ -153,7 +153,7 @@ export {
   type QuantizationStrategy,
   type PQConfig,
   type PQCodebook,
-  type PQInitMethod
+  type PQInitMethod,
 } from './compression/index.js';
 
 // Debug and profiling tools
@@ -168,7 +168,7 @@ export {
   createTimer,
   type DebugConfig,
   type DebugConsole,
-  type PerformanceStats
+  type PerformanceStats,
 } from './debug/index.js';
 
 // Performance benchmarking
@@ -179,7 +179,7 @@ export {
   type BenchmarkConfig,
   type BenchmarkResult,
   type BenchmarkSummary,
-  type BenchmarkRunnerOptions
+  type BenchmarkRunnerOptions,
 } from './benchmarks/index.js';
 
 // Version

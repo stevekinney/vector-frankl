@@ -1,9 +1,21 @@
-import { describe, expect, test, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from 'bun:test';
+
 import { VectorDatabase } from '@/core/database.js';
+import { VectorNotFoundError } from '@/core/errors.js';
 import { VectorStorage } from '@/core/storage.js';
 import { VectorOperations } from '@/vectors/operations.js';
-import { VectorNotFoundError } from '@/core/errors.js';
-import { setupIndexedDBMocks, cleanupIndexedDBMocks } from '../../mocks/indexeddb-mock.js';
+import {
+  cleanupIndexedDBMocks,
+  setupIndexedDBMocks,
+} from '../../mocks/indexeddb-mock.js';
 
 describe('VectorStorage', () => {
   let database: VectorDatabase;
@@ -25,7 +37,7 @@ describe('VectorStorage', () => {
     } catch (_error) {
       // Ignore errors during cleanup
     }
-    
+
     database = new VectorDatabase({ name: testDbName });
     await database.init();
     storage = new VectorStorage(database);
@@ -45,7 +57,7 @@ describe('VectorStorage', () => {
       const vector = await VectorOperations.prepareForStorage(
         'test-vector-1',
         new Float32Array([0.1, 0.2, 0.3, 0.4]),
-        { label: 'test' }
+        { label: 'test' },
       );
 
       await storage.put(vector);
@@ -63,7 +75,7 @@ describe('VectorStorage', () => {
       const vector1 = await VectorOperations.prepareForStorage(
         'test-vector-1',
         new Float32Array([0.1, 0.2, 0.3, 0.4]),
-        { version: 1 }
+        { version: 1 },
       );
 
       await storage.put(vector1);
@@ -71,7 +83,7 @@ describe('VectorStorage', () => {
       const vector2 = await VectorOperations.prepareForStorage(
         'test-vector-1',
         new Float32Array([0.5, 0.6, 0.7, 0.8]),
-        { version: 2 }
+        { version: 2 },
       );
 
       await storage.put(vector2);
@@ -88,15 +100,15 @@ describe('VectorStorage', () => {
     test('should update access metadata on get', async () => {
       const vector = await VectorOperations.prepareForStorage(
         'test-vector-1',
-        new Float32Array([0.1, 0.2, 0.3, 0.4])
+        new Float32Array([0.1, 0.2, 0.3, 0.4]),
       );
 
       await storage.put(vector);
-      
+
       // First access
       const retrieved1 = await storage.get('test-vector-1');
       expect(retrieved1.accessCount).toBe(1);
-      
+
       // Second access
       const retrieved2 = await storage.get('test-vector-1');
       expect(retrieved2.accessCount).toBe(2);
@@ -109,7 +121,7 @@ describe('VectorStorage', () => {
       const vectors = [
         await VectorOperations.prepareForStorage('vec1', new Float32Array([0.1, 0.2])),
         await VectorOperations.prepareForStorage('vec2', new Float32Array([0.3, 0.4])),
-        await VectorOperations.prepareForStorage('vec3', new Float32Array([0.5, 0.6]))
+        await VectorOperations.prepareForStorage('vec3', new Float32Array([0.5, 0.6])),
       ];
 
       for (const vector of vectors) {
@@ -118,14 +130,14 @@ describe('VectorStorage', () => {
 
       const retrieved = await storage.getMany(['vec1', 'vec3']);
       expect(retrieved).toHaveLength(2);
-      expect(retrieved.map(v => v.id)).toContain('vec1');
-      expect(retrieved.map(v => v.id)).toContain('vec3');
+      expect(retrieved.map((v) => v.id)).toContain('vec1');
+      expect(retrieved.map((v) => v.id)).toContain('vec3');
     });
 
     test('should handle partial failures in getMany', async () => {
       const vector = await VectorOperations.prepareForStorage(
         'vec1',
-        new Float32Array([0.1, 0.2])
+        new Float32Array([0.1, 0.2]),
       );
       await storage.put(vector);
 
@@ -135,12 +147,14 @@ describe('VectorStorage', () => {
     });
 
     test('should store vectors in batch', async () => {
-      const vectors = await Promise.all(Array.from({ length: 10 }, (_, i) => 
-        VectorOperations.prepareForStorage(
-          `batch-vec-${i}`,
-          new Float32Array([i * 0.1, i * 0.2, i * 0.3, i * 0.4])
-        )
-      ));
+      const vectors = await Promise.all(
+        Array.from({ length: 10 }, (_, i) =>
+          VectorOperations.prepareForStorage(
+            `batch-vec-${i}`,
+            new Float32Array([i * 0.1, i * 0.2, i * 0.3, i * 0.4]),
+          ),
+        ),
+      );
 
       await storage.putBatch(vectors);
 
@@ -152,20 +166,22 @@ describe('VectorStorage', () => {
     });
 
     test('should report progress during batch operations', async () => {
-      const vectors = await Promise.all(Array.from({ length: 100 }, (_, i) => 
-        VectorOperations.prepareForStorage(
-          `progress-vec-${i}`,
-          new Float32Array([i * 0.01])
-        )
-      ));
+      const vectors = await Promise.all(
+        Array.from({ length: 100 }, (_, i) =>
+          VectorOperations.prepareForStorage(
+            `progress-vec-${i}`,
+            new Float32Array([i * 0.01]),
+          ),
+        ),
+      );
 
       const progressReports: any[] = [];
-      
+
       await storage.putBatch(vectors, {
         batchSize: 10,
         onProgress: (progress) => {
           progressReports.push(progress);
-        }
+        },
       });
 
       expect(progressReports.length).toBeGreaterThan(0);
@@ -178,7 +194,7 @@ describe('VectorStorage', () => {
     test('should delete a vector', async () => {
       const vector = await VectorOperations.prepareForStorage(
         'to-delete',
-        new Float32Array([0.1, 0.2])
+        new Float32Array([0.1, 0.2]),
       );
 
       await storage.put(vector);
@@ -189,12 +205,11 @@ describe('VectorStorage', () => {
     });
 
     test('should delete multiple vectors', async () => {
-      const vectors = await Promise.all(Array.from({ length: 5 }, (_, i) => 
-        VectorOperations.prepareForStorage(
-          `del-vec-${i}`,
-          new Float32Array([i * 0.1])
-        )
-      ));
+      const vectors = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          VectorOperations.prepareForStorage(`del-vec-${i}`, new Float32Array([i * 0.1])),
+        ),
+      );
 
       for (const vector of vectors) {
         await storage.put(vector);
@@ -211,12 +226,14 @@ describe('VectorStorage', () => {
     });
 
     test('should clear all vectors', async () => {
-      const vectors = await Promise.all(Array.from({ length: 5 }, (_, i) => 
-        VectorOperations.prepareForStorage(
-          `clear-vec-${i}`,
-          new Float32Array([i * 0.1])
-        )
-      ));
+      const vectors = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          VectorOperations.prepareForStorage(
+            `clear-vec-${i}`,
+            new Float32Array([i * 0.1]),
+          ),
+        ),
+      );
 
       for (const vector of vectors) {
         await storage.put(vector);
@@ -233,11 +250,11 @@ describe('VectorStorage', () => {
     test('should check if vector exists', async () => {
       const vector = await VectorOperations.prepareForStorage(
         'exists-test',
-        new Float32Array([0.1, 0.2])
+        new Float32Array([0.1, 0.2]),
       );
 
       expect(await storage.exists('exists-test')).toBe(false);
-      
+
       await storage.put(vector);
       expect(await storage.exists('exists-test')).toBe(true);
     });
@@ -245,12 +262,14 @@ describe('VectorStorage', () => {
     test('should count vectors', async () => {
       expect(await storage.count()).toBe(0);
 
-      const vectors = await Promise.all(Array.from({ length: 3 }, (_, i) => 
-        VectorOperations.prepareForStorage(
-          `count-vec-${i}`,
-          new Float32Array([i * 0.1])
-        )
-      ));
+      const vectors = await Promise.all(
+        Array.from({ length: 3 }, (_, i) =>
+          VectorOperations.prepareForStorage(
+            `count-vec-${i}`,
+            new Float32Array([i * 0.1]),
+          ),
+        ),
+      );
 
       for (const vector of vectors) {
         await storage.put(vector);
@@ -260,13 +279,15 @@ describe('VectorStorage', () => {
     });
 
     test('should get all vectors', async () => {
-      const vectors = await Promise.all(Array.from({ length: 3 }, (_, i) => 
-        VectorOperations.prepareForStorage(
-          `all-vec-${i}`,
-          new Float32Array([i * 0.1, i * 0.2]),
-          { index: i }
-        )
-      ));
+      const vectors = await Promise.all(
+        Array.from({ length: 3 }, (_, i) =>
+          VectorOperations.prepareForStorage(
+            `all-vec-${i}`,
+            new Float32Array([i * 0.1, i * 0.2]),
+            { index: i },
+          ),
+        ),
+      );
 
       for (const vector of vectors) {
         await storage.put(vector);
@@ -274,7 +295,11 @@ describe('VectorStorage', () => {
 
       const all = await storage.getAll();
       expect(all).toHaveLength(3);
-      expect(all.map(v => v.id).sort()).toEqual(['all-vec-0', 'all-vec-1', 'all-vec-2']);
+      expect(all.map((v) => v.id).sort()).toEqual([
+        'all-vec-0',
+        'all-vec-1',
+        'all-vec-2',
+      ]);
     });
   });
 });

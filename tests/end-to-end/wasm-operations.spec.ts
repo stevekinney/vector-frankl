@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('WASM Operations Tests', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,7 +8,9 @@ test.describe('WASM Operations Tests', () => {
 
   test('should detect WebAssembly support', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
@@ -16,7 +18,11 @@ test.describe('WASM Operations Tests', () => {
         window.log(`WebAssembly supported: ${wasmSupported}`);
 
         if (!wasmSupported) {
-          window.addTestResult('WASM Support', 'success', 'WebAssembly not supported in this browser');
+          window.addTestResult(
+            'WASM Support',
+            'success',
+            'WebAssembly not supported in this browser',
+          );
           return;
         }
 
@@ -27,7 +33,7 @@ test.describe('WASM Operations Tests', () => {
           module: typeof WebAssembly.Module === 'function',
           instance: typeof WebAssembly.Instance === 'function',
           memory: typeof WebAssembly.Memory === 'function',
-          table: typeof WebAssembly.Table === 'function'
+          table: typeof WebAssembly.Table === 'function',
         };
 
         const supportedFeatures = Object.entries(wasmFeatures)
@@ -36,8 +42,11 @@ test.describe('WASM Operations Tests', () => {
 
         window.log(`WASM features available: ${supportedFeatures.join(', ')}`);
 
-        window.addTestResult('WASM Support', 'success', 
-          `WebAssembly supported with ${supportedFeatures.length}/6 features`);
+        window.addTestResult(
+          'WASM Support',
+          'success',
+          `WebAssembly supported with ${supportedFeatures.length}/6 features`,
+        );
       } catch (error) {
         window.addTestResult('WASM Support', 'error', error.message);
         throw error;
@@ -49,7 +58,9 @@ test.describe('WASM Operations Tests', () => {
 
   test('should compile and instantiate basic WASM module', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
@@ -61,9 +72,10 @@ test.describe('WASM Operations Tests', () => {
         // Simple WASM module that adds two numbers
         // (module (func (export "add") (param i32) (param i32) (result i32) local.get 0 local.get 1 i32.add))
         const wasmBytes = new Uint8Array([
-          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f, 0x01,
-          0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00, 0x0a, 0x09,
-          0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b
+          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01, 0x60, 0x02,
+          0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x61,
+          0x64, 0x64, 0x00, 0x00, 0x0a, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01,
+          0x6a, 0x0b,
         ]);
 
         const startTime = performance.now();
@@ -85,8 +97,11 @@ test.describe('WASM Operations Tests', () => {
 
         window.log('WASM add function working correctly');
 
-        window.addTestResult('WASM Module', 'success', 
-          `Module compiled in ${compileTime.toFixed(2)}ms, add(5,3)=${result}`);
+        window.addTestResult(
+          'WASM Module',
+          'success',
+          `Module compiled in ${compileTime.toFixed(2)}ms, add(5,3)=${result}`,
+        );
       } catch (error) {
         window.addTestResult('WASM Module', 'error', error.message);
         throw error;
@@ -98,7 +113,9 @@ test.describe('WASM Operations Tests', () => {
 
   test('should handle WASM memory operations', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
@@ -110,7 +127,7 @@ test.describe('WASM Operations Tests', () => {
         // Test WebAssembly.Memory
         const memory = new WebAssembly.Memory({ initial: 1, maximum: 10 });
         const buffer = memory.buffer;
-        
+
         if (!(buffer instanceof ArrayBuffer)) {
           throw new Error('WASM memory buffer is not an ArrayBuffer');
         }
@@ -144,8 +161,11 @@ test.describe('WASM Operations Tests', () => {
           window.log('WASM memory growth not supported or failed');
         }
 
-        window.addTestResult('WASM Memory', 'success', 
-          `Memory operations completed, initial size: ${initialSize} bytes`);
+        window.addTestResult(
+          'WASM Memory',
+          'success',
+          `Memory operations completed, initial size: ${initialSize} bytes`,
+        );
       } catch (error) {
         window.addTestResult('WASM Memory', 'error', error.message);
         throw error;
@@ -157,7 +177,9 @@ test.describe('WASM Operations Tests', () => {
 
   test('should test vector operations in WASM', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
@@ -169,27 +191,34 @@ test.describe('WASM Operations Tests', () => {
         // More complex WASM module for vector dot product
         // This is a simplified version - real implementation would be more complex
         const vectorWasmBytes = new Uint8Array([
-          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0c, 0x02, 0x60, 0x03, 0x7f, 0x7f, 0x7f,
-          0x01, 0x7d, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x03, 0x02, 0x00, 0x01, 0x05, 0x03, 0x01,
-          0x00, 0x01, 0x07, 0x12, 0x02, 0x08, 0x64, 0x6f, 0x74, 0x50, 0x72, 0x6f, 0x64, 0x00, 0x00, 0x03,
-          0x61, 0x64, 0x64, 0x00, 0x01, 0x0a, 0x1a, 0x02, 0x0b, 0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02,
-          0x41, 0x02, 0x74, 0x6a, 0x2a, 0x02, 0x00, 0x92, 0x0b, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a,
-          0x0b
+          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0c, 0x02, 0x60, 0x03,
+          0x7f, 0x7f, 0x7f, 0x01, 0x7d, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x03,
+          0x02, 0x00, 0x01, 0x05, 0x03, 0x01, 0x00, 0x01, 0x07, 0x12, 0x02, 0x08, 0x64,
+          0x6f, 0x74, 0x50, 0x72, 0x6f, 0x64, 0x00, 0x00, 0x03, 0x61, 0x64, 0x64, 0x00,
+          0x01, 0x0a, 0x1a, 0x02, 0x0b, 0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x41,
+          0x02, 0x74, 0x6a, 0x2a, 0x02, 0x00, 0x92, 0x0b, 0x07, 0x00, 0x20, 0x00, 0x20,
+          0x01, 0x6a, 0x0b,
         ]);
 
         try {
           const wasmModule = await WebAssembly.instantiate(vectorWasmBytes);
-          
+
           // Test simple functions first
           const addFn = wasmModule.instance.exports.add;
           if (addFn && addFn(2, 3) === 5) {
             window.log('WASM vector module basic function works');
           }
 
-          window.addTestResult('WASM Vector Ops', 'success', 'WASM vector operations module loaded');
+          window.addTestResult(
+            'WASM Vector Ops',
+            'success',
+            'WASM vector operations module loaded',
+          );
         } catch (wasmError) {
           // If complex WASM fails, fall back to simple vector operations
-          window.log(`Complex WASM failed (${wasmError.message}), testing simpler approach`);
+          window.log(
+            `Complex WASM failed (${wasmError.message}), testing simpler approach`,
+          );
 
           // Simulate vector operations without actual WASM
           const vector1 = new Float32Array([1.0, 2.0, 3.0, 4.0]);
@@ -221,8 +250,11 @@ test.describe('WASM Operations Tests', () => {
             throw new Error('Float32Array data transfer failed');
           }
 
-          window.addTestResult('WASM Vector Ops', 'success', 
-            `Vector operations ready, JS dot product: ${dotProduct.toFixed(3)}`);
+          window.addTestResult(
+            'WASM Vector Ops',
+            'success',
+            `Vector operations ready, JS dot product: ${dotProduct.toFixed(3)}`,
+          );
         }
       } catch (error) {
         window.addTestResult('WASM Vector Ops', 'error', error.message);
@@ -235,12 +267,18 @@ test.describe('WASM Operations Tests', () => {
 
   test('should handle WASM compilation errors gracefully', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
         if (typeof WebAssembly === 'undefined') {
-          window.addTestResult('WASM Error Handling', 'success', 'WebAssembly not available');
+          window.addTestResult(
+            'WASM Error Handling',
+            'success',
+            'WebAssembly not available',
+          );
           return;
         }
 
@@ -257,7 +295,7 @@ test.describe('WASM Operations Tests', () => {
 
         // Test malformed WASM magic number
         try {
-          const badMagic = new Uint8Array([0xFF, 0x61, 0x73, 0x6d]); // Wrong magic number
+          const badMagic = new Uint8Array([0xff, 0x61, 0x73, 0x6d]); // Wrong magic number
           await WebAssembly.instantiate(badMagic);
         } catch (error) {
           window.log('Correctly caught bad magic number error');
@@ -290,8 +328,11 @@ test.describe('WASM Operations Tests', () => {
         }
 
         if (errorsHandled >= 3) {
-          window.addTestResult('WASM Error Handling', 'success', 
-            `Properly handled ${errorsHandled} WASM error conditions`);
+          window.addTestResult(
+            'WASM Error Handling',
+            'success',
+            `Properly handled ${errorsHandled} WASM error conditions`,
+          );
         } else {
           throw new Error(`Only ${errorsHandled} error conditions handled properly`);
         }
@@ -301,23 +342,31 @@ test.describe('WASM Operations Tests', () => {
       }
     });
 
-    await expect(page.locator('#test-results')).toContainText('WASM Error Handling: SUCCESS');
+    await expect(page.locator('#test-results')).toContainText(
+      'WASM Error Handling: SUCCESS',
+    );
   });
 
   test('should test WASM performance characteristics', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
         if (typeof WebAssembly === 'undefined') {
-          window.addTestResult('WASM Performance', 'success', 'WebAssembly not available');
+          window.addTestResult(
+            'WASM Performance',
+            'success',
+            'WebAssembly not available',
+          );
           return;
         }
 
         // Simple performance test: compare JS vs WASM for basic operations
         const testSize = 10000;
-        
+
         // JavaScript implementation
         function jsVectorSum(arr) {
           let sum = 0;
@@ -338,13 +387,16 @@ test.describe('WASM Operations Tests', () => {
         const jsResult = jsVectorSum(testData);
         const jsTime = performance.now() - jsStart;
 
-        window.log(`JS sum of ${testSize} floats: ${jsResult.toFixed(3)} in ${jsTime.toFixed(3)}ms`);
+        window.log(
+          `JS sum of ${testSize} floats: ${jsResult.toFixed(3)} in ${jsTime.toFixed(3)}ms`,
+        );
 
         // Test WASM compilation time
         const wasmBytes = new Uint8Array([
-          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01, 0x60, 0x02, 0x7f, 0x7f, 0x01,
-          0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x61, 0x64, 0x64, 0x00, 0x00, 0x0a, 0x09,
-          0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01, 0x6a, 0x0b
+          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01, 0x60, 0x02,
+          0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x61,
+          0x64, 0x64, 0x00, 0x00, 0x0a, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01,
+          0x6a, 0x0b,
         ]);
 
         const compileStart = performance.now();
@@ -360,20 +412,29 @@ test.describe('WASM Operations Tests', () => {
         }
         const callTime = performance.now() - callStart;
 
-        window.log(`WASM compile: ${compileTime.toFixed(3)}ms, 1000 calls: ${callTime.toFixed(3)}ms`);
+        window.log(
+          `WASM compile: ${compileTime.toFixed(3)}ms, 1000 calls: ${callTime.toFixed(3)}ms`,
+        );
 
         // Performance analysis
         const performanceRatio = jsTime / Math.max(callTime, 0.001); // Avoid division by zero
-        window.log(`Performance ratio (JS/WASM call overhead): ${performanceRatio.toFixed(2)}`);
+        window.log(
+          `Performance ratio (JS/WASM call overhead): ${performanceRatio.toFixed(2)}`,
+        );
 
-        window.addTestResult('WASM Performance', 'success', 
-          `JS: ${jsTime.toFixed(3)}ms, WASM compile: ${compileTime.toFixed(3)}ms, calls: ${callTime.toFixed(3)}ms`);
+        window.addTestResult(
+          'WASM Performance',
+          'success',
+          `JS: ${jsTime.toFixed(3)}ms, WASM compile: ${compileTime.toFixed(3)}ms, calls: ${callTime.toFixed(3)}ms`,
+        );
       } catch (error) {
         window.addTestResult('WASM Performance', 'error', error.message);
         throw error;
       }
     });
 
-    await expect(page.locator('#test-results')).toContainText('WASM Performance: SUCCESS');
+    await expect(page.locator('#test-results')).toContainText(
+      'WASM Performance: SUCCESS',
+    );
   });
 });

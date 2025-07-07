@@ -65,7 +65,7 @@ export class WebGPUManager {
       debug: config.debug ?? false,
       maxBufferSize: config.maxBufferSize || 256 * 1024 * 1024, // 256MB
       batchSize: config.batchSize || 1024,
-      enableProfiling: config.enableProfiling ?? false
+      enableProfiling: config.enableProfiling ?? false,
     };
   }
 
@@ -84,7 +84,7 @@ export class WebGPUManager {
       // Request adapter
       this.adapter = await navigator.gpu.requestAdapter({
         powerPreference: this.config.powerPreference,
-        forceFallbackAdapter: false
+        forceFallbackAdapter: false,
       });
 
       if (!this.adapter) {
@@ -94,7 +94,7 @@ export class WebGPUManager {
       // Request device
       const requiredFeatures: string[] = [];
       const optionalFeatures: string[] = ['timestamp-query', 'pipeline-statistics-query'];
-      
+
       // Add available optional features
       for (const feature of optionalFeatures) {
         if (this.adapter.features.has(feature)) {
@@ -107,14 +107,17 @@ export class WebGPUManager {
         requiredLimits: {
           maxStorageBufferBindingSize: Math.min(
             this.adapter.limits.maxStorageBufferBindingSize,
-            this.config.maxBufferSize
-          )
-        }
+            this.config.maxBufferSize,
+          ),
+        },
       });
 
       // Set up error handling
       this.device.addEventListener('uncapturederror', (event) => {
-        console.error('WebGPU uncaptured error:', (event as GPUUncapturedErrorEvent).error);
+        console.error(
+          'WebGPU uncaptured error:',
+          (event as GPUUncapturedErrorEvent).error,
+        );
       });
 
       // Cache capabilities
@@ -126,19 +129,21 @@ export class WebGPUManager {
           maxStorageBufferBindingSize: this.adapter.limits.maxStorageBufferBindingSize,
           maxComputeWorkgroupSizeX: this.adapter.limits.maxComputeWorkgroupSizeX,
           maxComputeWorkgroupSizeY: this.adapter.limits.maxComputeWorkgroupSizeY,
-          maxComputeInvocationsPerWorkgroup: this.adapter.limits.maxComputeInvocationsPerWorkgroup
-        }
+          maxComputeInvocationsPerWorkgroup:
+            this.adapter.limits.maxComputeInvocationsPerWorkgroup,
+        },
       };
 
       this.isInitialized = true;
       console.log('WebGPU initialized successfully');
-      
+
       if (this.config.debug) {
         console.log('GPU Capabilities:', this.capabilities);
       }
-
     } catch (error) {
-      throw new Error(`Failed to initialize WebGPU: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `Failed to initialize WebGPU: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -162,7 +167,7 @@ export class WebGPUManager {
   async computeSimilarity(
     vectors: Float32Array[],
     queryVector: Float32Array,
-    metric: DistanceMetric = 'cosine'
+    metric: DistanceMetric = 'cosine',
   ): Promise<GPUComputeResult> {
     if (!this.isAvailable()) {
       throw new Error('WebGPU is not initialized or available');
@@ -188,17 +193,17 @@ export class WebGPUManager {
 
       // Calculate optimal workgroup size
       const workgroupSize = this.calculateOptimalWorkgroupSize(vectorCount);
-      
+
       // Create or get compute pipeline
       const pipeline = await this.getComputePipeline(metric, workgroupSize);
-      
+
       // Prepare data and compute
       const result = await this.executeComputePass(
         pipeline,
         vectors,
         queryVector,
         metric,
-        workgroupSize
+        workgroupSize,
       );
 
       // Add profiling information
@@ -207,9 +212,10 @@ export class WebGPUManager {
       }
 
       return result;
-
     } catch (error) {
-      throw new Error(`GPU compute failed: ${error instanceof Error ? error.message : String(error)}`);
+      throw new Error(
+        `GPU compute failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 
@@ -219,25 +225,25 @@ export class WebGPUManager {
   async computeBatchSimilarity(
     vectors: Float32Array[],
     queryVectors: Float32Array[],
-    metric: DistanceMetric = 'cosine'
+    metric: DistanceMetric = 'cosine',
   ): Promise<GPUComputeResult[]> {
     if (!this.isAvailable()) {
       throw new Error('WebGPU is not initialized or available');
     }
 
     const results: GPUComputeResult[] = [];
-    
+
     // Process queries in batches to manage memory usage
     const batchSize = this.config.batchSize;
-    
+
     for (let i = 0; i < queryVectors.length; i += batchSize) {
       const queryBatch = queryVectors.slice(i, i + batchSize);
-      
+
       // Process each query in the batch
-      const batchPromises = queryBatch.map(query => 
-        this.computeSimilarity(vectors, query, metric)
+      const batchPromises = queryBatch.map((query) =>
+        this.computeSimilarity(vectors, query, metric),
       );
-      
+
       const batchResults = await Promise.all(batchPromises);
       results.push(...batchResults);
     }
@@ -280,14 +286,14 @@ export class WebGPUManager {
     }
 
     const maxWorkgroupSize = this.capabilities.limits.maxComputeWorkgroupSizeX;
-    
+
     // Find the largest power of 2 that fits within limits and is efficient
     let workgroupSize = 64; // Good starting point for most GPUs
-    
+
     while (workgroupSize <= maxWorkgroupSize && workgroupSize < vectorCount) {
       workgroupSize *= 2;
     }
-    
+
     // Ensure we don't exceed GPU limits
     return Math.min(workgroupSize / 2, maxWorkgroupSize, 256); // 256 is usually optimal
   }
@@ -297,10 +303,10 @@ export class WebGPUManager {
    */
   private async getComputePipeline(
     metric: DistanceMetric,
-    workgroupSize: number
+    workgroupSize: number,
   ): Promise<GPUComputePipeline> {
     const cacheKey = `${metric}_${workgroupSize}`;
-    
+
     if (this.shaderCache.has(cacheKey)) {
       return this.shaderCache.get(cacheKey)!;
     }
@@ -310,10 +316,10 @@ export class WebGPUManager {
     }
 
     const shaderCode = this.generateComputeShader(metric, workgroupSize);
-    
+
     const shaderModule = this.device.createShaderModule({
       label: `${metric}-similarity-shader`,
-      code: shaderCode
+      code: shaderCode,
     });
 
     const pipeline = this.device.createComputePipeline({
@@ -321,8 +327,8 @@ export class WebGPUManager {
       layout: 'auto',
       compute: {
         module: shaderModule,
-        entryPoint: 'main'
-      }
+        entryPoint: 'main',
+      },
     });
 
     this.shaderCache.set(cacheKey, pipeline);
@@ -337,7 +343,7 @@ export class WebGPUManager {
     vectors: Float32Array[],
     queryVector: Float32Array,
     _metric: DistanceMetric,
-    workgroupSize: number
+    workgroupSize: number,
   ): Promise<GPUComputeResult> {
     if (!this.device) {
       throw new Error('WebGPU device not available');
@@ -356,17 +362,17 @@ export class WebGPUManager {
       entries: [
         { binding: 0, resource: { buffer: vectorsBuffer } },
         { binding: 1, resource: { buffer: queryBuffer } },
-        { binding: 2, resource: { buffer: resultsBuffer } }
-      ]
+        { binding: 2, resource: { buffer: resultsBuffer } },
+      ],
     });
 
     // Create command encoder and compute pass
     const commandEncoder = this.device.createCommandEncoder();
     const computePass = commandEncoder.beginComputePass();
-    
+
     computePass.setPipeline(pipeline);
     computePass.setBindGroup(0, bindGroup);
-    
+
     // Dispatch compute shader
     const workgroupsX = Math.ceil(vectorCount / workgroupSize);
     computePass.dispatchWorkgroups(workgroupsX);
@@ -388,8 +394,8 @@ export class WebGPUManager {
       scores,
       memoryUsage: {
         bufferSize: vectorsBuffer.size + queryBuffer.size + resultsBuffer.size,
-        transferred: results.byteLength
-      }
+        transferred: results.byteLength,
+      },
     };
   }
 
@@ -404,7 +410,7 @@ export class WebGPUManager {
     const totalSize = vectors.length * vectors[0]!.length * 4; // 4 bytes per float
     const buffer = this.device.createBuffer({
       size: totalSize,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
     // Copy data to buffer
@@ -427,7 +433,7 @@ export class WebGPUManager {
 
     const buffer = this.device.createBuffer({
       size: queryVector.byteLength,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
 
     this.device.queue.writeBuffer(buffer, 0, queryVector);
@@ -444,7 +450,7 @@ export class WebGPUManager {
 
     return this.device.createBuffer({
       size: vectorCount * 4, // 4 bytes per float32
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
     });
   }
 
@@ -458,7 +464,7 @@ export class WebGPUManager {
 
     const readBuffer = this.device.createBuffer({
       size,
-      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ
+      usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
     });
 
     const commandEncoder = this.device.createCommandEncoder();

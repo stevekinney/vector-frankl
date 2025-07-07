@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
 test.describe('Web Workers Tests', () => {
   test.beforeEach(async ({ page }) => {
@@ -8,7 +8,9 @@ test.describe('Web Workers Tests', () => {
 
   test('should support web workers when available', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
@@ -17,7 +19,11 @@ test.describe('Web Workers Tests', () => {
         window.log(`Web Workers supported: ${workersSupported}`);
 
         if (!workersSupported) {
-          window.addTestResult('Web Workers Support', 'success', 'Web Workers not available in this environment');
+          window.addTestResult(
+            'Web Workers Support',
+            'success',
+            'Web Workers not available in this environment',
+          );
           return;
         }
 
@@ -50,24 +56,24 @@ test.describe('Web Workers Tests', () => {
           new Array(100).fill(0.5),
           new Array(100).fill(0.3),
           new Array(100).fill(0.8),
-          new Array(100).fill(0.1)
+          new Array(100).fill(0.1),
         ];
         const queryVector = new Array(100).fill(0.6);
 
         // Send work to worker
         const workerResult = await new Promise((resolve, reject) => {
           const timeout = setTimeout(() => reject(new Error('Worker timeout')), 5000);
-          
+
           worker.onmessage = (e) => {
             clearTimeout(timeout);
             resolve(e.data);
           };
-          
+
           worker.onerror = (error) => {
             clearTimeout(timeout);
             reject(error);
           };
-          
+
           worker.postMessage({ vectors: testVectors, queryVector });
         });
 
@@ -78,7 +84,7 @@ test.describe('Web Workers Tests', () => {
 
         // Check that results are sorted by score
         for (let i = 1; i < workerResult.results.length; i++) {
-          if (workerResult.results[i].score > workerResult.results[i-1].score) {
+          if (workerResult.results[i].score > workerResult.results[i - 1].score) {
             throw new Error('Worker results not properly sorted');
           }
         }
@@ -86,20 +92,27 @@ test.describe('Web Workers Tests', () => {
         worker.terminate();
         window.log('Worker computed similarity scores successfully');
 
-        window.addTestResult('Web Workers Support', 'success', 
-          `Worker processed ${testVectors.length} vectors successfully`);
+        window.addTestResult(
+          'Web Workers Support',
+          'success',
+          `Worker processed ${testVectors.length} vectors successfully`,
+        );
       } catch (error) {
         window.addTestResult('Web Workers Support', 'error', error.message);
         throw error;
       }
     });
 
-    await expect(page.locator('#test-results')).toContainText('Web Workers Support: SUCCESS');
+    await expect(page.locator('#test-results')).toContainText(
+      'Web Workers Support: SUCCESS',
+    );
   });
 
   test('should handle worker pool operations', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
@@ -114,7 +127,7 @@ test.describe('Web Workers Tests', () => {
             this.workers = [];
             this.queue = [];
             this.busy = new Set();
-            
+
             for (let i = 0; i < size; i++) {
               this.createWorker(i);
             }
@@ -134,18 +147,18 @@ test.describe('Web Workers Tests', () => {
 
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             const worker = new Worker(URL.createObjectURL(blob));
-            
+
             worker.onmessage = (e) => {
               const { taskId, result } = e.data;
               this.busy.delete(worker);
-              
+
               // Find the pending task and resolve it
-              const taskIndex = this.queue.findIndex(task => task.id === taskId);
+              const taskIndex = this.queue.findIndex((task) => task.id === taskId);
               if (taskIndex !== -1) {
                 const task = this.queue.splice(taskIndex, 1)[0];
                 task.resolve(result);
               }
-              
+
               this.processQueue();
             };
 
@@ -154,7 +167,7 @@ test.describe('Web Workers Tests', () => {
 
           async execute(data) {
             const taskId = Date.now() + Math.random();
-            
+
             return new Promise((resolve, reject) => {
               this.queue.push({ id: taskId, data, resolve, reject });
               this.processQueue();
@@ -163,24 +176,24 @@ test.describe('Web Workers Tests', () => {
 
           processQueue() {
             if (this.queue.length === 0) return;
-            
-            const availableWorker = this.workers.find(w => !this.busy.has(w));
+
+            const availableWorker = this.workers.find((w) => !this.busy.has(w));
             if (!availableWorker) return;
-            
-            const task = this.queue.find(t => !t.started);
+
+            const task = this.queue.find((t) => !t.started);
             if (!task) return;
-            
+
             task.started = true;
             this.busy.add(availableWorker);
-            
+
             availableWorker.postMessage({
               taskId: task.id,
-              data: task.data
+              data: task.data,
             });
           }
 
           terminate() {
-            this.workers.forEach(worker => worker.terminate());
+            this.workers.forEach((worker) => worker.terminate());
           }
         }
 
@@ -206,15 +219,20 @@ test.describe('Web Workers Tests', () => {
         for (let i = 0; i < results.length; i++) {
           const expected = 100 * i * i; // 100 elements of value i, squared and summed
           if (results[i] !== expected) {
-            throw new Error(`Task ${i} result mismatch: expected ${expected}, got ${results[i]}`);
+            throw new Error(
+              `Task ${i} result mismatch: expected ${expected}, got ${results[i]}`,
+            );
           }
         }
 
         pool.terminate();
 
         window.log(`Worker pool completed 10 tasks in ${totalTime.toFixed(2)}ms`);
-        window.addTestResult('Worker Pool', 'success', 
-          `Pool of 3 workers completed 10 tasks in ${totalTime.toFixed(2)}ms`);
+        window.addTestResult(
+          'Worker Pool',
+          'success',
+          `Pool of 3 workers completed 10 tasks in ${totalTime.toFixed(2)}ms`,
+        );
       } catch (error) {
         window.addTestResult('Worker Pool', 'error', error.message);
         throw error;
@@ -226,7 +244,9 @@ test.describe('Web Workers Tests', () => {
 
   test('should handle SharedArrayBuffer when available', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
@@ -234,20 +254,27 @@ test.describe('Web Workers Tests', () => {
         window.log(`SharedArrayBuffer supported: ${sharedArrayBufferSupported}`);
 
         if (!sharedArrayBufferSupported) {
-          window.addTestResult('SharedArrayBuffer', 'success', 
-            'SharedArrayBuffer not available (requires COOP/COEP headers)');
+          window.addTestResult(
+            'SharedArrayBuffer',
+            'success',
+            'SharedArrayBuffer not available (requires COOP/COEP headers)',
+          );
           return;
         }
 
         if (typeof Worker === 'undefined') {
-          window.addTestResult('SharedArrayBuffer', 'success', 'Web Workers not available');
+          window.addTestResult(
+            'SharedArrayBuffer',
+            'success',
+            'Web Workers not available',
+          );
           return;
         }
 
         // Test SharedArrayBuffer with worker
         const sharedBuffer = new SharedArrayBuffer(1024);
         const sharedArray = new Float32Array(sharedBuffer);
-        
+
         // Fill with test data
         for (let i = 0; i < sharedArray.length; i++) {
           sharedArray[i] = Math.random();
@@ -272,18 +299,21 @@ test.describe('Web Workers Tests', () => {
         const worker = new Worker(URL.createObjectURL(blob));
 
         const workerResult = await new Promise((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error('SharedArrayBuffer worker timeout')), 5000);
-          
+          const timeout = setTimeout(
+            () => reject(new Error('SharedArrayBuffer worker timeout')),
+            5000,
+          );
+
           worker.onmessage = (e) => {
             clearTimeout(timeout);
             resolve(e.data);
           };
-          
+
           worker.onerror = (error) => {
             clearTimeout(timeout);
             reject(error);
           };
-          
+
           worker.postMessage({ sharedBuffer });
         });
 
@@ -299,32 +329,46 @@ test.describe('Web Workers Tests', () => {
         }
 
         const difference = Math.abs(workerResult.sum - mainSum);
-        if (difference > 0.001) { // Allow for floating point precision
+        if (difference > 0.001) {
+          // Allow for floating point precision
           throw new Error('SharedArrayBuffer data mismatch between threads');
         }
 
         worker.terminate();
 
-        window.log(`SharedArrayBuffer test: ${sharedArray.length} floats, sum=${workerResult.sum.toFixed(3)}`);
-        window.addTestResult('SharedArrayBuffer', 'success', 
-          `Worker accessed shared memory with ${sharedArray.length} elements`);
+        window.log(
+          `SharedArrayBuffer test: ${sharedArray.length} floats, sum=${workerResult.sum.toFixed(3)}`,
+        );
+        window.addTestResult(
+          'SharedArrayBuffer',
+          'success',
+          `Worker accessed shared memory with ${sharedArray.length} elements`,
+        );
       } catch (error) {
         window.addTestResult('SharedArrayBuffer', 'error', error.message);
         throw error;
       }
     });
 
-    await expect(page.locator('#test-results')).toContainText('SharedArrayBuffer: SUCCESS');
+    await expect(page.locator('#test-results')).toContainText(
+      'SharedArrayBuffer: SUCCESS',
+    );
   });
 
   test('should handle worker errors gracefully', async ({ page }) => {
     await page.click('#init-db');
-    await expect(page.locator('#db-status')).toContainText('Initialized', { timeout: 10000 });
+    await expect(page.locator('#db-status')).toContainText('Initialized', {
+      timeout: 10000,
+    });
 
     await page.evaluate(async () => {
       try {
         if (typeof Worker === 'undefined') {
-          window.addTestResult('Worker Error Handling', 'success', 'Web Workers not available');
+          window.addTestResult(
+            'Worker Error Handling',
+            'success',
+            'Web Workers not available',
+          );
           return;
         }
 
@@ -338,10 +382,10 @@ test.describe('Web Workers Tests', () => {
               this is not valid javascript!!
             };
           `;
-          
+
           const blob = new Blob([badWorkerCode], { type: 'application/javascript' });
           const badWorker = new Worker(URL.createObjectURL(blob));
-          
+
           const errorPromise = new Promise((resolve) => {
             badWorker.onerror = () => {
               errorsCaught++;
@@ -352,7 +396,9 @@ test.describe('Web Workers Tests', () => {
 
           await Promise.race([
             errorPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Worker error timeout')), 2000))
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Worker error timeout')), 2000),
+            ),
           ]);
 
           badWorker.terminate();
@@ -367,10 +413,10 @@ test.describe('Web Workers Tests', () => {
               throw new Error('Intentional worker error');
             };
           `;
-          
+
           const blob = new Blob([errorWorkerCode], { type: 'application/javascript' });
           const errorWorker = new Worker(URL.createObjectURL(blob));
-          
+
           const runtimeErrorPromise = new Promise((resolve) => {
             errorWorker.onerror = () => {
               errorsCaught++;
@@ -381,7 +427,9 @@ test.describe('Web Workers Tests', () => {
 
           await Promise.race([
             runtimeErrorPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Runtime error timeout')), 2000))
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Runtime error timeout')), 2000),
+            ),
           ]);
 
           errorWorker.terminate();
@@ -400,12 +448,12 @@ test.describe('Web Workers Tests', () => {
             self.postMessage('completed');
           };
         `;
-        
+
         const blob = new Blob([normalWorkerCode], { type: 'application/javascript' });
         const longWorker = new Worker(URL.createObjectURL(blob));
-        
+
         longWorker.postMessage('start');
-        
+
         // Terminate before completion
         setTimeout(() => {
           longWorker.terminate();
@@ -414,11 +462,15 @@ test.describe('Web Workers Tests', () => {
         }, 100);
 
         // Wait a bit for termination
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, 200));
 
-        if (errorsCaught >= 2) { // At least 2 error conditions handled
-          window.addTestResult('Worker Error Handling', 'success', 
-            `Properly handled ${errorsCaught} worker error conditions`);
+        if (errorsCaught >= 2) {
+          // At least 2 error conditions handled
+          window.addTestResult(
+            'Worker Error Handling',
+            'success',
+            `Properly handled ${errorsCaught} worker error conditions`,
+          );
         } else {
           throw new Error(`Only ${errorsCaught} error conditions handled`);
         }
@@ -428,6 +480,8 @@ test.describe('Web Workers Tests', () => {
       }
     });
 
-    await expect(page.locator('#test-results')).toContainText('Worker Error Handling: SUCCESS');
+    await expect(page.locator('#test-results')).toContainText(
+      'Worker Error Handling: SUCCESS',
+    );
   });
 });

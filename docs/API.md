@@ -37,9 +37,9 @@ interface VectorDBConfig {
   distanceMetric?: 'cosine' | 'euclidean' | 'manhattan' | 'hamming' | 'jaccard';
   useIndex?: boolean;
   indexConfig?: {
-    m?: number;              // HNSW M parameter (default: 16)
+    m?: number; // HNSW M parameter (default: 16)
     efConstruction?: number; // HNSW construction parameter (default: 200)
-    seed?: number;           // Random seed for reproducibility
+    seed?: number; // Random seed for reproducibility
   };
   compression?: {
     enabled?: boolean;
@@ -78,16 +78,18 @@ await db.addVector(
 ```
 
 **Parameters:**
+
 - `id`: Unique identifier for the vector
 - `vector`: Vector data (Float32Array, Float64Array, number[], etc.)
 - `metadata`: Optional metadata object
 
 **Example:**
+
 ```typescript
 await db.addVector('doc1', embedding, {
   title: 'Introduction to AI',
   category: 'education',
-  timestamp: Date.now()
+  timestamp: Date.now(),
 });
 ```
 
@@ -103,6 +105,7 @@ await db.addBatch(
 ```
 
 **Parameters:**
+
 ```typescript
 interface VectorData {
   id: string;
@@ -125,15 +128,16 @@ interface BatchProgress {
 ```
 
 **Example:**
+
 ```typescript
 const vectors = [
   { id: 'vec1', vector: embedding1, metadata: { type: 'A' } },
-  { id: 'vec2', vector: embedding2, metadata: { type: 'B' } }
+  { id: 'vec2', vector: embedding2, metadata: { type: 'B' } },
 ];
 
 await db.addBatch(vectors, {
   onProgress: (p) => console.log(`${p.percentage}% complete`),
-  batchSize: 1000
+  batchSize: 1000,
 });
 ```
 
@@ -146,6 +150,7 @@ await db.getVector(id: string): Promise<VectorRecord | null>
 ```
 
 **Returns:**
+
 ```typescript
 interface VectorRecord {
   id: string;
@@ -169,6 +174,7 @@ await db.search(
 ```
 
 **Parameters:**
+
 ```typescript
 interface SearchOptions {
   filter?: MetadataFilter;
@@ -187,11 +193,12 @@ interface SearchResult {
 ```
 
 **Example:**
+
 ```typescript
 const results = await db.search(queryVector, 10, {
   filter: { category: 'education', year: { $gte: 2023 } },
   includeMetadata: true,
-  threshold: 0.8
+  threshold: 0.8,
 });
 ```
 
@@ -226,6 +233,7 @@ await db.updateMetadata(
 ```
 
 **Parameters:**
+
 - `merge`: If true, merges with existing metadata; if false, replaces it
 
 #### exists()
@@ -245,6 +253,7 @@ await db.getStats(): Promise<DatabaseStats>
 ```
 
 **Returns:**
+
 ```typescript
 interface DatabaseStats {
   vectorCount: number;
@@ -312,6 +321,7 @@ await vf.createNamespace(
 ```
 
 **Parameters:**
+
 ```typescript
 interface NamespaceConfig {
   dimension: number;
@@ -325,13 +335,14 @@ interface NamespaceConfig {
 ```
 
 **Example:**
+
 ```typescript
 const products = await vf.createNamespace('products', {
   dimension: 384,
   distanceMetric: 'cosine',
   description: 'Product embeddings',
   useIndex: true,
-  indexConfig: { m: 32, efConstruction: 400 }
+  indexConfig: { m: 32, efConstruction: 400 },
 });
 ```
 
@@ -352,6 +363,7 @@ await vf.listNamespaces(): Promise<NamespaceInfo[]>
 ```
 
 **Returns:**
+
 ```typescript
 interface NamespaceInfo {
   name: string;
@@ -510,6 +522,7 @@ DistanceMetrics.register(
 ```
 
 **Example:**
+
 ```typescript
 DistanceMetrics.register('custom', (a, b) => {
   // Custom distance calculation
@@ -528,7 +541,7 @@ const manager = new CompressionManager({
   defaultStrategy: 'scalar',
   autoSelect: true,
   targetCompressionRatio: 4.0,
-  maxPrecisionLoss: 0.05
+  maxPrecisionLoss: 0.05,
 });
 ```
 
@@ -539,7 +552,7 @@ Compress a single vector.
 ```typescript
 const compressed = await compressVector(vector, {
   strategy: 'scalar',
-  precision: 8
+  precision: 8,
 });
 ```
 
@@ -560,7 +573,7 @@ Reduce precision to 8-bit integers.
 ```typescript
 const compressed = await compressVector(vector, {
   strategy: 'scalar',
-  precision: 8
+  precision: 8,
 });
 ```
 
@@ -572,7 +585,7 @@ Divide vectors into subvectors and quantize separately.
 const compressed = await compressVector(vector, {
   strategy: 'product',
   numSubvectors: 8,
-  codebookSize: 256
+  codebookSize: 256,
 });
 ```
 
@@ -582,7 +595,7 @@ Convert to binary representation.
 
 ```typescript
 const compressed = await compressVector(vector, {
-  strategy: 'binary'
+  strategy: 'binary',
 });
 ```
 
@@ -596,7 +609,7 @@ Advanced search capabilities.
 const engine = new SearchEngine(db, {
   useIndex: true,
   cacheSize: 1000,
-  prefetch: true
+  prefetch: true,
 });
 ```
 
@@ -644,7 +657,7 @@ Monitor and manage IndexedDB storage.
 ```typescript
 const storage = new StorageManager(db, {
   quotaSafetyMargin: 0.15,
-  checkInterval: 1000
+  checkInterval: 1000,
 });
 ```
 
@@ -659,6 +672,7 @@ await storage.checkQuota(): Promise<QuotaStatus>
 ```
 
 **Returns:**
+
 ```typescript
 interface QuotaStatus {
   usage: number;
@@ -676,7 +690,7 @@ Enable automatic eviction when approaching quota.
 ```typescript
 storage.enableAutoEviction({
   policy: 'lru',
-  targetUsagePercent: 0.8
+  targetUsagePercent: 0.8,
 });
 ```
 
@@ -698,7 +712,7 @@ Parallel processing using Web Workers.
 const pool = new WorkerPool({
   maxWorkers: 4,
   workerScript: 'vector-worker.js',
-  fallbackToMain: true
+  fallbackToMain: true,
 });
 ```
 
@@ -750,7 +764,7 @@ GPU-accelerated vector operations.
 ```typescript
 const gpu = new GPUSearchEngine({
   device: await navigator.gpu.requestDevice(),
-  workgroupSize: 64
+  workgroupSize: 64,
 });
 
 const results = await gpu.search(query, vectors, k);
@@ -780,7 +794,7 @@ debug.manager.enable({
   profile: true,
   traceLevel: 'detailed',
   memoryTracking: true,
-  logOperations: true
+  logOperations: true,
 });
 ```
 
@@ -862,20 +876,20 @@ try {
 interface MetadataFilter {
   // Exact match
   field: value;
-  
+
   // Comparison operators
   field: {
-    $eq?: any;      // Equal
-    $ne?: any;      // Not equal
-    $gt?: any;      // Greater than
-    $gte?: any;     // Greater than or equal
-    $lt?: any;      // Less than
-    $lte?: any;     // Less than or equal
-    $in?: any[];    // In array
-    $nin?: any[];   // Not in array
-    $regex?: string | RegExp;  // Pattern match (ReDoS protected)
+    $eq?: any; // Equal
+    $ne?: any; // Not equal
+    $gt?: any; // Greater than
+    $gte?: any; // Greater than or equal
+    $lt?: any; // Less than
+    $lte?: any; // Less than or equal
+    $in?: any[]; // In array
+    $nin?: any[]; // Not in array
+    $regex?: string | RegExp; // Pattern match (ReDoS protected)
   };
-  
+
   // Logical operators
   $and?: MetadataFilter[];
   $or?: MetadataFilter[];
@@ -917,12 +931,7 @@ interface MetadataFilter {
 Supported vector input types:
 
 ```typescript
-type VectorInput = 
-  | Float32Array 
-  | Float64Array 
-  | Int8Array 
-  | Uint8Array 
-  | number[];
+type VectorInput = Float32Array | Float64Array | Int8Array | Uint8Array | number[];
 ```
 
 ### DistanceMetric
@@ -930,11 +939,11 @@ type VectorInput =
 Available distance metrics:
 
 ```typescript
-type DistanceMetric = 
-  | 'cosine' 
-  | 'euclidean' 
-  | 'manhattan' 
-  | 'hamming' 
+type DistanceMetric =
+  | 'cosine'
+  | 'euclidean'
+  | 'manhattan'
+  | 'hamming'
   | 'jaccard'
   | string; // Custom registered metric
 ```
@@ -944,11 +953,7 @@ type DistanceMetric =
 Compression strategies:
 
 ```typescript
-type CompressionStrategy = 
-  | 'none'
-  | 'scalar'
-  | 'product'
-  | 'binary';
+type CompressionStrategy = 'none' | 'scalar' | 'product' | 'binary';
 ```
 
 ### EvictionPolicy
@@ -956,10 +961,10 @@ type CompressionStrategy =
 Eviction policies:
 
 ```typescript
-type EvictionPolicy = 
-  | 'lru'    // Least Recently Used
-  | 'lfu'    // Least Frequently Used
-  | 'ttl'    // Time To Live
-  | 'score'  // Score-based
-  | 'hybrid' // Combined strategy
+type EvictionPolicy =
+  | 'lru' // Least Recently Used
+  | 'lfu' // Least Frequently Used
+  | 'ttl' // Time To Live
+  | 'score' // Score-based
+  | 'hybrid'; // Combined strategy
 ```

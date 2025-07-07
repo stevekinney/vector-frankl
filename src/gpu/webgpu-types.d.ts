@@ -58,7 +58,7 @@ declare global {
       bufferOffset: number,
       data: ArrayBufferView | ArrayBuffer,
       dataOffset?: number,
-      size?: number
+      size?: number,
     ): void;
   }
 
@@ -151,7 +151,7 @@ declare global {
       sourceOffset: number,
       destination: GPUBuffer,
       destinationOffset: number,
-      size: number
+      size: number,
     ): void;
     finish(descriptor?: GPUCommandBufferDescriptor): GPUCommandBuffer;
   }

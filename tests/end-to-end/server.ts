@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-
 import { join } from 'path';
 
 const PORT = 8201;
@@ -38,7 +37,7 @@ const server = Bun.serve({
 
       // Set appropriate headers for cross-origin isolation (needed for SharedArrayBuffer)
       const headers = new Headers();
-      
+
       if (filePath.endsWith('.html')) {
         headers.set('Content-Type', 'text/html');
         headers.set('Cross-Origin-Embedder-Policy', 'require-corp');

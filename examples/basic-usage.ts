@@ -23,8 +23,8 @@ async function main() {
           title: 'Introduction to Machine Learning',
           category: 'AI',
           author: 'John Doe',
-          year: 2023
-        }
+          year: 2023,
+        },
       },
       {
         id: 'doc2',
@@ -33,8 +33,8 @@ async function main() {
           title: 'Deep Learning Fundamentals',
           category: 'AI',
           author: 'Jane Smith',
-          year: 2024
-        }
+          year: 2024,
+        },
       },
       {
         id: 'doc3',
@@ -43,8 +43,8 @@ async function main() {
           title: 'Natural Language Processing',
           category: 'AI',
           author: 'Bob Johnson',
-          year: 2023
-        }
+          year: 2023,
+        },
       },
       {
         id: 'doc4',
@@ -53,8 +53,8 @@ async function main() {
           title: 'Web Development Best Practices',
           category: 'Programming',
           author: 'Alice Brown',
-          year: 2024
-        }
+          year: 2024,
+        },
       },
       {
         id: 'doc5',
@@ -63,9 +63,9 @@ async function main() {
           title: 'Database Design Patterns',
           category: 'Programming',
           author: 'Charlie Wilson',
-          year: 2022
-        }
-      }
+          year: 2022,
+        },
+      },
     ];
 
     // Add vectors to the database
@@ -95,30 +95,34 @@ async function main() {
 
     // Perform a similarity search
     console.log('\nPerforming similarity search...');
-    
+
     // Create a query vector (in practice, this would be an embedding of a query)
     const queryVector = VectorOperations.randomUnit(384);
-    
+
     // Search for the 3 most similar vectors
     const searchResults = await db.search(queryVector, 3, {
-      includeMetadata: true
+      includeMetadata: true,
     });
 
     console.log('\nTop 3 similar documents:');
     searchResults.forEach((result, index) => {
-      console.log(`${index + 1}. ${result.metadata?.['title']} (score: ${result.score.toFixed(4)})`);
+      console.log(
+        `${index + 1}. ${result.metadata?.['title']} (score: ${result.score.toFixed(4)})`,
+      );
     });
 
     // Search with metadata filter
     console.log('\nSearching with metadata filter (category = "AI")...');
     const filteredResults = await db.search(queryVector, 5, {
       filter: { category: 'AI' },
-      includeMetadata: true
+      includeMetadata: true,
     });
 
     console.log('AI documents found:');
     filteredResults.forEach((result, index) => {
-      console.log(`${index + 1}. ${result.metadata?.['title']} (score: ${result.score.toFixed(4)})`);
+      console.log(
+        `${index + 1}. ${result.metadata?.['title']} (score: ${result.score.toFixed(4)})`,
+      );
     });
 
     // Batch operations
@@ -126,13 +130,15 @@ async function main() {
     const batchVectors = Array.from({ length: 10 }, (_, i) => ({
       id: `batch-${i}`,
       vector: VectorOperations.randomUnit(384),
-      metadata: { batch: true, index: i }
+      metadata: { batch: true, index: i },
     }));
 
     await db.addBatch(batchVectors, {
       onProgress: (progress) => {
-        console.log(`Batch progress: ${progress.completed}/${progress.total} (${progress.percentage}%)`);
-      }
+        console.log(
+          `Batch progress: ${progress.completed}/${progress.total} (${progress.percentage}%)`,
+        );
+      },
     });
 
     // Update stats
@@ -148,17 +154,16 @@ async function main() {
     // Final stats
     const finalStats = await db.getStats();
     console.log(`\nFinal vector count: ${finalStats.vectorCount}`);
-
   } catch (error) {
     console.error('Error:', error);
   } finally {
     // Clean up
     console.log('\nCleaning up...');
     await db.close();
-    
+
     // Optionally delete the database
     // await db.delete();
-    
+
     console.log('Done!');
   }
 }

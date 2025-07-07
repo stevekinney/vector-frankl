@@ -48,21 +48,21 @@ abstract class BaseEvictionPolicy {
    */
   protected estimateVectorSize(vector: VectorData): number {
     let size = 0;
-    
+
     // Vector data (Float32Array)
     size += vector.vector.byteLength;
-    
+
     // Metadata (rough estimation)
     if (vector.metadata) {
       size += this.estimateObjectSize(vector.metadata);
     }
-    
+
     // String overhead (ID)
     size += vector.id.length * 2;
-    
+
     // Other properties (timestamps, magnitude, etc.)
     size += 64; // Rough overhead
-    
+
     return size;
   }
 
@@ -71,16 +71,19 @@ abstract class BaseEvictionPolicy {
    */
   private estimateObjectSize(obj: unknown): number {
     if (obj === null || obj === undefined) return 8;
-    
+
     switch (typeof obj) {
-      case 'boolean': return 4;
-      case 'number': return 8;
-      case 'string': return obj.length * 2;
+      case 'boolean':
+        return 4;
+      case 'number':
+        return 8;
+      case 'string':
+        return obj.length * 2;
       case 'object':
         if (Array.isArray(obj)) {
           return obj.reduce((sum, item) => sum + this.estimateObjectSize(item), 24);
         }
-        
+
         {
           let size = 48; // Object overhead
           const objAsRecord = obj as Record<string, unknown>;
@@ -90,7 +93,8 @@ abstract class BaseEvictionPolicy {
           }
           return size;
         }
-      default: return 8;
+      default:
+        return 8;
     }
   }
 
@@ -111,15 +115,15 @@ export class LRUEvictionPolicy extends BaseEvictionPolicy {
     const targetBytes = config.targetBytes || 0;
     const maxVectors = config.maxVectors || Infinity;
     const batchSize = config.batchSize || 1000;
-    
+
     // Get all vectors sorted by last access time (oldest first)
     const allVectors = await this.storage.getAll();
-    
+
     // Filter out permanent vectors if configured
-    const candidates = config.preservePermanent 
-      ? allVectors.filter(v => !this.isPermanent(v))
+    const candidates = config.preservePermanent
+      ? allVectors.filter((v) => !this.isPermanent(v))
       : allVectors;
-      
+
     // Sort by lastAccessed (oldest first), then by timestamp (oldest first)
     candidates.sort((a, b) => {
       const aAccess = a.lastAccessed || a.timestamp;
@@ -146,17 +150,19 @@ export class LRUEvictionPolicy extends BaseEvictionPolicy {
     // Delete in batches to avoid blocking
     for (let i = 0; i < toDelete.length; i += batchSize) {
       const batch = toDelete.slice(i, i + batchSize);
-      
-      await Promise.all(batch.map(async (id) => {
-        try {
-          await this.storage.delete(id);
-        } catch (error) {
-          errors.push({ 
-            id, 
-            error: error instanceof Error ? error : new Error(String(error))
-          });
-        }
-      }));
+
+      await Promise.all(
+        batch.map(async (id) => {
+          try {
+            await this.storage.delete(id);
+          } catch (error) {
+            errors.push({
+              id,
+              error: error instanceof Error ? error : new Error(String(error)),
+            });
+          }
+        }),
+      );
     }
 
     const duration = performance.now() - startTime;
@@ -166,7 +172,7 @@ export class LRUEvictionPolicy extends BaseEvictionPolicy {
       freedBytes,
       errors,
       duration,
-      strategy: 'lru'
+      strategy: 'lru',
     };
   }
 }
@@ -179,10 +185,10 @@ export class LFUEvictionPolicy extends BaseEvictionPolicy {
     const startTime = performance.now();
     const targetBytes = config.targetBytes || 0;
     const maxVectors = config.maxVectors || Infinity;
-    
+
     const allVectors = await this.storage.getAll();
-    const candidates = config.preservePermanent 
-      ? allVectors.filter(v => !this.isPermanent(v))
+    const candidates = config.preservePermanent
+      ? allVectors.filter((v) => !this.isPermanent(v))
       : allVectors;
 
     // Sort by access count (least frequently used first)
@@ -211,9 +217,9 @@ export class LFUEvictionPolicy extends BaseEvictionPolicy {
         freedBytes += this.estimateVectorSize(vector);
         evictedCount++;
       } catch (error) {
-        errors.push({ 
-          id: vector.id, 
-          error: error instanceof Error ? error : new Error(String(error))
+        errors.push({
+          id: vector.id,
+          error: error instanceof Error ? error : new Error(String(error)),
         });
       }
     }
@@ -223,7 +229,7 @@ export class LFUEvictionPolicy extends BaseEvictionPolicy {
       freedBytes,
       errors,
       duration: performance.now() - startTime,
-      strategy: 'lfu'
+      strategy: 'lfu',
     };
   }
 }
@@ -236,14 +242,14 @@ export class TTLEvictionPolicy extends BaseEvictionPolicy {
     const startTime = performance.now();
     const ttlMs = (config.ttlHours || 24) * 60 * 60 * 1000;
     const cutoffTime = Date.now() - ttlMs;
-    
+
     const allVectors = await this.storage.getAll();
-    const candidates = allVectors.filter(vector => {
+    const candidates = allVectors.filter((vector) => {
       // Skip permanent vectors if configured
       if (config.preservePermanent && this.isPermanent(vector)) {
         return false;
       }
-      
+
       // Check if vector has expired
       const vectorTime = vector.lastAccessed || vector.timestamp;
       return vectorTime < cutoffTime;
@@ -259,9 +265,9 @@ export class TTLEvictionPolicy extends BaseEvictionPolicy {
         freedBytes += this.estimateVectorSize(vector);
         evictedCount++;
       } catch (error) {
-        errors.push({ 
-          id: vector.id, 
-          error: error instanceof Error ? error : new Error(String(error))
+        errors.push({
+          id: vector.id,
+          error: error instanceof Error ? error : new Error(String(error)),
         });
       }
     }
@@ -271,7 +277,7 @@ export class TTLEvictionPolicy extends BaseEvictionPolicy {
       freedBytes,
       errors,
       duration: performance.now() - startTime,
-      strategy: 'ttl'
+      strategy: 'ttl',
     };
   }
 }
@@ -284,19 +290,19 @@ export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
     const startTime = performance.now();
     const targetBytes = config.targetBytes || 0;
     const maxVectors = config.maxVectors || Infinity;
-    
+
     const allVectors = await this.storage.getAll();
-    const candidates = config.preservePermanent 
-      ? allVectors.filter(v => !this.isPermanent(v))
+    const candidates = config.preservePermanent
+      ? allVectors.filter((v) => !this.isPermanent(v))
       : allVectors;
 
     // Calculate scores for each vector
-    const scoredVectors: VectorScore[] = candidates.map(vector => ({
+    const scoredVectors: VectorScore[] = candidates.map((vector) => ({
       id: vector.id,
       score: this.calculateEvictionScore(vector),
       size: this.estimateVectorSize(vector),
       isPermanent: this.isPermanent(vector),
-      vector
+      vector,
     }));
 
     // Sort by score (lowest scores evicted first)
@@ -315,9 +321,9 @@ export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
         freedBytes += item.size;
         evictedCount++;
       } catch (error) {
-        errors.push({ 
-          id: item.id, 
-          error: error instanceof Error ? error : new Error(String(error))
+        errors.push({
+          id: item.id,
+          error: error instanceof Error ? error : new Error(String(error)),
         });
       }
     }
@@ -327,7 +333,7 @@ export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
       freedBytes,
       errors,
       duration: performance.now() - startTime,
-      strategy: 'score'
+      strategy: 'score',
     };
   }
 
@@ -347,7 +353,7 @@ export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
     // Higher priority = higher score (less likely to evict)
     // Longer time since access = lower score (more likely to evict)
     // Older age = lower score (more likely to evict)
-    
+
     const accessScore = Math.log(accessCount + 1) * 0.3;
     const priorityScore = priority * 0.4;
     const recencyScore = Math.exp(-timeSinceAccess / (1000 * 60 * 60 * 24)) * 0.2; // Decay over days
@@ -363,13 +369,13 @@ export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
 export class HybridEvictionPolicy extends BaseEvictionPolicy {
   async evict(config: EvictionConfig): Promise<EvictionResult> {
     const startTime = performance.now();
-    
+
     // Phase 1: Remove expired vectors (TTL)
     const ttlPolicy = new TTLEvictionPolicy(this.storage);
     const ttlResult = await ttlPolicy.evict({
       ...config,
       strategy: 'ttl',
-      ttlHours: config.ttlHours || 168 // 1 week default
+      ttlHours: config.ttlHours || 168, // 1 week default
     });
 
     // If TTL eviction freed enough space, we're done
@@ -377,20 +383,23 @@ export class HybridEvictionPolicy extends BaseEvictionPolicy {
       return {
         ...ttlResult,
         strategy: 'hybrid-ttl-only',
-        duration: performance.now() - startTime
+        duration: performance.now() - startTime,
       };
     }
 
     // Phase 2: Use score-based eviction for remaining space
     const remainingTarget = Math.max(0, (config.targetBytes || 0) - ttlResult.freedBytes);
-    const remainingVectors = Math.max(0, (config.maxVectors || Infinity) - ttlResult.evictedCount);
-    
+    const remainingVectors = Math.max(
+      0,
+      (config.maxVectors || Infinity) - ttlResult.evictedCount,
+    );
+
     if (remainingTarget > 0 || remainingVectors > 0) {
       const scorePolicy = new ScoreBasedEvictionPolicy(this.storage);
       const scoreResult = await scorePolicy.evict({
         ...config,
         targetBytes: remainingTarget,
-        maxVectors: remainingVectors
+        maxVectors: remainingVectors,
       });
 
       return {
@@ -398,14 +407,14 @@ export class HybridEvictionPolicy extends BaseEvictionPolicy {
         freedBytes: ttlResult.freedBytes + scoreResult.freedBytes,
         errors: [...ttlResult.errors, ...scoreResult.errors],
         duration: performance.now() - startTime,
-        strategy: 'hybrid'
+        strategy: 'hybrid',
       };
     }
 
     return {
       ...ttlResult,
       strategy: 'hybrid-ttl-only',
-      duration: performance.now() - startTime
+      duration: performance.now() - startTime,
     };
   }
 }
@@ -429,16 +438,18 @@ export class EvictionManager {
    */
   async evict(config: EvictionConfig): Promise<EvictionResult> {
     const policy = this.policies.get(config.strategy);
-    
+
     if (!policy) {
       throw new Error(`Unknown eviction strategy: ${config.strategy}`);
     }
 
     const result = await policy.evict(config);
-    
+
     // Log eviction results
-    console.log(`Eviction completed: ${result.strategy} strategy freed ${this.formatBytes(result.freedBytes)} by removing ${result.evictedCount} vectors in ${result.duration.toFixed(2)}ms`);
-    
+    console.log(
+      `Eviction completed: ${result.strategy} strategy freed ${this.formatBytes(result.freedBytes)} by removing ${result.evictedCount} vectors in ${result.duration.toFixed(2)}ms`,
+    );
+
     if (result.errors.length > 0) {
       console.warn(`Eviction had ${result.errors.length} errors:`, result.errors);
     }
@@ -459,8 +470,8 @@ export class EvictionManager {
   }> {
     const allVectors = await this.storage.getAll();
     const now = Date.now();
-    const oneWeekAgo = now - (7 * 24 * 60 * 60 * 1000);
-    
+    const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+
     let totalBytes = 0;
     let permanentCount = 0;
     let oldestAccess = now;
@@ -469,18 +480,18 @@ export class EvictionManager {
 
     for (const vector of allVectors) {
       totalBytes += this.estimateVectorSize(vector);
-      
+
       if (this.isPermanent(vector)) {
         permanentCount++;
       }
-      
+
       const lastAccess = vector.lastAccessed || vector.timestamp;
       if (lastAccess < oldestAccess) {
         oldestAccess = lastAccess;
       }
-      
+
       totalAccessCount += vector.accessCount || 0;
-      
+
       if (lastAccess < oneWeekAgo) {
         expiredCount++;
       }
@@ -491,8 +502,9 @@ export class EvictionManager {
       totalEstimatedBytes: totalBytes,
       permanentVectors: permanentCount,
       oldestAccess,
-      averageAccessCount: allVectors.length > 0 ? totalAccessCount / allVectors.length : 0,
-      expiredVectors: expiredCount
+      averageAccessCount:
+        allVectors.length > 0 ? totalAccessCount / allVectors.length : 0,
+      expiredVectors: expiredCount,
     };
   }
 
@@ -505,7 +517,7 @@ export class EvictionManager {
     reasoning: string;
   }> {
     const stats = await this.getEvictionStats();
-    
+
     // If many vectors have expired, use TTL
     if (stats.expiredVectors > stats.totalVectors * 0.3) {
       return {
@@ -514,12 +526,12 @@ export class EvictionManager {
           strategy: 'ttl',
           targetBytes,
           ttlHours: 168, // 1 week
-          preservePermanent: true
+          preservePermanent: true,
         },
-        reasoning: `${stats.expiredVectors} vectors (${(stats.expiredVectors / stats.totalVectors * 100).toFixed(1)}%) haven't been accessed in over a week`
+        reasoning: `${stats.expiredVectors} vectors (${((stats.expiredVectors / stats.totalVectors) * 100).toFixed(1)}%) haven't been accessed in over a week`,
       };
     }
-    
+
     // If access patterns are varied, use hybrid
     if (stats.averageAccessCount > 2) {
       return {
@@ -528,21 +540,22 @@ export class EvictionManager {
           strategy: 'hybrid',
           targetBytes,
           ttlHours: 336, // 2 weeks
-          preservePermanent: true
+          preservePermanent: true,
         },
-        reasoning: 'Mixed access patterns detected, combining TTL and score-based eviction'
+        reasoning:
+          'Mixed access patterns detected, combining TTL and score-based eviction',
       };
     }
-    
+
     // Default to LRU for simple cases
     return {
       strategy: 'lru',
       config: {
         strategy: 'lru',
         targetBytes,
-        preservePermanent: true
+        preservePermanent: true,
       },
-      reasoning: 'Simple access patterns, using least-recently-used eviction'
+      reasoning: 'Simple access patterns, using least-recently-used eviction',
     };
   }
 
@@ -553,12 +566,12 @@ export class EvictionManager {
     const units = ['B', 'KB', 'MB', 'GB'];
     let size = bytes;
     let unitIndex = 0;
-    
+
     while (size >= 1024 && unitIndex < units.length - 1) {
       size /= 1024;
       unitIndex++;
     }
-    
+
     return `${size.toFixed(1)} ${units[unitIndex]}`;
   }
 

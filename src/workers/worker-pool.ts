@@ -36,8 +36,19 @@ export interface PoolConfig {
 export class WorkerPool {
   private workers: Worker[] = [];
   private busyWorkers = new Set<Worker>();
-  private taskQueue: Array<{ task: WorkerTask; resolve: (value: any) => void; reject: (reason?: any) => void }> = [];
-  private activeTasks = new Map<string, { resolve: (value: any) => void; reject: (reason?: any) => void; timeout?: ReturnType<typeof setTimeout> }>();
+  private taskQueue: Array<{
+    task: WorkerTask;
+    resolve: (value: any) => void;
+    reject: (reason?: any) => void;
+  }> = [];
+  private activeTasks = new Map<
+    string,
+    {
+      resolve: (value: any) => void;
+      reject: (reason?: any) => void;
+      timeout?: ReturnType<typeof setTimeout>;
+    }
+  >();
   private maxWorkers: number;
   private workerScript: string;
   private defaultTimeout: number;
@@ -52,9 +63,12 @@ export class WorkerPool {
     this.workerScript = config.workerScript || '/src/workers/vector-worker.js';
     this.defaultTimeout = config.timeout || 30000; // 30 seconds
     this._retries = config.retries || 2;
-    
+
     // Initialize shared memory manager if enabled
-    if (config.sharedMemoryConfig?.enableOptimizations && typeof SharedArrayBuffer !== 'undefined') {
+    if (
+      config.sharedMemoryConfig?.enableOptimizations &&
+      typeof SharedArrayBuffer !== 'undefined'
+    ) {
       this.sharedMemoryManager = new SharedMemoryManager(config.sharedMemoryConfig);
       this.enableSharedMemoryOptimizations = true;
     }
@@ -93,9 +107,9 @@ export class WorkerPool {
    * Create a single worker
    */
   private createWorker(id: number): Worker {
-    const worker = new Worker(this.workerScript, { 
+    const worker = new Worker(this.workerScript, {
       type: 'module',
-      name: `vector-worker-${id}`
+      name: `vector-worker-${id}`,
     });
 
     worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
@@ -172,10 +186,10 @@ export class WorkerPool {
    * Execute a task on an available worker
    */
   async execute<T = unknown>(
-    operation: string, 
-    data: unknown, 
+    operation: string,
+    data: unknown,
     transferables: Transferable[] = [],
-    timeout?: number
+    timeout?: number,
   ): Promise<T> {
     if (!this.isInitialized) {
       await this.init();
@@ -186,9 +200,9 @@ export class WorkerPool {
 
     return new Promise<T>((resolve, reject) => {
       const taskInfo = { task, resolve: resolve as any, reject: reject as any };
-      
+
       const availableWorker = this.getAvailableWorker();
-      
+
       if (availableWorker) {
         this.sendToWorker(availableWorker, taskInfo, timeout);
       } else {
@@ -201,21 +215,25 @@ export class WorkerPool {
    * Get an available worker
    */
   private getAvailableWorker(): Worker | null {
-    return this.workers.find(worker => !this.busyWorkers.has(worker)) || null;
+    return this.workers.find((worker) => !this.busyWorkers.has(worker)) || null;
   }
 
   /**
    * Send task to worker
    */
   private sendToWorker(
-    worker: Worker, 
-    taskInfo: { task: WorkerTask; resolve: (value: any) => void; reject: (reason?: any) => void },
-    customTimeout?: number
+    worker: Worker,
+    taskInfo: {
+      task: WorkerTask;
+      resolve: (value: any) => void;
+      reject: (reason?: any) => void;
+    },
+    customTimeout?: number,
   ): void {
     const { task, resolve, reject } = taskInfo;
-    
+
     this.busyWorkers.add(worker);
-    
+
     // Set up timeout
     const timeoutMs = customTimeout || this.defaultTimeout;
     const timeout = setTimeout(() => {
@@ -224,9 +242,9 @@ export class WorkerPool {
       reject(new Error(`Task timeout after ${timeoutMs}ms`));
       this.processQueue();
     }, timeoutMs);
-    
+
     this.activeTasks.set(task.taskId, { resolve, reject, timeout });
-    
+
     // Send task to worker
     worker.postMessage(task, task.transferables || []);
   }
@@ -236,7 +254,7 @@ export class WorkerPool {
    */
   private processQueue(): void {
     if (this.taskQueue.length === 0) return;
-    
+
     const availableWorker = this.getAvailableWorker();
     if (availableWorker) {
       const taskInfo = this.taskQueue.shift()!;
@@ -252,8 +270,15 @@ export class WorkerPool {
     queryVector: Float32Array,
     k: number,
     metric: DistanceMetric = 'cosine',
-    filter?: (metadata: Record<string, unknown>) => boolean
-  ): Promise<Array<{ id: string; distance: number; score: number; metadata?: Record<string, unknown> }>> {
+    filter?: (metadata: Record<string, unknown>) => boolean,
+  ): Promise<
+    Array<{
+      id: string;
+      distance: number;
+      score: number;
+      metadata?: Record<string, unknown>;
+    }>
+  > {
     if (vectors.length === 0) return [];
 
     // Determine chunk size based on vector count and worker count
@@ -261,22 +286,27 @@ export class WorkerPool {
     const chunks = this.chunkArray(vectors, chunkSize);
 
     // Execute search on each chunk in parallel
-    const promises = chunks.map(chunk => 
+    const promises = chunks.map((chunk) =>
       this.execute('similarity_search', {
         vectors: chunk,
         queryVector,
         k: Math.ceil(k * 1.5), // Get more results per chunk to ensure quality
         metric,
-        filter
-      })
+        filter,
+      }),
     );
 
     const results = await Promise.all(promises);
-    
+
     // Merge and sort results from all chunks
-    const allResults = results.flat() as Array<{ id: string; distance: number; score: number; metadata?: Record<string, unknown> }>;
+    const allResults = results.flat() as Array<{
+      id: string;
+      distance: number;
+      score: number;
+      metadata?: Record<string, unknown>;
+    }>;
     allResults.sort((a, b) => b.score - a.score);
-    
+
     return allResults.slice(0, k);
   }
 
@@ -286,7 +316,7 @@ export class WorkerPool {
   async batchSimilarity(
     vectors: VectorData[],
     queries: Float32Array[],
-    metric: DistanceMetric = 'cosine'
+    metric: DistanceMetric = 'cosine',
   ): Promise<number[][]> {
     if (queries.length === 0 || vectors.length === 0) return [];
 
@@ -294,12 +324,12 @@ export class WorkerPool {
     const chunkSize = Math.ceil(queries.length / this.workers.length);
     const queryChunks = this.chunkArray(queries, chunkSize);
 
-    const promises = queryChunks.map(queryChunk =>
+    const promises = queryChunks.map((queryChunk) =>
       this.execute('batch_similarity', {
         vectors,
         queries: queryChunk,
-        metric
-      })
+        metric,
+      }),
     );
 
     const results = await Promise.all(promises);
@@ -315,8 +345,8 @@ export class WorkerPool {
     const chunkSize = Math.ceil(vectors.length / this.workers.length);
     const chunks = this.chunkArray(vectors, chunkSize);
 
-    const promises = chunks.map(chunk =>
-      this.execute('vector_normalize', { vectors: chunk })
+    const promises = chunks.map((chunk) =>
+      this.execute('vector_normalize', { vectors: chunk }),
     );
 
     const results = await Promise.all(promises);
@@ -328,29 +358,29 @@ export class WorkerPool {
    */
   async quantizeVectors(
     vectors: Float32Array[],
-    bits: number = 8
+    bits: number = 8,
   ): Promise<{ quantized: Int8Array[]; scales: number[] }> {
     if (vectors.length === 0) return { quantized: [], scales: [] };
 
     const chunkSize = Math.ceil(vectors.length / this.workers.length);
     const chunks = this.chunkArray(vectors, chunkSize);
 
-    const promises = chunks.map(chunk =>
-      this.execute('vector_quantization', { vectors: chunk, bits })
+    const promises = chunks.map((chunk) =>
+      this.execute('vector_quantization', { vectors: chunk, bits }),
     );
 
     const results = await Promise.all(promises);
-    
+
     // Merge results
     const quantized: Int8Array[] = [];
     const scales: number[] = [];
-    
+
     for (const result of results) {
       const typedResult = result as { quantized: Int8Array[]; scales: number[] };
       quantized.push(...typedResult.quantized);
       scales.push(...typedResult.scales);
     }
-    
+
     return { quantized, scales };
   }
 
@@ -361,7 +391,7 @@ export class WorkerPool {
     vectors: Float32Array[],
     queryVector: Float32Array,
     k: number,
-    metric: DistanceMetric = 'cosine'
+    metric: DistanceMetric = 'cosine',
   ): Promise<Array<{ index: number; distance: number; score: number }>> {
     if (typeof SharedArrayBuffer === 'undefined') {
       throw new Error('SharedArrayBuffer is not available');
@@ -383,7 +413,7 @@ export class WorkerPool {
     vectors: Float32Array[],
     queryVector: Float32Array,
     k: number,
-    metric: DistanceMetric
+    metric: DistanceMetric,
   ): Promise<Array<{ index: number; distance: number; score: number }>> {
     if (!this.sharedMemoryManager) {
       throw new Error('Shared memory manager not initialized');
@@ -392,7 +422,7 @@ export class WorkerPool {
     const dimension = queryVector.length;
     const { buffer, layout } = this.sharedMemoryManager.allocateVectorBuffer(
       vectors.length + 1, // +1 for query vector
-      dimension
+      dimension,
     );
 
     try {
@@ -403,8 +433,8 @@ export class WorkerPool {
         { ...layout, vectorCount: vectors.length },
         {
           normalize: metric === 'cosine',
-          quantize: vectors.length > 10000 // Quantize for very large datasets
-        }
+          quantize: vectors.length > 10000, // Quantize for very large datasets
+        },
       );
 
       // Copy query vector to the end
@@ -417,9 +447,9 @@ export class WorkerPool {
       const promises = this.workers.map((_, i) => {
         const startIdx = i * chunkSize;
         const endIdx = Math.min((i + 1) * chunkSize, vectors.length);
-        
+
         if (startIdx >= endIdx) return Promise.resolve([]);
-        
+
         return this.execute('shared_similarity_search', {
           sharedBuffer: buffer,
           vectorCount: vectors.length,
@@ -429,16 +459,19 @@ export class WorkerPool {
           metric,
           startIdx,
           endIdx,
-          layout: layout
+          layout: layout,
         });
       });
 
       const results = await Promise.all(promises);
-      const allResults = results.flat() as Array<{ index: number; distance: number; score: number }>;
+      const allResults = results.flat() as Array<{
+        index: number;
+        distance: number;
+        score: number;
+      }>;
       allResults.sort((a, b) => b.score - a.score);
-      
-      return allResults.slice(0, k);
 
+      return allResults.slice(0, k);
     } finally {
       // Release shared memory back to pool
       this.sharedMemoryManager.releaseBuffer(buffer);
@@ -452,7 +485,7 @@ export class WorkerPool {
     vectors: Float32Array[],
     queryVector: Float32Array,
     k: number,
-    metric: DistanceMetric
+    metric: DistanceMetric,
   ): Promise<Array<{ index: number; distance: number; score: number }>> {
     const dimension = queryVector.length;
     const bufferSize = vectors.length * dimension * 4; // 4 bytes per float
@@ -471,9 +504,9 @@ export class WorkerPool {
     const promises = this.workers.map((_, i) => {
       const startIdx = i * chunkSize;
       const endIdx = Math.min((i + 1) * chunkSize, vectors.length);
-      
+
       if (startIdx >= endIdx) return Promise.resolve([]);
-      
+
       return this.execute('shared_similarity_search', {
         sharedBuffer,
         vectorCount: vectors.length,
@@ -482,14 +515,18 @@ export class WorkerPool {
         k: Math.ceil(k * 1.5),
         metric,
         startIdx,
-        endIdx
+        endIdx,
       });
     });
 
     const results = await Promise.all(promises);
-    const allResults = results.flat() as Array<{ index: number; distance: number; score: number }>;
+    const allResults = results.flat() as Array<{
+      index: number;
+      distance: number;
+      score: number;
+    }>;
     allResults.sort((a, b) => b.score - a.score);
-    
+
     return allResults.slice(0, k);
   }
 
@@ -514,7 +551,7 @@ export class WorkerPool {
       busyWorkers: this.busyWorkers.size,
       queueLength: this.taskQueue.length,
       activeTasks: this.activeTasks.size,
-      sharedMemoryEnabled: this.enableSharedMemoryOptimizations
+      sharedMemoryEnabled: this.enableSharedMemoryOptimizations,
     };
 
     if (this.sharedMemoryManager) {
@@ -525,8 +562,8 @@ export class WorkerPool {
           totalAllocated: memStats.totalAllocated,
           totalUsed: memStats.totalUsed,
           activeBlocks: memStats.activeBlocks,
-          fragmentationRatio: memStats.fragmentationRatio
-        }
+          fragmentationRatio: memStats.fragmentationRatio,
+        },
       };
     }
 
@@ -574,11 +611,14 @@ export class WorkerPool {
   /**
    * Enable or disable shared memory optimizations
    */
-  setSharedMemoryOptimizations(enabled: boolean, config?: {
-    maxPoolSize?: number;
-    enableOptimizations?: boolean;
-    chunkSize?: number;
-  }): void {
+  setSharedMemoryOptimizations(
+    enabled: boolean,
+    config?: {
+      maxPoolSize?: number;
+      enableOptimizations?: boolean;
+      chunkSize?: number;
+    },
+  ): void {
     if (enabled && typeof SharedArrayBuffer !== 'undefined') {
       if (!this.sharedMemoryManager) {
         this.sharedMemoryManager = new SharedMemoryManager(config);

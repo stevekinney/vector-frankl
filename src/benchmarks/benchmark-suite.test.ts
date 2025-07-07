@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+
 import { BenchmarkSuite } from './benchmark-suite.js';
 
 describe('BenchmarkSuite', () => {
@@ -16,7 +17,7 @@ describe('BenchmarkSuite', () => {
       testCompression: false,
       testFormats: false,
       testIndexing: false,
-      verbose: false
+      verbose: false,
     });
   });
 
@@ -31,7 +32,7 @@ describe('BenchmarkSuite', () => {
 
   it('should run a minimal benchmark suite', async () => {
     const summary = await suite.runSuite();
-    
+
     expect(summary).toBeDefined();
     expect(summary.totalTests).toBeGreaterThan(0);
     expect(summary.results).toBeArray();
@@ -41,18 +42,18 @@ describe('BenchmarkSuite', () => {
 
   it('should generate performance recommendations', async () => {
     const summary = await suite.runSuite();
-    
+
     // Should have some recommendations
     expect(summary.recommendations.length).toBeGreaterThanOrEqual(0);
   });
 
   it('should track test results by category', async () => {
     const summary = await suite.runSuite();
-    
+
     // Should have database-ops and search categories at minimum
     expect(summary.categories['database-ops']).toBeDefined();
     expect(summary.categories['search']).toBeDefined();
-    
+
     // Each category should have valid stats
     for (const category of Object.values(summary.categories)) {
       expect(category.testCount).toBeGreaterThan(0);
@@ -72,22 +73,22 @@ describe('BenchmarkSuite', () => {
       testCompression: false,
       testFormats: false,
       testIndexing: false,
-      verbose: false
+      verbose: false,
     });
-    
+
     // Should not throw, but handle errors in results
     const summary = await errorSuite.runSuite();
     expect(summary).toBeDefined();
-    
+
     // Check if any tests had errors
-    const errorResults = summary.results.filter(r => r.error);
+    const errorResults = summary.results.filter((r) => r.error);
     // We don't expect errors with dimension 1, but if there are any, they should be recorded
     expect(summary.failedTests).toBe(errorResults.length);
   });
 
   it('should provide meaningful test metadata', async () => {
     const summary = await suite.runSuite();
-    
+
     // All results should have metadata
     for (const result of summary.results) {
       expect(result.metadata).toBeDefined();
@@ -100,9 +101,9 @@ describe('BenchmarkSuite', () => {
 
   it('should measure operations per second correctly', async () => {
     const summary = await suite.runSuite();
-    
+
     // All successful tests should have positive ops/sec
-    const successfulResults = summary.results.filter(r => !r.error);
+    const successfulResults = summary.results.filter((r) => !r.error);
     for (const result of successfulResults) {
       expect(result.operationsPerSecond).toBeGreaterThan(0);
       expect(result.duration).toBeGreaterThan(0);
