@@ -40,7 +40,7 @@ describe('Compression Integration', () => {
     it('should respect minimum size for compression', async () => {
       const smallVector = new Float32Array([1, 2, 3]); // Below threshold
 
-      await expect(compressionManager.compress(smallVector)).rejects.toThrow('too small');
+      expect(compressionManager.compress(smallVector)).rejects.toThrow('too small');
     });
 
     it('should allow strategy override', async () => {
@@ -168,7 +168,7 @@ describe('Compression Integration', () => {
         new Float32Array(Array.from({ length: 64 }, () => Math.random())),
       ];
 
-      await expect(compressionManager.compressBatch(vectors)).rejects.toThrow();
+      expect(compressionManager.compressBatch(vectors)).rejects.toThrow();
     });
 
     it('should handle empty batch', async () => {

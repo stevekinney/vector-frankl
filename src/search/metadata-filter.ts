@@ -434,7 +434,7 @@ export class MetadataRangeQuery {
       condition['$lte'] = max;
     }
 
-    (this.filter as any)[field] = condition;
+    (this.filter as Record<string, unknown>)[field] = condition;
     return this;
   }
 
@@ -442,7 +442,7 @@ export class MetadataRangeQuery {
    * Add an equality condition
    */
   equals(field: string, value: unknown): this {
-    (this.filter as any)[field] = value;
+    (this.filter as Record<string, unknown>)[field] = value;
     return this;
   }
 
@@ -450,7 +450,7 @@ export class MetadataRangeQuery {
    * Add an IN condition
    */
   in(field: string, values: unknown[]): this {
-    (this.filter as any)[field] = { $in: values };
+    (this.filter as Record<string, unknown>)[field] = { $in: values };
     return this;
   }
 
@@ -458,7 +458,7 @@ export class MetadataRangeQuery {
    * Add a NOT IN condition
    */
   notIn(field: string, values: unknown[]): this {
-    (this.filter as any)[field] = { $nin: values };
+    (this.filter as Record<string, unknown>)[field] = { $nin: values };
     return this;
   }
 
@@ -466,7 +466,7 @@ export class MetadataRangeQuery {
    * Add an EXISTS condition
    */
   exists(field: string, exists = true): this {
-    (this.filter as any)[field] = { $exists: exists };
+    (this.filter as Record<string, unknown>)[field] = { $exists: exists };
     return this;
   }
 
@@ -493,12 +493,12 @@ export class MetadataRangeQuery {
       }
 
       if (flags) {
-        (this.filter as any)[field] = { $regex: { pattern, flags } };
+        (this.filter as Record<string, unknown>)[field] = { $regex: { pattern, flags } };
       } else {
-        (this.filter as any)[field] = { $regex: pattern };
+        (this.filter as Record<string, unknown>)[field] = { $regex: pattern };
       }
     } else {
-      (this.filter as any)[field] = { $regex: pattern };
+      (this.filter as Record<string, unknown>)[field] = { $regex: pattern };
     }
     return this;
   }

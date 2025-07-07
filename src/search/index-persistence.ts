@@ -1,5 +1,6 @@
 import { VectorDatabase } from '@/core/database.js';
 import { TransactionError } from '@/core/errors.js';
+import type { DistanceMetric } from '@/core/types.js';
 import type { HNSWIndex } from './hnsw-index.js';
 
 /**
@@ -244,7 +245,7 @@ export class IndexPersistence {
     const { HNSWIndex } = await import('./hnsw-index.js');
 
     // Create new index with saved config
-    const index = new HNSWIndex(data.distanceMetric as any, data.config);
+    const index = new HNSWIndex(data.distanceMetric as DistanceMetric, data.config);
 
     // Restore nodes and connections
     // Note: This would require HNSWIndex to have import methods

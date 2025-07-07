@@ -127,9 +127,9 @@ test.describe('Cross-Browser Compatibility Tests', () => {
     await page.evaluate(async (browser) => {
       try {
         // Test storage estimation API
-        let storageInfo = null;
+        let _storageInfo = null;
         if ('storage' in navigator && 'estimate' in navigator.storage) {
-          storageInfo = await navigator.storage.estimate();
+          _storageInfo = await navigator.storage.estimate();
         }
 
         // Add vectors until we approach a reasonable limit
@@ -150,12 +150,12 @@ test.describe('Cross-Browser Compatibility Tests', () => {
 
         // Test retrieval performance with many vectors
         const retrievalStart = performance.now();
-        const allVectors = await window.db.getAllVectors();
+        const _allVectors = await window.db.getAllVectors();
         const retrievalTime = performance.now() - retrievalStart;
 
         // Test search performance with many vectors
         const searchStart = performance.now();
-        const searchResults = await window.db.search(new Array(384).fill(0.5), 5);
+        const _searchResults = await window.db.search(new Array(384).fill(0.5), 5);
         const searchTime = performance.now() - searchStart;
 
         window.log(
@@ -276,7 +276,7 @@ test.describe('Cross-Browser Compatibility Tests', () => {
             await WebAssembly.instantiate(wasmBytes);
             apiTests.wasm = false; // This will fail, but at least WASM exists
           }
-        } catch (error) {
+        } catch (_error) {
           // Expected to fail with minimal WASM, but WASM is available
           if (typeof WebAssembly !== 'undefined') {
             apiTests.wasm = true;

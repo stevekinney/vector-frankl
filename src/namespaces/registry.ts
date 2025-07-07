@@ -34,7 +34,7 @@ export class NamespaceRegistry {
     }
 
     // Override the default schema creation
-    (this.database as any)['createSchema'] = (db: IDBDatabase) => {
+    (this.database as VectorDatabase & { createSchema: (db: IDBDatabase) => void })['createSchema'] = (db: IDBDatabase) => {
       // Namespaces store
       if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.NAMESPACES)) {
         const namespaceStore = db.createObjectStore(NamespaceRegistry.STORES.NAMESPACES, {

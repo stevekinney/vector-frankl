@@ -23,13 +23,13 @@ export function debugMethod(
   } = {},
 ) {
   return function (
-    target: any,
+    target: object,
     _propertyKey: string | symbol,
     descriptor: PropertyDescriptor,
   ): PropertyDescriptor {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (this: any, ...args: unknown[]) {
+    descriptor.value = async function (this: object, ...args: unknown[]) {
       if (!debugManager.isEnabled()) {
         return originalMethod.apply(this, args);
       }

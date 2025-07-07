@@ -32,7 +32,11 @@ test.describe('Vector Database Basic Operations', () => {
         const module = await import('/dist/index.js');
         return { success: true, keys: Object.keys(module), module: typeof module };
       } catch (error) {
-        return { success: false, error: error.message, stack: error.stack };
+        return { 
+          success: false, 
+          error: error instanceof Error ? error.message : String(error), 
+          stack: error instanceof Error ? error.stack : undefined 
+        };
       }
     });
     console.log('Module test:', moduleTest);

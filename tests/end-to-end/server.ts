@@ -62,6 +62,6 @@ console.log(`Test server running at http://localhost:${PORT}`);
 // Handle graceful shutdown
 process.on('SIGTERM', () => {
   console.log('Shutting down test server...');
-  server.stop();
+  void server.stop();
   process.exit(0);
 });
