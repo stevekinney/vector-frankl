@@ -9,23 +9,19 @@ A high-performance vector database that runs entirely in the browser, built on I
 
 ## ✨ Why Vector Frankl is Awesome
 
-Vector Frankl redefines what's possible for AI applications in the browser. By bringing a full-fledged, high-performance vector database directly to the client-side, it unlocks a new era of privacy-preserving, offline-capable, and lightning-fast AI experiences.
-
-**Key Advantages:**
-
-*   **Unparalleled Performance:** Leveraging SIMD, WebAssembly, and WebGPU, Vector Frankl delivers near-native speed for vector operations, ensuring your AI features are responsive and efficient, even with large datasets.
-*   **True Client-Side AI:** All data storage and vector computations happen directly in the user's browser. This means enhanced privacy, reduced server costs, and the ability to build applications that work seamlessly offline.
-*   **Rich Feature Set:** From advanced vector compression and multiple distance metrics to robust namespace management and comprehensive debugging tools, Vector Frankl provides everything you need to build sophisticated vector-based applications.
-*   **Developer-Friendly:** With 100% TypeScript support, a clear API, and built-in performance monitoring, integrating and optimizing your AI workflows has never been easier.
+- **Unparalleled Performance:** Leveraging SIMD, WebAssembly, and WebGPU, Vector Frankl delivers near-native speed for vector operations, ensuring your AI features are responsive and efficient, even with large datasets.
+- **True Client-Side AI:** All data storage and vector computations happen directly in the user's browser. This means enhanced privacy, reduced server costs, and the ability to build applications that work seamlessly offline.
+- **Rich Feature Set:** From advanced vector compression and multiple distance metrics to robust namespace management and comprehensive debugging tools, Vector Frankl provides everything you need to build sophisticated vector-based applications.
+- **Developer-Friendly:** With 100% TypeScript support, a clear API, and built-in performance monitoring, integrating and optimizing your AI workflows has never been easier.
 
 ## 💡 Potential Use Cases
 
-*   **Privacy-Preserving AI:** Build applications where sensitive user data never leaves the device, enabling highly personalized experiences without compromising privacy.
-*   **Offline-First Applications:** Develop AI features that function seamlessly without an internet connection, ideal for mobile web apps or environments with intermittent connectivity.
-*   **Edge AI & Real-time Processing:** Perform real-time semantic search, content recommendations, or anomaly detection directly on the user's device, reducing latency and server load.
-*   **Interactive Machine Learning Demos:** Create compelling, interactive AI prototypes and educational tools that run entirely in the browser, making them easily shareable and accessible.
-*   **Personalized Content Filtering:** Implement client-side content filtering or recommendation engines that adapt instantly to user preferences and behavior.
-*   **Local Document Search:** Enable semantic search capabilities over user-generated content or locally stored documents without relying on a backend server.
+- **Privacy-Preserving AI:** Build applications where sensitive user data never leaves the device, enabling highly personalized experiences without compromising privacy.
+- **Offline-First Applications:** Develop AI features that function seamlessly without an internet connection, ideal for mobile web apps or environments with intermittent connectivity.
+- **Edge AI & Real-time Processing:** Perform real-time semantic search, content recommendations, or anomaly detection directly on the user's device, reducing latency and server load.
+- **Interactive Machine Learning Demos:** Create compelling, interactive AI prototypes and educational tools that run entirely in the browser, making them easily shareable and accessible.
+- **Personalized Content Filtering:** Implement client-side content filtering or recommendation engines that adapt instantly to user preferences and behavior.
+- **Local Document Search:** Enable semantic search capabilities over user-generated content or locally stored documents without relying on a backend server.
 
 ## 🌟 Features
 
