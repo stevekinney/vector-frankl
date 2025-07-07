@@ -1,0 +1,183 @@
+---
+description:
+globs: *.tsx,*.ts
+alwaysApply: false
+---
+# ESLint Rules
+
+## Code Quality & Style
+
+### General Principles
+
+- Write clean, readable, and maintainable code
+- Prefer explicit and clear code over clever shortcuts
+- Use modern ES6+ features and TypeScript when applicable
+- Follow consistent naming conventions (camelCase for variables/functions, PascalCase for classes/components)
+
+### Imports & Exports
+
+- **Import Organization**: Order imports logically - external libraries first, then internal modules
+- **No Duplicate Imports**: Consolidate imports from the same module
+- **No Unused Imports**: Remove any unused imports immediately
+- **TypeScript Imports**: Use `import type` for type-only imports
+- **Node Protocol**: Always use `node:` protocol for Node.js built-in modules (e.g., `import fs from 'node:fs'`)
+- **No Circular Dependencies**: Avoid circular imports between modules
+- **No Self Imports**: Never import from the same file
+
+### TypeScript Guidelines
+
+- **Strict Type Safety**: Use proper TypeScript types, avoid `any` except in test files
+- **Consistent Type Imports**: Always use `import type` for type-only imports
+- **Optional Chaining**: Prefer optional chaining (`?.`) over manual null checks
+- **Nullish Coalescing**: Use `??` instead of `||` when checking for null/undefined
+- **Await Thenable**: Only await promises and thenable objects
+- **No Floating Promises**: Handle promise rejections appropriately (though currently relaxed)
+
+## Code Patterns & Best Practices
+
+### Control Flow
+
+- **No With Statements**: Never use `with` statements
+- **No Labels**: Avoid labeled statements
+- **Prefer Switch**: Use `switch` statements over complex if-else chains when appropriate
+- **Logical Operators**: Prefer logical operators over ternary when simpler
+
+### Functions & Async
+
+- **Promise Handling**:
+  - Don't wrap values in `Promise.resolve()` unnecessarily
+  - Use proper parameter names in promise methods
+  - Always catch or return promises
+  - Avoid nesting promises
+  - Don't mix callbacks and promises
+  - Don't use `new` with static promise methods
+  - Avoid returns in `finally` blocks
+- **Async/Await**: Don't await non-thenable expressions
+- **Prefer for...of**: Use `for...of` loops instead of `Array.forEach()` when possible
+
+### Variables & Scope
+
+- **Unused Variables**: Remove unused variables, prefix with `_` if needed for API compliance
+- **No Redeclaration**: Avoid variable redeclaration (handled by TypeScript)
+
+## Security Considerations
+
+- **Regex Safety**: Avoid non-literal regex patterns when possible
+- **Object Injection**: Be cautious with dynamic object access (though detection is relaxed)
+- **File System**: Use caution with dynamic file paths
+
+## File-Specific Rules
+
+### Test Files (`*.test.*`, `*.spec.*`, `/tests/`)
+
+- Allow `console.log` statements for debugging
+- Allow `any` type when necessary for mocking
+- Focus on readability and comprehensive test coverage
+
+### Service Worker Files (`src/background/**`)
+
+- **No Browser APIs**: Never use `window`, `document`, `localStorage`, or `sessionStorage`
+- **Use Chrome APIs**: Use `chrome.storage` instead of web storage APIs
+- **Service Worker Globals**: Only use APIs available in service worker context
+- Available globals: `chrome`, `LanguageModel`, and standard service worker APIs
+
+### TypeScript Declaration Files (`*.d.ts`)
+
+- These are typically ignored and auto-generated
+- When writing custom declarations, use proper TypeScript declaration syntax
+
+## Comments & Documentation
+
+- **ESLint Comments**:
+  - Pair disable/enable comments properly
+  - Don't use unlimited disables
+  - Remove unused disable comments
+  - Use specific rule names in disable comments
+
+### Regex Patterns
+
+- Avoid empty capturing groups
+- Don't use lazy quantifiers at string ends
+- Prefer named capture groups when appropriate
+
+## Global Variables & Environment
+
+- **Available Globals**:
+  - Browser: Standard browser APIs
+  - Node.js: All Node.js globals
+  - Chrome Extensions: `chrome` API
+  - Bun: `Bun` runtime APIs
+  - Custom: `HTMLRewriter`, `LanguageModel`
+
+## File Organization
+
+- **Ignore Patterns**: Don't generate code for:
+  - `dist/`, `build/`, `coverage/`, `.bun/` directories
+  - `node_modules/`
+  - Lock files
+  - Git directories
+  - Temporary directories
+  - Auto-generated declaration files
+
+## Error Handling
+
+- **Disable Directives**: Report unused ESLint disable directives as errors
+- **Promise Validation**: Validate promise method parameters
+- **Import Cycles**: Prevent and resolve circular dependencies
+
+## Performance & Optimization
+
+- Prefer modern JavaScript features over polyfills
+- Use efficient array methods and iteration patterns
+- Avoid unnecessary async/await when not needed
+- Minimize bundle size by avoiding unnecessary dependencies
+
+## Code Examples
+
+### Good Import Patterns
+
+```typescript
+// External libraries first
+import React from 'react';
+import type { FC } from 'react';
+import axios from 'axios';
+
+// Internal modules
+import type { User } from './types';
+import { utils } from '../utils';
+import { API_URL } from '@/constants';
+```
+
+### Good TypeScript Patterns
+
+```typescript
+// Use optional chaining and nullish coalescing
+const name = user?.profile?.name ?? 'Unknown';
+
+// Proper type imports
+import type { ComponentProps } from 'react';
+
+// Handle promises properly
+try {
+  const result = await fetchData();
+  return result;
+} catch (error) {
+  console.error('Failed to fetch data:', error);
+  throw error;
+}
+```
+
+### Service Worker Code
+
+```typescript
+// Good - use chrome APIs
+chrome.storage.local.set({ key: 'value' });
+
+// Bad - browser APIs not available
+// window.localStorage.setItem('key', 'value'); // ❌
+// document.querySelector('.element'); // ❌
+```
+
+When generating code, always follow these patterns and ensure the code would pass the ESLint configuration provided.
+
+If you are unclear on any of these rules, review @eslint.config.js.

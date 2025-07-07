@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+
+# Post-merge hook
+# Automatically handles dependency updates and shows important changes after merge
+
+# Source utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/utilities.sh"
+
+# Skip in CI environment
+if is_ci; then
+  skip_hook "Running in CI environment"
+fi
+
+print_header "Post-merge hook"
+
+# Track if we need to take any actions
+needs_install=false
+needs_clean=false
+important_changes=()
+
+# Check if package.json or bun.lock changed
+if git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep -qE "^(package\.json|bun\.lock)$"; then
+  needs_install=true
+  important_changes+=("Dependencies updated")
+fi
+
+# Check for configuration changes
+config_files=(
+  "tsconfig.json"
+  "eslint.config.js"
+  ".prettierrc"
+  "bunfig.toml"
+  ".env.example"
+)
+
+for file in "${config_files[@]}"; do
+  if git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep -q "^$file$"; then
+    needs_clean=true
+    important_changes+=("$file configuration updated")
+  fi
+done
+
+# Check for migration files
+if [ -d "migrations" ] || [ -d "src/migrations" ]; then
+  migration_dir=$([ -d "migrations" ] && echo "migrations" || echo "src/migrations")
+  if git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep -q "^$migration_dir/"; then
+    important_changes+=("New database migrations")
+  fi
+fi
+
+# Check for new scripts in package.json
+if git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep -q "^package\.json$"; then
+  new_scripts=$(git diff ORIG_HEAD HEAD -- package.json | grep '^\+.*".*":.*".*"' | grep -v '^\+\+\+' || true)
+  if [ -n "$new_scripts" ]; then
+    important_changes+=("New npm scripts added")
+  fi
+fi
+
+# Perform actions
+if [ "$needs_install" = true ]; then
+  print_info "Dependencies have changed, installing..."
+  start_timer
+  if run_with_spinner "Installing dependencies..." bun install; then
+    end_timer "Dependency installation"
+    print_success "Dependencies installed successfully"
+    
+    # Check for outdated dependencies
+    print_info "Checking for outdated dependencies..."
+    bun outdated 2>/dev/null || true
+  else
+    print_error "Failed to install dependencies"
+    print_info "Run 'bun install' manually"
+  fi
+fi
+
+if [ "$needs_clean" = true ]; then
+  print_info "Configuration changed, cleaning caches..."
+  if run_with_spinner "Cleaning caches..." bun run clean; then
+    print_success "Caches cleaned"
+  fi
+fi
+
+# Check .env.example changes
+if git diff-tree -r --name-only --no-commit-id ORIG_HEAD HEAD | grep -q "^\.env\.example$"; then
+  print_warning ".env.example has changed"
+  "$SCRIPT_DIR/validate-environment.sh"
+fi
+
+# Show summary of important changes
+if [ ${#important_changes[@]} -gt 0 ]; then
+  print_header "Summary of important changes"
+  for change in "${important_changes[@]}"; do
+    print_info "• $change"
+  done
+  echo ""
+fi
+
+# Show merge statistics
+print_info "Merge statistics:"
+git diff --stat ORIG_HEAD HEAD
+
+# Check for conflicts markers (shouldn't be any after successful merge, but good to verify)
+if git grep -n "^<<<<<<< \|^======= \|^>>>>>>> " 2>/dev/null; then
+  print_error "Found conflict markers in files!"
+  print_info "Please resolve any remaining conflicts"
+fi
+
+# Remind about common post-merge tasks
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+print_info "Merged into branch: $current_branch"
+
+if [ ${#important_changes[@]} -gt 0 ]; then
+  print_info "You may need to:"
+  print_info "  • Restart your development server"
+  print_info "  • Reload your editor/IDE"
+  if [[ "${important_changes[@]}" =~ "migrations" ]]; then
+    print_info "  • Run database migrations"
+  fi
+fi
+
+exit 0

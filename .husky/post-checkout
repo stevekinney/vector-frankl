@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+
+# Post-checkout hook
+# Automatically installs dependencies when package.json changes
+
+# Source utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/utilities.sh"
+
+# Skip in CI environment
+if is_ci; then
+  skip_hook "Running in CI environment"
+fi
+
+# Get the checkout details
+prev_head=$1
+new_head=$2
+checkout_type=$3  # 1 for branch checkout, 0 for file checkout
+
+# Only run for branch checkouts
+if [ "$checkout_type" != "1" ]; then
+  exit 0
+fi
+
+# Don't run if this is a new clone (prev_head is all zeros)
+if [ "$prev_head" = "0000000000000000000000000000000000000000" ]; then
+  exit 0
+fi
+
+print_header "Post-checkout hook"
+
+# Check if package.json changed
+if file_changed "package.json" "$prev_head" "$new_head"; then
+  print_info "package.json has changed"
+  
+  # Check if bun.lock also changed
+  if file_changed "bun.lock" "$prev_head" "$new_head"; then
+    print_info "Dependencies have changed, installing..."
+    
+    start_timer
+    if run_with_spinner "Installing dependencies..." bun install; then
+      end_timer "Dependency installation"
+      print_success "Dependencies installed successfully"
+      
+      # Show summary of changes
+      print_info "Dependency changes:"
+      git diff --stat "$prev_head..$new_head" -- package.json bun.lock
+    else
+      print_error "Failed to install dependencies"
+      print_info "Run 'bun install' manually to install dependencies"
+    fi
+  else
+    print_warning "package.json changed but bun.lock didn't"
+    print_info "You may need to run 'bun install' to update dependencies"
+  fi
+fi
+
+# Check if .env.example changed
+if file_changed ".env.example" "$prev_head" "$new_head"; then
+  print_warning ".env.example has changed"
+  print_info "Review changes and update your .env file if needed:"
+  git diff --no-index --color=always .env.example .env 2>/dev/null || true
+fi
+
+# Check for migration files (if applicable)
+if [ -d "migrations" ] || [ -d "src/migrations" ]; then
+  migration_dir=$([ -d "migrations" ] && echo "migrations" || echo "src/migrations")
+  if get_changed_files "$prev_head" "$new_head" | grep -q "^$migration_dir/"; then
+    print_warning "Database migrations detected"
+    print_info "Remember to run your migration command"
+  fi
+fi
+
+# Check for configuration changes
+config_files=(
+  "tsconfig.json"
+  "eslint.config.js"
+  ".prettierrc"
+  "bunfig.toml"
+)
+
+config_changed=false
+for file in "${config_files[@]}"; do
+  if file_changed "$file" "$prev_head" "$new_head"; then
+    config_changed=true
+    print_info "Configuration changed: $file"
+  fi
+done
+
+if [ "$config_changed" = true ]; then
+  print_info "Configuration files changed. You may need to:"
+  print_info "  - Restart your development server"
+  print_info "  - Clear caches: bun run clean"
+  print_info "  - Reload your editor/IDE"
+fi
+
+# Show branch info
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+print_info "Switched to branch: $current_branch"
+
+# Check if there are any TODOs or FIXMEs in changed files
+changed_files=$(get_changed_files "$prev_head" "$new_head")
+if [ -n "$changed_files" ]; then
+  todo_count=$(echo "$changed_files" | xargs grep -l "TODO:\|FIXME:" 2>/dev/null | wc -l)
+  if [ "$todo_count" -gt 0 ]; then
+    print_info "Found TODO/FIXME comments in $todo_count changed file(s)"
+  fi
+fi
+
+exit 0

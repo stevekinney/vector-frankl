@@ -1,0 +1,84 @@
+---
+description:
+globs: *.ts,*.tsx
+alwaysApply: false
+---
+# Type Validation with Zod
+
+You are an expert TypeScript developer who understands that type assertions (using `as`) only provide compile-time safety without runtime validation.
+
+## Zod Over Type Assertions
+
+- **NEVER** use type assertions (with `as`) for external data sources, API responses, or user inputs
+- **ALWAYS** use Zod schemas to validate and parse data from external sources
+- Implement proper error handling for validation failures
+
+## Zod Implementation Patterns
+
+- Import zod with: `import { z } from 'zod'`
+- Define schemas near related types or in dedicated schema files
+- Use `schema.parse()` for throwing validation behavior
+- Use `schema.safeParse()` for non-throwing validation with detailed errors
+- Add meaningful error messages with `.refine()` and `.superRefine()`
+- Set up default values with `.default()` when appropriate
+- Use transformations with `.transform()` to convert data formats
+- Always handle potential validation errors
+
+```ts
+// ❌ WRONG: Using type assertions
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  age: number;
+}
+
+const fetchUser = async (id: string): Promise<User> => {
+  const response = await fetch(`/api/users/${id}`);
+  const data = await response.json();
+  return data as User; // DANGEROUS: No runtime validation!
+};
+```
+
+```ts
+// ✅ RIGHT: Using Zod for validation
+import { z } from 'zod/v4';
+
+// Define the schema
+const UserSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  email: z.string().email(),
+  age: z.number().int().positive().min(13),
+});
+
+// Derive the type from the schema
+type User = z.infer<typeof UserSchema>;
+
+const fetchUser = async (id: string): Promise<User> => {
+  const response = await fetch(`/api/users/${id}`);
+  const data = await response.json();
+
+  // Runtime validation
+  return UserSchema.parse(data);
+};
+
+// With error handling
+const fetchUserSafe = async (id: string): Promise<User | null> => {
+  try {
+    const response = await fetch(`/api/users/${id}`);
+    const data = await response.json();
+
+    const result = UserSchema.safeParse(data);
+    if (!result.success) {
+      console.error('Invalid user data:', result.error.format());
+      return null;
+    }
+
+    return result.data;
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    return null;
+  }
+};
+```

@@ -1,0 +1,171 @@
+#!/usr/bin/env bash
+
+# Pre-push hook
+# Runs comprehensive checks before pushing to remote
+
+# Source utilities
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/utilities.sh"
+
+# Skip in CI environment
+if is_ci; then
+  skip_hook "Running in CI environment"
+fi
+
+print_header "Running pre-push checks"
+start_timer
+
+# Get the remote and branch being pushed to
+remote="$1"
+url="$2"
+
+# Store PIDs for parallel execution
+pids=()
+failed_checks=()
+
+# Function to track background job results
+track_job() {
+  local pid=$1
+  local name=$2
+  wait $pid
+  local exit_code=$?
+  if [ $exit_code -ne 0 ]; then
+    failed_checks+=("$name")
+  fi
+}
+
+# 1. Run tests
+print_info "Running tests..."
+bun run test > /tmp/test_output_$$.log 2>&1 &
+test_pid=$!
+pids+=($test_pid)
+
+# 2. Run build
+print_info "Running build..."
+bun run build > /tmp/build_output_$$.log 2>&1 &
+build_pid=$!
+pids+=($build_pid)
+
+# 3. Check for secrets
+print_info "Scanning for secrets..."
+"$SCRIPT_DIR/check-secrets.sh" > /tmp/secrets_output_$$.log 2>&1 &
+secrets_pid=$!
+pids+=($secrets_pid)
+
+# 4. Run full lint
+print_info "Running full lint..."
+bun run lint > /tmp/lint_output_$$.log 2>&1 &
+lint_pid=$!
+pids+=($lint_pid)
+
+# 5. Check documentation updates
+check_docs() {
+  # Check if source files were modified
+  local src_changed=false
+  if git diff --name-only "@{push}.." | grep -q "^src/"; then
+    src_changed=true
+  fi
+  
+  if [ "$src_changed" = true ]; then
+    # Check if README.md was also updated
+    if ! git diff --name-only "@{push}.." | grep -q "^README.md$"; then
+      print_warning "Source files changed but README.md not updated"
+      print_info "Consider updating README.md if the changes affect usage"
+    fi
+    
+    # Check if CLAUDE.md needs updating
+    if command_exists "claude"; then
+      # Check for significant changes that might need CLAUDE.md update
+      local significant_changes=false
+      
+      # Check for new files
+      if git diff --name-only --diff-filter=A "@{push}.." | grep -q "^src/"; then
+        significant_changes=true
+      fi
+      
+      # Check for changes to configuration or types
+      if git diff --name-only "@{push}.." | grep -qE "^src/(configuration|types|errors)/"; then
+        significant_changes=true
+      fi
+      
+      if [ "$significant_changes" = true ]; then
+        if ! git diff --name-only "@{push}.." | grep -q "^CLAUDE.md$"; then
+          print_warning "Significant changes detected but CLAUDE.md not updated"
+          print_info "Run 'claude code --update-context' to update CLAUDE.md"
+        fi
+      fi
+    fi
+  fi
+}
+
+# Run documentation check in foreground (it's fast)
+check_docs
+
+# Wait for all background jobs with progress indication
+print_info "Waiting for checks to complete..."
+for i in "${!pids[@]}"; do
+  pid=${pids[$i]}
+  case $i in
+    0) name="Tests" ;;
+    1) name="Build" ;;
+    2) name="Secret scan" ;;
+    3) name="Lint" ;;
+    *) name="Check $i" ;;
+  esac
+  
+  # Show spinner while waiting
+  printf '%s' "  Checking $name..."
+  spinner $pid
+  
+  # Check result
+  wait $pid
+  exit_code=$?
+  
+  if [ $exit_code -eq 0 ]; then
+    print_success " $name passed"
+  else
+    print_error " $name failed"
+    failed_checks+=("$name")
+    
+    # Show output for failed check
+    case $i in
+      0) cat /tmp/test_output_$$.log ;;
+      1) cat /tmp/build_output_$$.log ;;
+      2) cat /tmp/secrets_output_$$.log ;;
+      3) cat /tmp/lint_output_$$.log ;;
+    esac
+  fi
+done
+
+# Clean up temp files
+rm -f /tmp/*_output_$$.log
+
+# Check for uncommitted changes (shouldn't happen but good to verify)
+if ! git diff-index --quiet HEAD --; then
+  print_warning "You have uncommitted changes"
+  print_info "Commit or stash your changes before pushing"
+  failed_checks+=("Uncommitted changes")
+fi
+
+# Check branch protection
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+  print_warning "Pushing directly to $current_branch branch"
+  print_info "Consider creating a feature branch and pull request instead"
+fi
+
+end_timer "Pre-push checks"
+
+# Summary and exit
+if [ ${#failed_checks[@]} -gt 0 ]; then
+  print_error "Pre-push checks failed:"
+  for check in "${failed_checks[@]}"; do
+    echo "  - $check"
+  done
+  echo ""
+  exit_with_error "Cannot push with failing checks" "Fix the issues above or use 'git push --no-verify' to bypass (not recommended)"
+else
+  print_success "All pre-push checks passed"
+  print_info "Pushing to $remote..."
+  exit 0
+fi

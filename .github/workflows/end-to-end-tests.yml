@@ -1,0 +1,85 @@
+name: End-to-End Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  end-to-end-tests:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        browser: [chromium, firefox, webkit]
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build project
+        run: bun run build
+
+      - name: Install Playwright browsers
+        run: bunx playwright install ${{ matrix.browser }} --with-deps
+
+      - name: Run end-to-end tests
+        run: bunx playwright test --project=${{ matrix.browser }}
+        env:
+          CI: true
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-${{ matrix.browser }}
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
+  mobile-end-to-end-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build project
+        run: bun run build
+
+      - name: Install Playwright browsers for mobile testing
+        run: bunx playwright install chromium webkit --with-deps
+
+      - name: Run mobile end-to-end tests
+        run: bunx playwright test --project=mobile-chrome --project=mobile-safari
+        env:
+          CI: true
+
+      - name: Upload mobile test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-results-mobile
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7

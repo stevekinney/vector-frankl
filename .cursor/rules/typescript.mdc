@@ -1,0 +1,291 @@
+---
+description:
+globs: *.tsx,*.ts
+alwaysApply: false
+---
+# TypeScript Best Practices
+
+## Type Safety & Configuration
+
+- Enable `strict: true` in @tsconfig.json with additional flags:
+  - `noImplicitAny: true`
+  - `strictNullChecks: true`
+  - `strictFunctionTypes: true`
+  - `strictBindCallApply: true`
+  - `strictPropertyInitialization: true`
+  - `noImplicitThis: true`
+  - `alwaysStrict: true`
+  - `exactOptionalPropertyTypes: true`
+- Never use `// @ts-ignore` or `// @ts-expect-error` without explanatory comments
+- Use `--noEmitOnError` compiler flag to prevent generating JS files when TypeScript errors exist
+
+## Type Definitions
+
+- Do not ever use `any`. Ever. If you feel like you have to use `any`, use `unknown` instead.
+- Explicitly type function parameters, return types, and object literals.
+- Please don't ever use Enums. Use a union if you feel tempted to use an Enum.
+- Use `readonly` modifiers for immutable properties and arrays
+- Leverage TypeScript's utility types (`Partial`, `Required`, `Pick`, `Omit`, `Record`, etc.)
+- Use discriminated unions with exhaustiveness checking for type narrowing
+
+## Advanced Patterns
+
+- Implement proper generics with appropriate constraints
+- Use mapped types and conditional types to reduce type duplication
+- Leverage `const` assertions for literal types
+- Implement branded/nominal types for type-level validation
+
+## Code Organization
+
+- Organize types in dedicated files (types.ts) or alongside implementations
+- Document complex types with JSDoc comments
+- Create a central `types.ts` file or a `src/types` directory for shared types
+
+## Lint & TypeCheck Error Resolution (Lessons Learned)
+
+### Import Path Management
+- Always use path aliases (`@/` prefix) for src/ imports for consistency
+- After refactoring, systematically update all import paths using search/replace
+- Group imports: types first, then components, then utilities
+- Use consistent import patterns across the codebase
+
+### ESLint Rule Compliance
+
+#### Nullish Coalescing (`??` vs `||`)
+```typescript
+// ❌ Problematic - catches falsy values like 0, false, ""
+const result = value || defaultValue;
+
+// ✅ Correct - only null/undefined trigger default
+const result = value ?? defaultValue;
+```
+
+#### Type Import Consistency
+```typescript
+// ❌ Avoid import() type annotations
+properties: (obj as Record<string, import('./types').SomeType>) ?? {}
+
+// ✅ Use proper type imports
+import type { SomeType } from './types';
+properties: (obj as Record<string, SomeType>) ?? {}
+```
+
+#### No Explicit Any
+```typescript
+// ❌ Loses type safety
+static tools = new Map<string, Tool<any, any>>();
+
+// ✅ Use specific constraints
+static tools = new Map<string, Tool<SchemaShape | undefined, Promise<unknown>>>();
+```
+
+### Chrome Extension API Types
+- Chrome API Promise return types may not match @types definitions
+- Use ESLint disable comments sparingly for known async APIs:
+```typescript
+// eslint-disable-next-line @typescript-eslint/await-thenable
+const result = await chrome.tabs.detectLanguage(tabId);
+```
+
+### Error Handling in Tests
+```typescript
+// ❌ Unused error variable
+try {
+  testCode();
+} catch (_error) {
+  // error not used
+}
+
+// ✅ Bare catch when error details not needed
+try {
+  testCode();
+} catch {
+  // clean error handling
+}
+```
+
+### Zod Version Compatibility
+- Standardize on Zod v4 imported as `zod/v4`
+- Use aliased imports: `import { z } from 'zod/v4'`
+- Define schema shapes consistently: `type SchemaShape = Record<string, z.ZodTypeAny>`
+
+### Mock Implementation Strategy
+- When services are deleted, create minimal mock implementations
+- Use proper typing for mocks to maintain type safety
+- Document why mocks are needed vs fixing the underlying architecture
+
+### Security Lint Rules
+- Dynamic RegExp construction triggers security warnings
+- Only disable security rules when pattern is properly escaped:
+```typescript
+const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+// eslint-disable-next-line security/detect-non-literal-regexp
+const regex = new RegExp(`^${escaped}$`);
+```
+
+### Systematic Resolution Process
+1. Run both `bun run lint` and `bun run typecheck` simultaneously
+2. Fix import/module resolution errors first (highest priority)
+3. Use `bun run lint:fix` for auto-fixable issues
+4. Group similar rule fixes across all files
+5. Test after each category of fixes
+6. Document complex fixes with comments explaining rationale
+
+### CRITICAL: Zod v4 Import Pattern
+
+#### The Standard
+**IMPORTANT**: This codebase uses Zod v4 with the alias pattern:
+- Package.json imports both v3 and v4: `"zod": "^3.25.56"` and maps v4 to `zod/v4`
+- All files should import `from 'zod/v4'` to get v4 functionality
+- This ensures proper type inference for the tool system
+- **Result**: Full type safety with v4 features
+
+#### Import Pattern
+```typescript
+// ✅ CORRECT PATTERN (proper v4 usage)
+import { z } from 'zod/v4'; // This gets the v4 aliased import
+type SchemaShape = Record<string, z.ZodTypeAny>; // Compatible type definition
+
+// All tool files should use this pattern:
+// import { z } from 'zod/v4';
+```
+
+#### Standard Import Pattern
+
+**1. Use v4 Imports**
+```typescript
+// ✅ CORRECT - Always use v4 imports
+import { z } from 'zod/v4';
+
+// ❌ WRONG - Don't use standard imports (gets v3)
+import { z } from 'zod';
+```
+
+**2. Type Definitions**
+```typescript
+// ✅ CORRECT - Universal type definition
+type SchemaShape = Record<string, z.ZodTypeAny>;
+
+// This works with both v3 and v4
+```
+
+**3. Tool System Pattern**
+```typescript
+// Tool system uses v4 features:
+export class Tool<TParams extends Record<string, z.ZodTypeAny> | undefined = undefined> {
+  private constructor(
+    { name, description, parameters }: ToolOptions<TParams>,
+    call: ToolFunction<TParams>,
+  ) {
+    this.name = name;
+    this.description = description;
+
+    // ✅ Using v4 with strict objects
+    const params = parameters ?? ({} as Record<string, z.ZodTypeAny>);
+    this.schema = z.strictObject(params); // v4 feature
+
+    this.call = (args: unknown) => {
+      const parsed = this.schema.parse(args);
+      return call(parsed as InferParameters<TParams>);
+    };
+  }
+}
+```
+
+#### Import Convention
+1. **All tool files** should use: `import { z } from 'zod/v4'`
+2. **All schema files** should use: `import { z } from 'zod/v4'`
+3. **Consistency is key** - always use the v4 alias
+
+#### Index Signature Property Access (Secondary Issue)
+```typescript
+// ❌ TypeScript strict mode error
+obj.properties // Error: use bracket notation
+
+// ✅ Fixed with bracket notation
+obj['properties'] // Works with noUncheckedIndexedAccess
+```
+
+#### Verification Steps
+After fixing imports, verify tool parameter types:
+```typescript
+// This should now properly infer parameter types instead of {}
+const tool = Tool.register({
+  name: 'test',
+  parameters: {
+    url: z.string(),
+    count: z.number(),
+  }
+}, async (args) => {
+  // args should be { url: string; count: number } not {}
+  console.log(args.url); // Should have proper typing
+});
+```
+
+#### Best Practices
+- **Always import from `zod/v4` for v4 features**
+- **Use v4 features like `z.strictObject()` when available**
+- **Consistent imports: `import { z } from 'zod/v4'`**
+- **Test tool parameter typing after any Zod-related changes**
+
+### Critical Rule: NEVER Use `any` Type
+
+#### Why `any` is Forbidden
+- **Defeats TypeScript's Purpose**: Removes all type checking and safety
+- **Runtime Errors**: Allows accessing undefined properties without warnings
+- **Refactoring Hazards**: Changes can break code without TypeScript detecting it
+- **Loss of IntelliSense**: No autocomplete or method suggestions
+- **Hidden Bugs**: Type mismatches only discovered at runtime
+
+#### Proper Alternatives to `any`
+
+```typescript
+// ❌ NEVER DO THIS
+function badFunction(data: any): any {
+  return data.someProperty; // No type checking!
+}
+
+// ✅ Use unknown with type narrowing
+function goodFunction(data: unknown): string {
+  if (typeof data === 'object' && data !== null && 'someProperty' in data) {
+    return (data as { someProperty: string }).someProperty;
+  }
+  throw new Error('Invalid data structure');
+}
+
+// ✅ Use generics with constraints
+function betterFunction<T extends Record<string, unknown>>(data: T): T[keyof T] {
+  return data[Object.keys(data)[0]!];
+}
+
+// ✅ Use Zod for runtime validation + types
+const schema = z.object({ someProperty: z.string() });
+function bestFunction(data: unknown): string {
+  const validated = schema.parse(data); // Runtime safety + compile time types
+  return validated.someProperty; // Fully type-safe
+}
+```
+
+#### Exception Cases (Must Be Justified)
+- **Legacy Migration**: Gradual migration from JavaScript (temporary)
+- **Third-party Library Issues**: Library has incorrect or missing types
+- **Must Include**: Detailed comment explaining why and removal plan
+
+```typescript
+// Acceptable only with proper justification
+// TODO: Remove this `any` when migrating from legacy API
+// Legacy API returns dynamic structure that changes based on version
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const legacyData: any = await legacyApi.getData();
+```
+
+### Prevention Strategies
+- Update tsconfig.json includes when adding new file types
+- Use consistent import organization patterns
+- Prefer explicit typing over inference for public APIs
+- Add pre-commit hooks to catch issues early
+- Regular lint/typecheck runs during development
+- Test Zod schema compatibility when upgrading versions
+- Use bracket notation for index signature access in strict mode
+- **Always use `unknown` instead of `any` when unsure of type**
+- **Implement runtime validation with Zod for external data**

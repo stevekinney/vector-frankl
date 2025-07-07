@@ -1,0 +1,131 @@
+{
+  "name": "vector-frankl",
+  "version": "1.0.0-beta.1",
+  "description": "High-performance vector database that runs entirely in the browser using IndexedDB",
+  "keywords": [
+    "vector",
+    "database",
+    "indexeddb",
+    "embeddings",
+    "similarity-search",
+    "vector-search",
+    "browser",
+    "typescript",
+    "ai",
+    "machine-learning",
+    "hnsw",
+    "webgpu",
+    "simd",
+    "wasm"
+  ],
+  "author": "Steve Kinney <hello@stevekinney.net>",
+  "license": "MIT",
+  "homepage": "https://github.com/stevekinney/vector-frankl#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stevekinney/vector-frankl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/stevekinney/vector-frankl/issues"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "bun run build:clean && bun run build:types && bun run build:js",
+    "build:clean": "rm -rf dist",
+    "build:types": "tsc -p tsconfig.build.json",
+    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts",
+    "check:env": "bun run scripts/check-environment.ts",
+    "clean": "bun run scripts/clean.ts",
+    "dev": "bun --watch run src/index.ts",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "prepare": "husky",
+    "start": "bun run dist/index.js",
+    "test": "bun test",
+    "test:coverage": "bun test --coverage",
+    "test:parallel": "bun test --parallel",
+    "test:watch": "bun test --watch",
+    "test:end-to-end": "playwright test",
+    "test:end-to-end:ui": "playwright test --ui",
+    "test:end-to-end:headed": "playwright test --headed",
+    "test:end-to-end:chromium": "playwright test --project=chromium",
+    "test:end-to-end:firefox": "playwright test --project=firefox",
+    "test:end-to-end:webkit": "playwright test --project=webkit",
+    "test:end-to-end:mobile": "playwright test --project=mobile-chrome --project=mobile-safari",
+    "test:all": "bun test && bun run test:end-to-end",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run lint && bun run typecheck && bun test && bun run build",
+    "prepack": "bun run build"
+  },
+  "lint-staged": {
+    "src/**/*.{js,ts,tsx,jsx,mjs,cjs}": [
+      "eslint --fix"
+    ],
+    "scripts/**/*.{js,ts,tsx,jsx,mjs,cjs}": [
+      "eslint --fix"
+    ],
+    "*.{json,md,css,scss}": [
+      "prettier --write"
+    ],
+    "package.json": [
+      "sort-package-json"
+    ]
+  },
+  "dependencies": {
+    "zod": "^3.25.17"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.27.0",
+    "@eslint/markdown": "^6.4.0",
+    "@ianvs/prettier-plugin-sort-imports": "^4.4.1",
+    "@playwright/test": "^1.53.2",
+    "@types/bun": "^1.2.13",
+    "@typescript-eslint/eslint-plugin": "^8.32.1",
+    "@typescript-eslint/parser": "^8.32.1",
+    "bun-plugin-tailwind": "^0.0.15",
+    "eslint": "^9.27.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-import-resolver-typescript": "^4.3.5",
+    "eslint-plugin-eslint-comments": "^3.2.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-prettier": "^5.4.0",
+    "eslint-plugin-promise": "^7.2.1",
+    "eslint-plugin-regexp": "^2.7.0",
+    "eslint-plugin-security": "^3.0.1",
+    "eslint-plugin-unicorn": "^59.0.1",
+    "eslint-plugin-unused-imports": "^4.1.4",
+    "globals": "^16.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.0.0",
+    "playwright": "^1.53.2",
+    "prettier": "^3.5.3",
+    "sort-package-json": "^3.2.1",
+    "typescript-eslint": "^8.32.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.13.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
