@@ -89,7 +89,7 @@
     ]
   },
   "dependencies": {
-    "zod": "^3.25.17"
+    "zod": "^4.0.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
