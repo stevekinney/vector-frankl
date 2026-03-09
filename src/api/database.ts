@@ -19,6 +19,7 @@ import {
   type EvictionResult,
 } from '@/storage/eviction-policy.js';
 import { StorageQuotaMonitor, type QuotaWarning } from '@/storage/quota-monitor.js';
+import { log } from '@/utilities/logger.js';
 import { VectorFormatHandler } from '@/vectors/formats.js';
 import { VectorOperations } from '@/vectors/operations.js';
 
@@ -364,7 +365,7 @@ export class VectorDB {
    */
   private setupQuotaMonitoring(): void {
     this.quotaWarningListener = async (warning: QuotaWarning) => {
-      console.warn(`Storage quota warning: ${warning.message}`);
+      log.warn(`Storage quota warning: ${warning.message}`);
 
       if (
         this.autoEviction &&
@@ -377,14 +378,14 @@ export class VectorDB {
               ? Math.floor(warning.quota * 0.2) // Free 20% of quota
               : Math.floor(warning.quota * 0.1); // Free 10% of quota
 
-          console.log(
+          log.info(
             `Attempting automatic eviction to free ${this.formatBytes(targetBytes)}`,
           );
 
           const suggestion = await this.evictionManager.suggestStrategy(targetBytes);
           const result = await this.evictionManager.evict(suggestion.config);
 
-          console.log(
+          log.info(
             `Automatic eviction completed: freed ${this.formatBytes(result.freedBytes)} by removing ${result.evictedCount} vectors`,
           );
 
@@ -393,7 +394,9 @@ export class VectorDB {
             await this.searchEngine.rebuildIndex();
           }
         } catch (error) {
-          console.error('Automatic eviction failed:', error);
+          log.error('Automatic eviction failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
     };

@@ -1,3 +1,4 @@
+import { log } from '@/utilities/logger.js';
 import {
   BrowserSupportError,
   DatabaseInitializationError,
@@ -12,6 +13,7 @@ export class VectorDatabase {
   private database: IDBDatabase | null = null;
   private readonly name: string;
   private readonly version: number;
+  private readonly onUpgrade: ((database: IDBDatabase, oldVersion: number) => void) | undefined;
   private initializationPromise: Promise<void> | null = null;
 
   /**
@@ -41,6 +43,7 @@ export class VectorDatabase {
 
     this.name = config.name;
     this.version = config.version || 1;
+    this.onUpgrade = config.onUpgrade;
   }
 
   /**
@@ -91,7 +94,11 @@ export class VectorDatabase {
 
       request.onupgradeneeded = (event) => {
         const database = (event.target as IDBOpenDBRequest).result;
-        this.createSchema(database, event.oldVersion);
+        if (this.onUpgrade) {
+          this.onUpgrade(database, event.oldVersion);
+        } else {
+          this.createSchema(database, event.oldVersion);
+        }
       };
 
       request.onblocked = () => {
@@ -162,12 +169,12 @@ export class VectorDatabase {
       this.initializationPromise = null;
     };
 
-    this.database.onerror = (event) => {
-      console.error('Database error:', event);
+    this.database.onerror = () => {
+      log.error('Database error');
     };
 
-    this.database.onabort = (event) => {
-      console.error('Database transaction aborted:', event);
+    this.database.onabort = () => {
+      log.error('Database transaction aborted');
     };
   }
 

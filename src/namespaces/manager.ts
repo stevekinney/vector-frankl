@@ -1,5 +1,6 @@
 import { NamespaceNotFoundError } from '@/core/errors.js';
 import type { NamespaceConfig, NamespaceInfo, NamespaceStats } from '@/core/types.js';
+import { log } from '@/utilities/logger.js';
 import { VectorNamespace } from './namespace.js';
 import { NamespaceRegistry } from './registry.js';
 
@@ -111,7 +112,7 @@ export class NamespaceManager {
       databaseToDelete.onsuccess = () => resolve();
       databaseToDelete.onerror = () => reject(databaseToDelete.error);
       databaseToDelete.onblocked = () => {
-        console.warn(`Delete blocked for namespace database: ${namespaceDatabaseName}`);
+        log.warn(`Delete blocked for namespace database: ${namespaceDatabaseName}`);
       };
     });
 
@@ -230,7 +231,9 @@ export class NamespaceManager {
       const namespace = this.namespaces.get(name)!;
       // Don't await - just trigger close
       namespace.close().catch((error) => {
-        console.error(`Error closing evicted namespace ${name}:`, error);
+        log.error(`Error closing evicted namespace ${name}`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
       this.namespaces.delete(name);
     }

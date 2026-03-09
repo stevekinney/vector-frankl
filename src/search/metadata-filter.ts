@@ -1,4 +1,5 @@
 import type { MetadataFilter } from '@/core/types.js';
+import { log } from '@/utilities/logger.js';
 
 /**
  * Check for potentially dangerous regex patterns that could cause ReDoS.
@@ -400,10 +401,9 @@ export class MetadataFilterCompiler {
       return regex.test(value);
     } catch (error) {
       // Log the error but don't expose it to prevent information disclosure
-      console.warn(
-        'Regex pattern validation failed:',
-        error instanceof Error ? error.message : 'Unknown error',
-      );
+      log.warn('Regex pattern validation failed', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
       return false;
     }
   }

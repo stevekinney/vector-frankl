@@ -2,6 +2,8 @@
  * Storage quota monitoring and management for Vector Frankl
  */
 
+import { log } from '@/utilities/logger.js';
+
 export interface QuotaEstimate {
   usage: number;
   quota: number;
@@ -88,7 +90,9 @@ export class StorageQuotaMonitor {
       try {
         callback(warning);
       } catch (error) {
-        console.error('Error in quota warning listener:', error);
+        log.error('Error in quota warning listener', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     });
   }
@@ -103,7 +107,7 @@ export class StorageQuotaMonitor {
     }
 
     if (!navigator.storage?.estimate) {
-      console.warn('Storage quota estimation not supported in this browser');
+      log.warn('Storage quota estimation not supported in this browser');
       return null;
     }
 
@@ -113,7 +117,7 @@ export class StorageQuotaMonitor {
       const quota = estimate.quota || 0;
 
       if (quota === 0) {
-        console.warn('Storage quota information not available');
+        log.warn('Storage quota information not available');
         return null;
       }
 
@@ -131,7 +135,9 @@ export class StorageQuotaMonitor {
 
       return quotaEstimate;
     } catch (error) {
-      console.error('Failed to check storage quota:', error);
+      log.error('Failed to check storage quota', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return null;
     }
   }
@@ -288,7 +294,9 @@ export class StorageQuotaMonitor {
         otherOriginData,
       };
     } catch (error) {
-      console.error('Failed to get storage breakdown:', error);
+      log.error('Failed to get storage breakdown', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return {
         totalUsage: this.lastCheck?.usage || 0,
         vectorDatabases: [],
@@ -339,7 +347,9 @@ export class StorageQuotaMonitor {
         };
       });
     } catch (error) {
-      console.warn(`Failed to estimate size for database ${dbName}:`, error);
+      log.warn(`Failed to estimate size for database ${dbName}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return 0;
     }
   }
@@ -452,7 +462,9 @@ export class StorageQuotaMonitor {
         };
       });
     } catch (error) {
-      console.warn(`Failed to get vector count for database ${dbName}:`, error);
+      log.warn(`Failed to get vector count for database ${dbName}`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return 0;
     }
   }

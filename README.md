@@ -202,7 +202,11 @@ await db.deleteNamespace('old-collection');
 Reduce storage requirements while maintaining search quality:
 
 ```typescript
-import { CompressionManager, compressVector, decompressVector } from 'vector-frankl';
+import {
+  CompressionManager,
+  compressVector,
+  decompressVector,
+} from 'vector-frankl/compression';
 
 // Quick compression
 const compressed = await compressVector(vector, {
@@ -223,42 +227,29 @@ const result = await manager.compress(vector);
 
 ### Performance Acceleration
 
-#### SIMD Operations
-
-```typescript
-import { SIMDOperations } from 'vector-frankl';
-
-// Automatic SIMD detection and fallback
-const similarity = await SIMDOperations.dotProduct(vectorA, vectorB);
-const normalized = await SIMDOperations.normalize(vector);
-```
+SIMD, WebAssembly, and WebGPU acceleration are used automatically by the search engine when available. You don't need to import or configure them directly — Vector Frankl detects browser capabilities and selects the fastest path.
 
 #### WebGPU Acceleration
 
+For explicit control over GPU-accelerated search:
+
 ```typescript
-import { GPUSearchEngine } from 'vector-frankl';
+import { GPUSearchEngine } from 'vector-frankl/gpu';
 
 const gpuSearch = new GPUSearchEngine({
-  device: await navigator.gpu.requestDevice(),
-  enableOptimizations: true,
+  gpuThreshold: 1000, // Minimum dataset size to use GPU
+  enableFallback: true, // Fall back to CPU if GPU unavailable
+  batchSize: 256,
 });
 
+await gpuSearch.init();
 const results = await gpuSearch.search(query, vectors, k);
-```
-
-#### WebAssembly Modules
-
-```typescript
-import { WASMOperations } from 'vector-frankl';
-
-await WASMOperations.initialize();
-const distances = await WASMOperations.batchDistance(queries, vectors);
 ```
 
 ### Background Processing
 
 ```typescript
-import { WorkerPool } from 'vector-frankl';
+import { WorkerPool } from 'vector-frankl/workers';
 
 const pool = new WorkerPool({
   maxWorkers: 4,
@@ -272,10 +263,10 @@ const results = await pool.parallelSimilaritySearch(vectors, query, k, 'cosine')
 ### Debug & Profiling
 
 ```typescript
-import { debug, profiler, withProfiling } from 'vector-frankl';
+import { debugManager, profiler, withProfiling } from 'vector-frankl/debug';
 
 // Enable debug mode
-debug.manager.enable({
+debugManager.enable({
   profile: true,
   traceLevel: 'detailed',
   memoryTracking: true,
@@ -285,9 +276,6 @@ debug.manager.enable({
 const searchWithProfiling = withProfiling('vector-search', (query, k) =>
   db.search(query, k),
 );
-
-// Export performance reports
-const report = await debug.console.export('json');
 ```
 
 ## 🏗️ Architecture
@@ -351,7 +339,7 @@ const report = await debug.console.export('json');
 Vector Frankl includes a comprehensive benchmarking suite:
 
 ```typescript
-import { BenchmarkSuite, QuickBenchmark } from 'vector-frankl';
+import { BenchmarkSuite, QuickBenchmark } from 'vector-frankl/benchmarks';
 
 // Quick performance check
 await QuickBenchmark.runQuick();
@@ -416,7 +404,7 @@ bun run format
 bun run build
 
 # Benchmarks
-bun run examples/benchmarks.ts
+bun run scripts/benchmark.ts
 ```
 
 ### Quality Assurance
@@ -434,13 +422,17 @@ src/
 ├── api/                 # Public API interfaces
 ├── benchmarks/          # Performance testing
 ├── compression/         # Vector compression algorithms
+├── configuration/       # Configuration management
 ├── core/               # Core database functionality
 ├── debug/              # Debug and profiling tools
 ├── gpu/                # WebGPU acceleration
 ├── namespaces/         # Namespace management
+├── performance/        # Performance monitoring utilities
 ├── search/             # Search algorithms and indexing
 ├── simd/               # SIMD optimizations
-├── storage/            # Storage management
+├── storage/            # Storage management and eviction
+├── types/              # Shared type definitions
+├── utilities/          # Logging, file I/O, and helpers
 ├── vectors/            # Vector operations and formats
 ├── wasm/               # WebAssembly modules
 ├── workers/            # Web Worker support
@@ -449,11 +441,12 @@ src/
 examples/               # Usage examples
 tests/                  # Test suites
 docs/                   # Documentation
+scripts/                # Build and benchmark scripts
 ```
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+We welcome contributions!
 
 ### Development Workflow
 

@@ -1,5 +1,6 @@
 import { VectorStorage } from '@/core/storage.js';
 import type { VectorData } from '@/core/types.js';
+import { log } from '@/utilities/logger.js';
 
 /**
  * Configuration for eviction policies
@@ -446,12 +447,14 @@ export class EvictionManager {
     const result = await policy.evict(config);
 
     // Log eviction results
-    console.log(
+    log.info(
       `Eviction completed: ${result.strategy} strategy freed ${this.formatBytes(result.freedBytes)} by removing ${result.evictedCount} vectors in ${result.duration.toFixed(2)}ms`,
     );
 
     if (result.errors.length > 0) {
-      console.warn(`Eviction had ${result.errors.length} errors:`, result.errors);
+      log.warn(`Eviction had ${result.errors.length} errors`, {
+        errorCount: result.errors.length,
+      });
     }
 
     return result;

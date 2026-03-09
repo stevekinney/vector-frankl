@@ -3,6 +3,7 @@
  */
 
 import type { CompressionStrategy } from '@/core/types.js';
+import { log } from '@/utilities/logger.js';
 import {
   BaseCompressor,
   type CompressedVector,
@@ -201,7 +202,7 @@ export class CompressionManager {
       if (!compressor.isCodebookTrained()) {
         if (!trainingVectors || trainingVectors.length === 0) {
           // Fall back to scalar quantization if no training vectors available
-          console.warn(
+          log.warn(
             'Product quantization selected but no training vectors provided, falling back to scalar quantization',
           );
           return this.compress(vector, 'scalar', config);

@@ -39,6 +39,7 @@ const mockWebGPU = () => {
     features: new Set(['timestamp-query']),
     limits: mockAdapter.limits,
     addEventListener: () => {},
+    removeEventListener: () => {},
     createShaderModule: () => ({ label: 'mock-shader' }),
     createComputePipeline: () => ({
       label: 'mock-pipeline',

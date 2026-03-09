@@ -3,6 +3,7 @@
  */
 
 import { SIMDOperations } from '../simd/simd-operations.js';
+import { log } from '../utilities/logger.js';
 import { WASMManager } from './wasm-manager.js';
 
 export interface WASMOperationsConfig {
@@ -82,10 +83,12 @@ export class WASMOperations {
     try {
       await this.wasmManager.init();
       if (this.config.enableProfiling) {
-        console.log('WASM operations initialized successfully');
+        log.debug('WASM operations initialized successfully');
       }
     } catch (error) {
-      console.warn('WASM initialization failed, falling back to SIMD/scalar:', error);
+      log.warn('WASM initialization failed, falling back to SIMD/scalar', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     this.isInitialized = true;
@@ -163,14 +166,16 @@ export class WASMOperations {
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
-        console.debug(
+        log.debug(
           `Dot product (${implementation}): ${endTime - startTime}ms for ${vectorA.length} elements`,
         );
       }
 
       return result;
     } catch (error) {
-      console.warn(`${implementation} dot product failed, falling back:`, error);
+      log.warn(`${implementation} dot product failed, falling back`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
 
       // Progressive fallback
       if (implementation === 'wasm' && this.config.enableSIMDFallback) {
@@ -209,14 +214,16 @@ export class WASMOperations {
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
-        console.debug(
+        log.debug(
           `Magnitude (${implementation}): ${endTime - startTime}ms for ${vector.length} elements`,
         );
       }
 
       return result;
     } catch (error) {
-      console.warn(`${implementation} magnitude failed, falling back:`, error);
+      log.warn(`${implementation} magnitude failed, falling back`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
 
       if (implementation === 'wasm' && this.config.enableSIMDFallback) {
         return Math.sqrt(this.simdOps.dotProduct(vector, vector));
@@ -257,14 +264,16 @@ export class WASMOperations {
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
-        console.debug(
+        log.debug(
           `Vector add (${implementation}): ${endTime - startTime}ms for ${vectorA.length} elements`,
         );
       }
 
       return result;
     } catch (error) {
-      console.warn(`${implementation} vector add failed, falling back:`, error);
+      log.warn(`${implementation} vector add failed, falling back`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
 
       if (implementation === 'wasm' && this.config.enableSIMDFallback) {
         return this.simdOps.vectorAdd(vectorA, vectorB);
@@ -303,7 +312,9 @@ export class WASMOperations {
           return this.scalarVectorSubtract(vectorA, vectorB);
       }
     } catch (error) {
-      console.warn(`${implementation} vector subtract failed, falling back:`, error);
+      log.warn(`${implementation} vector subtract failed, falling back`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
 
       if (implementation === 'wasm' && this.config.enableSIMDFallback) {
         return this.simdOps.vectorSubtract(vectorA, vectorB);
@@ -330,7 +341,9 @@ export class WASMOperations {
           return this.scalarScalarMultiply(vector, scalar);
       }
     } catch (error) {
-      console.warn(`${implementation} scalar multiply failed, falling back:`, error);
+      log.warn(`${implementation} scalar multiply failed, falling back`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return this.scalarScalarMultiply(vector, scalar);
     }
   }

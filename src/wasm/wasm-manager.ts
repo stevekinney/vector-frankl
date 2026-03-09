@@ -2,6 +2,8 @@
  * WebAssembly manager for high-performance vector operations
  */
 
+import { log } from '../utilities/logger.js';
+
 export interface WASMConfig {
   /** Enable WebAssembly optimizations */
   enableWASM?: boolean;
@@ -179,16 +181,18 @@ export class WASMManager {
               // Only allow necessary imports
               ...(this.memory && { memory: this.memory }),
               console_log: (msg: number) => {
-                // Secure console logging with message length limit
+                // Secure logging with message length limit
                 if (msg < 1000) {
-                  console.log(`WASM: ${msg}`);
+                  log.debug(`WASM: ${msg}`);
                 }
               },
             },
           });
         } catch (error) {
           // If even the minimal module fails, we'll work without real WASM
-          console.warn('WASM module validation or compilation failed:', error);
+          log.warn('WASM module validation or compilation failed', {
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
 
         // Create a wrapper instance with mock functions for demonstration
@@ -204,12 +208,14 @@ export class WASMManager {
         this.isInitialized = true;
 
         if (this.config.enableProfiling) {
-          console.log('WebAssembly module initialized successfully (demo mode)');
-          console.log('Capabilities:', this.capabilities);
+          log.debug('WebAssembly module initialized successfully (demo mode)');
+          log.debug('WASM capabilities', this.capabilities as unknown as Record<string, unknown>);
         }
       }
     } catch (error) {
-      console.warn('Failed to initialize WebAssembly:', error);
+      log.warn('Failed to initialize WebAssembly', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       this.capabilities.supported = false;
       throw error;
     }

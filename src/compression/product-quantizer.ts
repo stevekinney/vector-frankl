@@ -13,6 +13,7 @@ import {
   type CompressedVector,
   type CompressionConfig,
 } from './base-compressor.js';
+import { log } from '@/utilities/logger.js';
 import { calculateVectorStatistics } from './compression-utils.js';
 
 export type PQInitMethod = 'random' | 'kmeans++';
@@ -191,7 +192,7 @@ export class ProductQuantizer extends BaseCompressor {
     this.isTrained = true;
 
     if (this.config.validateQuality) {
-      console.log(
+      log.debug(
         `PQ codebook trained: ${this.pqConfig.subspaces} subspaces, ` +
           `${this.pqConfig.centroidsPerSubspace} centroids each, ` +
           `${trainingTime.toFixed(2)}ms`,

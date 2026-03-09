@@ -3,6 +3,7 @@
  */
 
 import type { DistanceMetric } from '../core/types.js';
+import { log } from '../utilities/logger.js';
 
 export interface WebGPUConfig {
   /** Preferred GPU adapter type */
@@ -58,6 +59,7 @@ export class WebGPUManager {
   private shaderCache = new Map<string, GPUComputePipeline>();
   private bufferPool: GPUBuffer[] = [];
   private capabilities: GPUCapabilities | null = null;
+  private uncapturedErrorHandler: ((event: Event) => void) | null = null;
 
   constructor(config: WebGPUConfig = {}) {
     this.config = {
@@ -113,12 +115,12 @@ export class WebGPUManager {
       });
 
       // Set up error handling
-      this.device.addEventListener('uncapturederror', (event) => {
-        console.error(
-          'WebGPU uncaptured error:',
-          (event as GPUUncapturedErrorEvent).error,
-        );
-      });
+      this.uncapturedErrorHandler = (event: Event) => {
+        log.error('WebGPU uncaptured error', {
+          error: String((event as GPUUncapturedErrorEvent).error),
+        });
+      };
+      this.device.addEventListener('uncapturederror', this.uncapturedErrorHandler);
 
       // Cache capabilities
       this.capabilities = {
@@ -135,10 +137,10 @@ export class WebGPUManager {
       };
 
       this.isInitialized = true;
-      console.log('WebGPU initialized successfully');
+      log.info('WebGPU initialized successfully');
 
       if (this.config.debug) {
-        console.log('GPU Capabilities:', this.capabilities);
+        log.debug('GPU Capabilities', this.capabilities as unknown as Record<string, unknown>);
       }
     } catch (error) {
       throw new Error(
@@ -266,8 +268,12 @@ export class WebGPUManager {
     }
     this.bufferPool = [];
 
-    // Destroy device
+    // Remove error listener and destroy device
     if (this.device) {
+      if (this.uncapturedErrorHandler) {
+        this.device.removeEventListener('uncapturederror', this.uncapturedErrorHandler);
+        this.uncapturedErrorHandler = null;
+      }
       this.device.destroy();
       this.device = null;
     }

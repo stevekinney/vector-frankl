@@ -9,6 +9,7 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import { GPUSearchEngine, type GPUSearchConfig } from '@/gpu/gpu-search-engine.js';
+import { log } from '@/utilities/logger.js';
 import { VectorOperations } from '@/vectors/operations.js';
 import { WorkerPool } from '@/workers/worker-pool.js';
 import { createDistanceCalculator, DistanceCalculator } from './distance-metrics.js';
@@ -240,7 +241,7 @@ export class SearchEngine {
       await this.gpuSearchEngine.init();
 
       if (!this.gpuSearchEngine.isGPUReady()) {
-        console.warn('GPU not ready, falling back to workers or sequential search');
+        log.warn('GPU not ready, falling back to workers or sequential search');
         return this.fallbackFromGPU(queryVector, candidates, k, options);
       }
 
@@ -255,7 +256,9 @@ export class SearchEngine {
 
       return results;
     } catch (error) {
-      console.warn('GPU search failed, falling back:', error);
+      log.warn('GPU search failed, falling back', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return this.fallbackFromGPU(queryVector, candidates, k, options);
     }
   }
@@ -295,10 +298,9 @@ export class SearchEngine {
     try {
       await this.workerPool.init();
     } catch (error) {
-      console.warn(
-        'Failed to initialize worker pool, falling back to sequential search:',
-        error,
-      );
+      log.warn('Failed to initialize worker pool, falling back to sequential search', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return this.searchSequential(queryVector, candidates, k, options);
     }
 
@@ -339,7 +341,9 @@ export class SearchEngine {
         return searchResult;
       });
     } catch (error) {
-      console.warn('Worker search failed, falling back to sequential search:', error);
+      log.warn('Worker search failed, falling back to sequential search', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return this.searchSequential(queryVector, candidates, k, options);
     }
   }
@@ -861,7 +865,9 @@ export class SearchEngine {
         await this.workerPool.init();
         return await this.workerPool.normalizeVectors(vectors);
       } catch (error) {
-        console.warn('Worker normalization failed, falling back to sequential:', error);
+        log.warn('Worker normalization failed, falling back to sequential', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -882,10 +888,9 @@ export class SearchEngine {
         await this.workerPool.init();
         return await this.workerPool.batchSimilarity(vectors, queries, metric);
       } catch (error) {
-        console.warn(
-          'Worker batch similarity failed, falling back to sequential:',
-          error,
-        );
+        log.warn('Worker batch similarity failed, falling back to sequential', {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 

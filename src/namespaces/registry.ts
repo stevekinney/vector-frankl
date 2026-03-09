@@ -22,6 +22,22 @@ export class NamespaceRegistry {
     this.database = new VectorDatabase({
       name: rootDatabaseName,
       version: 1,
+      onUpgrade: (db: IDBDatabase) => {
+        // Namespaces store
+        if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.NAMESPACES)) {
+          const namespaceStore = db.createObjectStore(NamespaceRegistry.STORES.NAMESPACES, {
+            keyPath: 'name',
+          });
+          namespaceStore.createIndex('created', 'created');
+          namespaceStore.createIndex('modified', 'modified');
+          namespaceStore.createIndex('vectorCount', ['stats', 'vectorCount']);
+        }
+
+        // Global config store
+        if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.CONFIG)) {
+          db.createObjectStore(NamespaceRegistry.STORES.CONFIG);
+        }
+      },
     });
   }
 
@@ -32,25 +48,6 @@ export class NamespaceRegistry {
     if (this.initialized) {
       return;
     }
-
-    // Override the default schema creation
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (this.database as any)['createSchema'] = (db: IDBDatabase) => {
-      // Namespaces store
-      if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.NAMESPACES)) {
-        const namespaceStore = db.createObjectStore(NamespaceRegistry.STORES.NAMESPACES, {
-          keyPath: 'name',
-        });
-        namespaceStore.createIndex('created', 'created');
-        namespaceStore.createIndex('modified', 'modified');
-        namespaceStore.createIndex('vectorCount', ['stats', 'vectorCount']);
-      }
-
-      // Global config store
-      if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.CONFIG)) {
-        db.createObjectStore(NamespaceRegistry.STORES.CONFIG);
-      }
-    };
 
     await this.database.init();
     this.initialized = true;
@@ -326,6 +323,13 @@ export class NamespaceRegistry {
     const reserved = ['root', 'system', 'admin', 'registry'];
     if (reserved.includes(name.toLowerCase())) {
       throw new Error(`Namespace name '${name}' is reserved`);
+    }
+
+    // Prevent namespace separator substring to avoid database name collisions
+    if (name.includes('-ns-')) {
+      throw new Error(
+        "Namespace name must not contain '-ns-' (reserved as internal separator)",
+      );
     }
 
     // Length limits

@@ -5,7 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0-beta.1] - 2024-01-07
+## [Unreleased]
+
+### Changed
+
+- Replace all production `console.log`/`console.warn`/`console.error` calls with structured logger (`src/utilities/logger.ts`) so output can be suppressed
+- Convert HNSW `pruneConnections` lookup from `Array.includes()` (O(n)) to `Set.has()` (O(1))
+- Reject namespace names containing `-ns-` to prevent database name collisions
+- Refactor `NamespaceRegistry` to use `onUpgrade` callback instead of `as any` type bypass
+
+### Fixed
+
+- WebGPU `uncapturederror` event listener now removed in `cleanup()`, preventing listener accumulation across `init()` calls
+
+### Added
+
+- Unit tests for distance metrics, search engine, input validator, eviction policies, quota monitor, and index persistence
+
+### Removed
+
+- Completed items from ROADMAP.md (all resolved)
+
+## [1.0.0-beta.1] - 2025-01-07
 
 ### Added
 

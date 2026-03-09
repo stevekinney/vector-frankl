@@ -1,6 +1,7 @@
 import { VectorDatabase } from '@/core/database.js';
 import { TransactionError } from '@/core/errors.js';
 import type { DistanceMetric } from '@/core/types.js';
+import { log } from '@/utilities/logger.js';
 import type { HNSWIndex } from './hnsw-index.js';
 
 /**
@@ -418,7 +419,9 @@ export class IndexCache {
         void this.persistenceManager
           .saveIndex(oldestId, cached.index, cached.distanceMetric)
           .catch((error) => {
-            console.warn(`Failed to save index ${oldestId} during eviction:`, error);
+            log.warn(`Failed to save index ${oldestId} during eviction`, {
+              error: error instanceof Error ? error.message : String(error),
+            });
           });
       }
 

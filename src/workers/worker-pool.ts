@@ -3,6 +3,7 @@
  */
 
 import type { DistanceMetric, VectorData } from '../core/types.js';
+import { log } from '../utilities/logger.js';
 import { SharedMemoryManager } from './shared-memory.js';
 
 export interface WorkerTask {
@@ -88,7 +89,9 @@ export class WorkerPool {
         const worker = this.createWorker(i);
         this.workers.push(worker);
       } catch (error) {
-        console.warn(`Failed to create worker ${i}:`, error);
+        log.warn(`Failed to create worker ${i}`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
@@ -97,7 +100,7 @@ export class WorkerPool {
     }
 
     this.isInitialized = true;
-    console.log(`Worker pool initialized with ${this.workers.length} workers`);
+    log.info(`Worker pool initialized with ${this.workers.length} workers`);
   }
 
   /**
@@ -114,7 +117,7 @@ export class WorkerPool {
     };
 
     worker.onerror = (error) => {
-      console.error(`Worker ${id} error:`, error);
+      log.error(`Worker ${id} error`, { message: error.message });
       this.handleWorkerError(worker, error);
     };
 
@@ -129,7 +132,7 @@ export class WorkerPool {
     const task = this.activeTasks.get(taskId);
 
     if (!task) {
-      console.warn(`Received response for unknown task: ${taskId}`);
+      log.warn(`Received response for unknown task: ${taskId}`);
       return;
     }
 
@@ -157,7 +160,7 @@ export class WorkerPool {
    * Handle worker errors
    */
   private handleWorkerError(worker: Worker, error: ErrorEvent): void {
-    console.error('Worker error:', error);
+    log.error('Worker error', { message: error.message });
 
     // Find and reject all tasks assigned to this worker
     for (const [taskId, task] of this.activeTasks.entries()) {
@@ -175,7 +178,9 @@ export class WorkerPool {
       const newWorker = this.createWorker(this.workers.indexOf(worker));
       this.workers[this.workers.indexOf(worker)] = newWorker;
     } catch (recreateError) {
-      console.error('Failed to recreate worker:', recreateError);
+      log.error('Failed to recreate worker', {
+        error: recreateError instanceof Error ? recreateError.message : String(recreateError),
+      });
     }
   }
 

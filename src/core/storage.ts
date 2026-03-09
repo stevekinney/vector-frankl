@@ -1,3 +1,4 @@
+import { log } from '@/utilities/logger.js';
 import { VectorDatabase } from './database.js';
 import { BatchOperationError, TransactionError, VectorNotFoundError } from './errors.js';
 import type { BatchOptions, BatchProgress, VectorData } from './types.js';
@@ -171,10 +172,9 @@ export class VectorStorage {
     );
 
     if (results.errors.length > 0) {
-      console.warn(
-        `Failed to retrieve ${results.errors.length} vectors:`,
-        results.errors,
-      );
+      log.warn(`Failed to retrieve ${results.errors.length} vectors`, {
+        errorCount: results.errors.length,
+      });
     }
 
     return results.vectors;
@@ -304,7 +304,9 @@ export class VectorStorage {
     );
 
     if (result.errors.length > 0) {
-      console.warn(`Failed to delete ${result.errors.length} vectors:`, result.errors);
+      log.warn(`Failed to delete ${result.errors.length} vectors`, {
+        errorCount: result.errors.length,
+      });
     }
 
     return result.deletedCount;

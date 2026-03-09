@@ -41,6 +41,8 @@ export interface DatabaseConfig {
   name: string;
   version?: number;
   persistence?: boolean;
+  /** Optional callback to override default schema creation during upgrades */
+  onUpgrade?: (database: IDBDatabase, oldVersion: number) => void;
 }
 
 /**

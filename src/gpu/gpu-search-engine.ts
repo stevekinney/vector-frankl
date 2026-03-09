@@ -8,6 +8,7 @@ import type {
   SearchResult,
   VectorData,
 } from '../core/types.js';
+import { log } from '../utilities/logger.js';
 import { WebGPUManager } from './webgpu-manager.js';
 
 export interface GPUSearchConfig {
@@ -134,7 +135,9 @@ export class GPUSearchEngine {
         return { results: gpuResults.results, stats };
       }
     } catch (error) {
-      console.warn('GPU search failed, falling back to CPU:', error);
+      log.warn('GPU search failed, falling back to CPU', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       if (!this.config.enableFallback) {
         throw error;
       }
@@ -170,7 +173,9 @@ export class GPUSearchEngine {
       try {
         return await this.batchSearchWithGPU(vectors, queryVectors, k, metric, options);
       } catch (error) {
-        console.warn('GPU batch search failed, falling back to CPU:', error);
+        log.warn('GPU batch search failed, falling back to CPU', {
+          error: error instanceof Error ? error.message : String(error),
+        });
         if (!this.config.enableFallback) {
           throw error;
         }
@@ -208,9 +213,11 @@ export class GPUSearchEngine {
     try {
       await this.webGPUManager.init();
       this.isGPUAvailable = true;
-      console.log('GPU acceleration initialized successfully');
+      log.info('GPU acceleration initialized successfully');
     } catch (error) {
-      console.warn('Failed to initialize GPU acceleration:', error);
+      log.warn('Failed to initialize GPU acceleration', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       this.isGPUAvailable = false;
 
       if (!this.config.enableFallback) {
