@@ -216,21 +216,29 @@ export class IndexPersistence {
     index: HNSWIndex,
     distanceMetric: string,
   ): Promise<SerializableHNSWIndex> {
-    // Extract index data using reflection/internal access
-    // Note: This assumes HNSWIndex has a way to export its internal state
-    const stats = index.getStats();
+    const exported = index.exportState();
 
-    // For now, create a basic serialization structure
-    // In a real implementation, HNSWIndex would need export methods
+    const nodes: SerializableHNSWNode[] = exported.nodes.map((node) => {
+      const connections: Record<number, string[]> = {};
+      for (const [level, ids] of node.connections) {
+        connections[level] = ids;
+      }
+      const serialized: SerializableHNSWNode = {
+        id: node.id,
+        vector: node.vector,
+        level: node.level,
+        connections,
+      };
+      if (node.metadata) {
+        serialized.metadata = node.metadata;
+      }
+      return serialized;
+    });
+
     return {
-      nodes: [], // Would be populated from index.exportNodes()
-      entryPoint: stats.entryPoint || null,
-      config: {
-        m: 16, // Would come from index.getConfig()
-        mL: 2,
-        efConstruction: 200,
-        maxLevel: 5,
-      },
+      nodes,
+      entryPoint: exported.entryPoint,
+      config: exported.config,
       distanceMetric,
       version: IndexPersistence.VERSION,
       timestamp: Date.now(),
@@ -241,15 +249,37 @@ export class IndexPersistence {
    * Deserialize HNSW index from storage
    */
   private async deserializeIndex(data: SerializableHNSWIndex): Promise<HNSWIndex> {
-    // Import the HNSWIndex class
     const { HNSWIndex } = await import('./hnsw-index.js');
 
-    // Create new index with saved config
     const index = new HNSWIndex(data.distanceMetric as DistanceMetric, data.config);
 
-    // Restore nodes and connections
-    // Note: This would require HNSWIndex to have import methods
-    // For now, return empty index that would need to be rebuilt
+    // Convert serialized nodes back to import format
+    const nodes = data.nodes.map((node) => {
+      const connections: Array<[number, string[]]> = Object.entries(node.connections).map(
+        ([level, ids]) => [Number(level), ids],
+      );
+      const imported: {
+        id: string;
+        vector: number[];
+        metadata?: Record<string, unknown>;
+        level: number;
+        connections: Array<[number, string[]]>;
+      } = {
+        id: node.id,
+        vector: node.vector,
+        level: node.level,
+        connections,
+      };
+      if (node.metadata) {
+        imported.metadata = node.metadata;
+      }
+      return imported;
+    });
+
+    index.importState({
+      nodes,
+      entryPoint: data.entryPoint,
+    });
 
     return index;
   }

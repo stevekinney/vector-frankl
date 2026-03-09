@@ -176,20 +176,34 @@ export class VectorDB {
   ): Promise<void> {
     await this.ensureInitialized();
 
-    // Validate all vectors
+    // Validate and prepare all vectors (matching addVector's validation pattern)
     const preparedVectors = await Promise.all(
       vectors.map(async ({ id, vector, metadata }) => {
+        const validatedId = InputValidator.validateVectorId(id);
+        const validatedMetadata = InputValidator.validateMetadata(metadata);
+        VectorFormatHandler.validate(vector, this.dimension);
+
         if (vector.length !== this.dimension) {
           throw new DimensionMismatchError(this.dimension, vector.length);
         }
 
-        return VectorOperations.prepareForStorage(id, vector, metadata, {
-          normalize: false,
-        });
+        return VectorOperations.prepareForStorage(
+          validatedId,
+          vector,
+          validatedMetadata,
+          {
+            normalize: false,
+          },
+        );
       }),
     );
 
     await this.storage.putBatch(preparedVectors, options);
+
+    // Add each vector to the HNSW index
+    for (const vectorData of preparedVectors) {
+      await this.searchEngine.addVectorToIndex(vectorData);
+    }
   }
 
   /**
@@ -564,6 +578,7 @@ export class VectorDB {
    * Close the database
    */
   async close(): Promise<void> {
+    await this.searchEngine.cleanup();
     await this.database.close();
     this.initialized = false;
   }
@@ -572,6 +587,7 @@ export class VectorDB {
    * Delete the entire database
    */
   async delete(): Promise<void> {
+    await this.searchEngine.cleanup();
     await this.database.delete();
     this.initialized = false;
   }
@@ -599,8 +615,17 @@ export class VectorDB {
    * Delete multiple vectors
    */
   async deleteMany(ids: string[]): Promise<number> {
+    const validatedIds = InputValidator.validateVectorIds(ids);
+
     await this.ensureInitialized();
-    return this.storage.deleteMany(ids);
+    const count = await this.storage.deleteMany(validatedIds);
+
+    // Remove each vector from the HNSW index
+    for (const id of validatedIds) {
+      await this.searchEngine.removeVectorFromIndex(id);
+    }
+
+    return count;
   }
 
   /**
@@ -622,6 +647,9 @@ export class VectorDB {
       updateTimestamp?: boolean;
     },
   ): Promise<void> {
+    const validatedId = InputValidator.validateVectorId(id);
+    VectorFormatHandler.validate(vector, this.dimension);
+
     await this.ensureInitialized();
 
     // Validate dimension
@@ -632,7 +660,14 @@ export class VectorDB {
     // Convert to Float32Array
     const float32Vector = VectorFormatHandler.toFloat32Array(vector);
 
-    await this.storage.updateVector(id, float32Vector, options);
+    await this.storage.updateVector(validatedId, float32Vector, options);
+
+    // Update HNSW index: remove old entry and re-add with new vector
+    await this.searchEngine.removeVectorFromIndex(validatedId);
+    const updatedVector = await this.storage.get(validatedId);
+    if (updatedVector) {
+      await this.searchEngine.addVectorToIndex(updatedVector);
+    }
   }
 
   /**

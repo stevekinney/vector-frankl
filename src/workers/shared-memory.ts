@@ -532,6 +532,15 @@ export class SharedMemoryManager {
 }
 
 /**
- * Singleton instance for global shared memory management
+ * Lazy singleton factory for global shared memory management.
+ * Use this instead of eagerly creating the singleton, since SharedArrayBuffer
+ * may not be available in all environments.
  */
-export const sharedMemoryManager = new SharedMemoryManager();
+let _sharedMemoryManagerInstance: SharedMemoryManager | null = null;
+
+export function getSharedMemoryManager(): SharedMemoryManager {
+  if (!_sharedMemoryManagerInstance) {
+    _sharedMemoryManagerInstance = new SharedMemoryManager();
+  }
+  return _sharedMemoryManagerInstance;
+}

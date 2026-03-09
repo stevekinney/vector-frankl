@@ -19,7 +19,11 @@ interface WorkerResponse {
 }
 
 // Helper function to convert distance to score
-function distanceToScore(distance: number, metric: DistanceMetric): number {
+function distanceToScore(
+  distance: number,
+  metric: DistanceMetric,
+  vectorLength?: number,
+): number {
   switch (metric) {
     case 'cosine':
       // Cosine distance is in range [0, 2], convert to similarity [0, 1]
@@ -32,8 +36,13 @@ function distanceToScore(distance: number, metric: DistanceMetric): number {
       // Convert distance to similarity using exponential decay
       return Math.exp(-distance);
     case 'hamming':
+      // Hamming returns raw count (0 to N), normalize by vector length
+      if (vectorLength && vectorLength > 0) {
+        return 1 - distance / vectorLength;
+      }
+      return 1 / (1 + distance);
     case 'jaccard':
-      // These are already in [0, 1] range
+      // Jaccard distance is already in [0, 1] range
       return 1 - distance;
     default:
       // Generic conversion
@@ -71,6 +80,12 @@ self.onmessage = async (event: MessageEvent<WorkerTask>) => {
 
       case 'vector_quantization':
         result = quantizeVectors(data as Parameters<typeof quantizeVectors>[0]);
+        break;
+
+      case 'shared_similarity_search':
+        result = await performSharedSimilaritySearch(
+          data as Parameters<typeof performSharedSimilaritySearch>[0],
+        );
         break;
 
       default:
@@ -122,7 +137,7 @@ async function performSimilaritySearch(data: {
     }
 
     const distance = calculator.calculate(queryVector, vector.vector);
-    const score = distanceToScore(distance, metric);
+    const score = distanceToScore(distance, metric, queryVector.length);
 
     const result: {
       id: string;
@@ -163,7 +178,7 @@ async function performBatchSimilarity(data: {
 
     for (const vector of vectors) {
       const distance = calculator.calculate(query, vector.vector);
-      const score = distanceToScore(distance, metric);
+      const score = distanceToScore(distance, metric, query.length);
       similarities.push(score);
     }
 
@@ -260,26 +275,6 @@ function quantizeVectors(data: { vectors: Float32Array[]; bits: number }): {
   return { quantized, scales };
 }
 
-// Handle SharedArrayBuffer operations if available
-if (typeof SharedArrayBuffer !== 'undefined') {
-  // Register handler for shared memory operations
-  self.onmessage = async (event: MessageEvent) => {
-    const { taskId, operation, data } = event.data;
-
-    if (operation === 'shared_similarity_search') {
-      try {
-        const result = await performSharedSimilaritySearch(data);
-        self.postMessage({ taskId, result });
-      } catch (error) {
-        self.postMessage({
-          taskId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-  };
-}
-
 /**
  * Perform similarity search using SharedArrayBuffer for zero-copy
  */
@@ -351,7 +346,7 @@ async function performSharedSimilaritySearch(data: {
     }
 
     const distance = calculator.calculate(query, vector);
-    const score = distanceToScore(distance, metric);
+    const score = distanceToScore(distance, metric, dimension);
 
     results.push({ index: i, distance, score });
   }

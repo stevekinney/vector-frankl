@@ -141,6 +141,49 @@ describe('ScalarQuantizer', () => {
     });
   });
 
+  describe('Per-Dimension Strategy', () => {
+    it('should compress and decompress with per-dimension bounds', async () => {
+      const perDimQuantizer = new ScalarQuantizer({
+        strategy: 'per-dimension',
+        bits: 8,
+        validateQuality: false,
+      });
+
+      // Vector where each dimension has very different ranges
+      const vector = new Float32Array([0.1, 100, 0.001, 5000, 50]);
+
+      const compressed = await perDimQuantizer.compress(vector);
+      const decompressed = await perDimQuantizer.decompress(compressed);
+
+      expect(decompressed).toBeInstanceOf(Float32Array);
+      expect(decompressed.length).toBe(vector.length);
+
+      // Each value should be approximately preserved
+      for (let i = 0; i < vector.length; i++) {
+        // Per-dimension should preserve values within each dimension's own range
+        const tolerance = Math.abs(vector[i]!) * 0.1 + 0.01; // 10% relative + small absolute
+        expect(Math.abs(decompressed[i]! - vector[i]!)).toBeLessThan(tolerance);
+      }
+    });
+
+    it('should preserve ordering with per-dimension quantization', async () => {
+      const perDimQuantizer = new ScalarQuantizer({
+        strategy: 'per-dimension',
+        bits: 12,
+        validateQuality: false,
+      });
+
+      const vector = new Float32Array([10, 20, 30, 40, 50]);
+
+      const compressed = await perDimQuantizer.compress(vector);
+      const decompressed = await perDimQuantizer.decompress(compressed);
+
+      for (let i = 0; i < vector.length - 1; i++) {
+        expect(decompressed[i]!).toBeLessThanOrEqual(decompressed[i + 1]!);
+      }
+    });
+  });
+
   describe('Different Bit Depths', () => {
     const testCases = [
       { bits: 4, expectedPrecision: 2 },

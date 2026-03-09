@@ -350,6 +350,58 @@ describe('Compression Utils', () => {
     });
   });
 
+  describe('Multi-byte Spanning (12-bit and 16-bit)', () => {
+    it('should round-trip 12-bit values at various offsets', () => {
+      // 12-bit values can span up to 3 bytes depending on alignment
+      const values = [0, 2048, 4095, 1, 1234, 3000, 999, 4095];
+      const buffer = createQuantizedArray(values.length, 12);
+
+      packQuantizedValues(values, 12, buffer);
+      const unpacked = unpackQuantizedValues(buffer, values.length, 12);
+
+      expect(unpacked).toEqual(values);
+    });
+
+    it('should round-trip 16-bit values at various offsets', () => {
+      // 16-bit values starting at non-byte-aligned positions span 3 bytes
+      // Prepend a 4-bit value to misalign the 16-bit values
+      const bits4Values = [15]; // 4-bit preamble
+      const bits4Buffer = createQuantizedArray(1, 4);
+      packQuantizedValues(bits4Values, 4, bits4Buffer);
+
+      // Now test pure 16-bit round-trip
+      const values = [0, 1, 255, 256, 32767, 65535, 12345, 50000];
+      const buffer = createQuantizedArray(values.length, 16);
+
+      packQuantizedValues(values, 16, buffer);
+      const unpacked = unpackQuantizedValues(buffer, values.length, 16);
+
+      expect(unpacked).toEqual(values);
+    });
+
+    it('should handle 12-bit values that span 3 bytes', () => {
+      // With 12-bit packing, value at index 1 starts at bit 12 (byte 1, bit 4)
+      // and spans byte 1, byte 2, and partially byte 3
+      const values = [4095, 4095, 4095, 4095];
+      const buffer = createQuantizedArray(values.length, 12);
+
+      packQuantizedValues(values, 12, buffer);
+      const unpacked = unpackQuantizedValues(buffer, values.length, 12);
+
+      expect(unpacked).toEqual(values);
+    });
+
+    it('should handle sequential 16-bit values correctly', () => {
+      const values = Array.from({ length: 50 }, (_, i) => (i * 1337) % 65536);
+      const buffer = createQuantizedArray(values.length, 16);
+
+      packQuantizedValues(values, 16, buffer);
+      const unpacked = unpackQuantizedValues(buffer, values.length, 16);
+
+      expect(unpacked).toEqual(values);
+    });
+  });
+
   describe('Edge Cases and Error Handling', () => {
     it('should handle empty arrays', () => {
       const buffer = createQuantizedArray(0, 8);

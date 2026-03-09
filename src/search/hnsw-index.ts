@@ -419,6 +419,94 @@ export class HNSWIndex {
   }
 
   /**
+   * Export the full internal state for serialization.
+   */
+  exportState(): {
+    nodes: Array<{
+      id: string;
+      vector: number[];
+      metadata?: Record<string, unknown>;
+      level: number;
+      connections: Array<[number, string[]]>;
+    }>;
+    entryPoint: string | null;
+    config: HNSWConfig;
+  } {
+    const nodes: Array<{
+      id: string;
+      vector: number[];
+      metadata?: Record<string, unknown>;
+      level: number;
+      connections: Array<[number, string[]]>;
+    }> = [];
+
+    for (const node of this.nodes.values()) {
+      const connections: Array<[number, string[]]> = [];
+      for (const [level, connSet] of node.connections) {
+        connections.push([level, Array.from(connSet)]);
+      }
+
+      const exported: {
+        id: string;
+        vector: number[];
+        metadata?: Record<string, unknown>;
+        level: number;
+        connections: Array<[number, string[]]>;
+      } = {
+        id: node.id,
+        vector: Array.from(node.vector),
+        level: node.level,
+        connections,
+      };
+      if (node.metadata) {
+        exported.metadata = node.metadata;
+      }
+      nodes.push(exported);
+    }
+
+    return {
+      nodes,
+      entryPoint: this.entryPoint,
+      config: { ...this.config },
+    };
+  }
+
+  /**
+   * Import state from a previously exported snapshot, replacing all current data.
+   */
+  importState(state: {
+    nodes: Array<{
+      id: string;
+      vector: number[];
+      metadata?: Record<string, unknown>;
+      level: number;
+      connections: Array<[number, string[]]>;
+    }>;
+    entryPoint: string | null;
+  }): void {
+    this.nodes.clear();
+    this.entryPoint = state.entryPoint;
+
+    for (const serialized of state.nodes) {
+      const connections = new Map<number, Set<string>>();
+      for (const [level, ids] of serialized.connections) {
+        connections.set(level, new Set(ids));
+      }
+
+      const node: HNSWNode = {
+        id: serialized.id,
+        vector: new Float32Array(serialized.vector),
+        level: serialized.level,
+        connections,
+      };
+      if (serialized.metadata) {
+        node.metadata = serialized.metadata;
+      }
+      this.nodes.set(serialized.id, node);
+    }
+  }
+
+  /**
    * Clear the index
    */
   clear(): void {

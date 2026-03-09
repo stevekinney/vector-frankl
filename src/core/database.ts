@@ -238,19 +238,26 @@ export class VectorDatabase {
         reject(
           new TransactionError(
             'execute',
-            'Transaction aborted',
+            'Transaction aborted. IDB transactions auto-commit when the event loop is yielded ' +
+              'between IDB requests. Ensure the operation callback only awaits IDB request chains.',
             transaction.error || undefined,
           ),
         );
       };
 
-      // Execute the operation
+      // Execute the operation.
+      // IMPORTANT: The callback must not await non-IDB operations (e.g., fetch, setTimeout)
+      // between IDB requests, as IDB transactions auto-commit when the event loop is yielded.
       operation(transaction)
         .then((res) => {
           result = res;
         })
         .catch((error) => {
-          transaction.abort();
+          try {
+            transaction.abort();
+          } catch {
+            // Transaction may already be inactive/committed; safe to ignore
+          }
           reject(error);
         });
     });

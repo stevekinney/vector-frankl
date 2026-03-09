@@ -1,6 +1,59 @@
 import type { MetadataFilter } from '@/core/types.js';
 
 /**
+ * Check for potentially dangerous regex patterns that could cause ReDoS.
+ * Shared between MetadataFilterCompiler and MetadataRangeQuery.
+ */
+function isDangerousRegexPattern(pattern: string): boolean {
+  const dangerousPatterns = [
+    /\(\?!\.\*\)\.\*\$/, // Negative lookahead with .*
+    /\(\.\*\)\+/, // Nested quantifiers (.*)+
+    /\(\.\+\)\+/, // Nested quantifiers (.+)+
+    /\(\.\*\)\*/, // Nested quantifiers (.*)*
+    /\(\.\+\)\*/, // Nested quantifiers (.+)*
+    /\(\.\*\)\{[0-9]+,\}/, // Nested quantifiers with range
+    /\(\.\+\)\{[0-9]+,\}/, // Nested quantifiers with range
+    /\([^)]*\+[^)]*\)\+/, // Nested groups with quantifiers
+    /\([^)]*\*[^)]*\)\*/, // Nested groups with quantifiers
+    /\([^)]*\|[^)]*\)\+/, // Alternation in quantified group (a|b)+
+    /\([^)]*\|[^)]*\)\*/, // Alternation in quantified group (a|b)*
+    /\([^)]*\|[^)]*\)\{[0-9]+,\}/, // Alternation in quantified group with range
+    /\\d\+\\d\+/, // Adjacent quantifiers \d+\d+
+    /\\w\+\\w\+/, // Adjacent quantifiers \w+\w+
+    /\\s\+\\s\+/, // Adjacent quantifiers \s+\s+
+  ];
+
+  // Also reject patterns with high complexity score
+  if (computePatternComplexity(pattern) > 20) {
+    return true;
+  }
+
+  return dangerousPatterns.some((dangerous) => dangerous.test(pattern));
+}
+
+/**
+ * Compute a rough complexity score for a regex pattern.
+ * Higher scores indicate higher ReDoS risk.
+ */
+function computePatternComplexity(pattern: string): number {
+  let score = 0;
+  // Count quantifiers
+  const quantifiers = pattern.match(/[+*?]|\{[0-9]+,?\}/g);
+  score += (quantifiers?.length ?? 0) * 3;
+  // Count groups
+  const groups = pattern.match(/\(/g);
+  score += (groups?.length ?? 0) * 2;
+  // Count alternations
+  const alternations = pattern.match(/\|/g);
+  score += (alternations?.length ?? 0) * 2;
+  // Nested quantifiers boost
+  if (/[+*]\).*[+*{]/.test(pattern)) {
+    score += 10;
+  }
+  return score;
+}
+
+/**
  * Metadata filter compiler for complex queries
  */
 export class MetadataFilterCompiler {
@@ -13,11 +66,24 @@ export class MetadataFilterCompiler {
       return () => true;
     }
 
-    // Check if it's a complex filter with operators
+    // Check if it's a complex filter with top-level operators like $and, $or, $not
     const filterKeys = Object.keys(filter);
-    const hasOperators = filterKeys.some((key) => key.startsWith('$'));
+    const hasTopLevelOperators = filterKeys.some((key) => key.startsWith('$'));
 
-    if (!hasOperators) {
+    // Check if any field values contain operator objects (e.g., {price: {$gt: 100}})
+    const hasFieldLevelOperators =
+      !hasTopLevelOperators &&
+      filterKeys.some((key) => {
+        const value = (filter as Record<string, unknown>)[key];
+        return (
+          typeof value === 'object' &&
+          value !== null &&
+          !Array.isArray(value) &&
+          Object.keys(value as Record<string, unknown>).some((k) => k.startsWith('$'))
+        );
+      });
+
+    if (!hasTopLevelOperators && !hasFieldLevelOperators) {
       // Simple equality filter
       return (metadata) =>
         MetadataFilterCompiler.matchSimpleFilter(
@@ -26,7 +92,7 @@ export class MetadataFilterCompiler {
         );
     }
 
-    // Complex filter with operators
+    // Complex filter with operators (top-level or field-level)
     return (metadata) => MetadataFilterCompiler.matchComplexFilter(metadata, filter);
   }
 
@@ -290,7 +356,11 @@ export class MetadataFilterCompiler {
   }
 
   /**
-   * Safely test regex patterns with validation and DoS protection
+   * Safely test regex patterns with validation and DoS protection.
+   *
+   * Note: JS regex execution is atomic and uninterruptible, so a time-based
+   * timeout cannot stop a regex mid-execution. Instead we guard against ReDoS
+   * by rejecting dangerous patterns and limiting input length before execution.
    */
   private static safeRegexTest(
     pattern: string | RegExp,
@@ -298,6 +368,11 @@ export class MetadataFilterCompiler {
     flags?: string,
   ): boolean {
     try {
+      // Guard against very long input strings that amplify ReDoS risk
+      if (value.length > 10_000) {
+        throw new Error('Input value too long for regex matching');
+      }
+
       let regex: RegExp;
 
       if (pattern instanceof RegExp) {
@@ -315,26 +390,14 @@ export class MetadataFilterCompiler {
         }
 
         // Check for dangerous patterns that could cause ReDoS
-        if (MetadataFilterCompiler.isDangerousRegexPattern(pattern)) {
+        if (isDangerousRegexPattern(pattern)) {
           throw new Error('Potentially dangerous regex pattern');
         }
 
         regex = new RegExp(pattern, flags);
       }
 
-      // Set timeout for regex execution to prevent ReDoS
-      const timeoutMs = 100; // 100ms timeout
-      const startTime = Date.now();
-
-      // Use a simple timeout mechanism
-      const testWithTimeout = () => {
-        if (Date.now() - startTime > timeoutMs) {
-          throw new Error('Regex execution timeout');
-        }
-        return regex.test(value);
-      };
-
-      return testWithTimeout();
+      return regex.test(value);
     } catch (error) {
       // Log the error but don't expose it to prevent information disclosure
       console.warn(
@@ -343,27 +406,6 @@ export class MetadataFilterCompiler {
       );
       return false;
     }
-  }
-
-  /**
-   * Check for potentially dangerous regex patterns that could cause ReDoS
-   */
-  private static isDangerousRegexPattern(pattern: string): boolean {
-    // Check for nested quantifiers that could cause exponential backtracking
-    const dangerousPatterns = [
-      /\(\?!\.\*\)\.\*\$/, // Negative lookahead with .*
-      /\(\.\*\)\+/, // Nested quantifiers
-      /\(\.\+\)\+/, // Nested quantifiers
-      /\(\.\*\)\*/, // Nested quantifiers
-      /\(\.\+\)\*/, // Nested quantifiers
-      /\(\.\*\)\{[0-9]+,\}/, // Nested quantifiers with range
-      /\(\.\+\)\{[0-9]+,\}/, // Nested quantifiers with range
-      /\([^)]*\+[^)]*\)\+/, // Nested groups with quantifiers
-      /\([^)]*\*[^)]*\)\*/, // Nested groups with quantifiers
-      /\|.*\|.*\|/, // Multiple alternations
-    ];
-
-    return dangerousPatterns.some((dangerous) => dangerous.test(pattern));
   }
 
   /**
@@ -488,7 +530,7 @@ export class MetadataRangeQuery {
       }
 
       // Check for dangerous patterns
-      if (this.isDangerousRegexPattern(pattern)) {
+      if (isDangerousRegexPattern(pattern)) {
         throw new Error('Potentially dangerous regex pattern');
       }
 
@@ -501,27 +543,6 @@ export class MetadataRangeQuery {
       (this.filter as Record<string, unknown>)[field] = { $regex: pattern };
     }
     return this;
-  }
-
-  /**
-   * Check for potentially dangerous regex patterns that could cause ReDoS
-   */
-  private isDangerousRegexPattern(pattern: string): boolean {
-    // Check for nested quantifiers that could cause exponential backtracking
-    const dangerousPatterns = [
-      /\(\?!\.\*\)\.\*\$/, // Negative lookahead with .*
-      /\(\.\*\)\+/, // Nested quantifiers
-      /\(\.\+\)\+/, // Nested quantifiers
-      /\(\.\*\)\*/, // Nested quantifiers
-      /\(\.\+\)\*/, // Nested quantifiers
-      /\(\.\*\)\{[0-9]+,\}/, // Nested quantifiers with range
-      /\(\.\+\)\{[0-9]+,\}/, // Nested quantifiers with range
-      /\([^)]*\+[^)]*\)\+/, // Nested groups with quantifiers
-      /\([^)]*\*[^)]*\)\*/, // Nested groups with quantifiers
-      /\|.*\|.*\|/, // Multiple alternations
-    ];
-
-    return dangerousPatterns.some((dangerous) => dangerous.test(pattern));
   }
 
   /**

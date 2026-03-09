@@ -51,17 +51,21 @@ export type {
   DebugReport,
 } from './types.js';
 
-// Convenience exports
-export const debug = {
-  manager: debugManager,
-  profiler,
-  context: DebugContext.getInstance(),
-  console: createDebugConsole(),
-};
+// Lazy debug accessor — avoids import-time side effects
+interface DebugTools {
+  manager: typeof debugManager;
+  profiler: typeof profiler;
+  context: DebugContext;
+  console: ReturnType<typeof createDebugConsole>;
+}
 
-// Initialize debug console in browser environment
-if (typeof window !== 'undefined') {
-  // Make debug tools globally available
+let _debugInstance: DebugTools | null = null;
+let _browserInitialized = false;
+
+function initializeBrowserDebug(debugTools: DebugTools): void {
+  if (_browserInitialized || typeof window === 'undefined') return;
+  _browserInitialized = true;
+
   interface VectorFranklWindow extends Window {
     vectorFrankl?: {
       debug?: ReturnType<typeof createDebugConsole>;
@@ -69,9 +73,8 @@ if (typeof window !== 'undefined') {
   }
   const windowWithDebug = window as VectorFranklWindow;
   windowWithDebug.vectorFrankl = windowWithDebug.vectorFrankl || {};
-  windowWithDebug.vectorFrankl.debug = debug.console;
+  windowWithDebug.vectorFrankl.debug = debugTools.console;
 
-  // Add debug mode detection
   const urlParams = new URLSearchParams(window.location.search);
   if (
     urlParams.get('debug') === 'true' ||
@@ -88,5 +91,21 @@ if (typeof window !== 'undefined') {
   }
 }
 
+/**
+ * Get the debug tools instance (lazy initialization).
+ */
+export function getDebug(): DebugTools {
+  if (!_debugInstance) {
+    _debugInstance = {
+      manager: debugManager,
+      profiler,
+      context: DebugContext.getInstance(),
+      console: createDebugConsole(),
+    };
+    initializeBrowserDebug(_debugInstance);
+  }
+  return _debugInstance;
+}
+
 // Default export
-export default debug;
+export default getDebug;

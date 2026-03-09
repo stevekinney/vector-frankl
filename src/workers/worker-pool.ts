@@ -58,7 +58,8 @@ export class WorkerPool {
 
   constructor(config: PoolConfig = {}) {
     this.maxWorkers = config.maxWorkers || navigator.hardwareConcurrency || 4;
-    this.workerScript = config.workerScript || '/src/workers/vector-worker.js';
+    this.workerScript =
+      config.workerScript || new URL('./vector-worker.ts', import.meta.url).href;
     this.defaultTimeout = config.timeout || 30000; // 30 seconds
     // Initialize shared memory manager if enabled
     if (
@@ -281,18 +282,25 @@ export class WorkerPool {
   > {
     if (vectors.length === 0) return [];
 
-    // Determine chunk size based on vector count and worker count
-    const chunkSize = Math.ceil(vectors.length / this.workers.length);
-    const chunks = this.chunkArray(vectors, chunkSize);
+    // Pre-filter on the main thread since functions can't be structured-cloned
+    // across postMessage boundaries
+    const filteredVectors = filter
+      ? vectors.filter((v) => filter(v.metadata || {}))
+      : vectors;
 
-    // Execute search on each chunk in parallel
+    if (filteredVectors.length === 0) return [];
+
+    // Determine chunk size based on vector count and worker count
+    const chunkSize = Math.ceil(filteredVectors.length / this.workers.length);
+    const chunks = this.chunkArray(filteredVectors, chunkSize);
+
+    // Execute search on each chunk in parallel (no filter sent to workers)
     const promises = chunks.map((chunk) =>
       this.execute('similarity_search', {
         vectors: chunk,
         queryVector,
         k: Math.ceil(k * 1.5), // Get more results per chunk to ensure quality
         metric,
-        filter,
       }),
     );
 

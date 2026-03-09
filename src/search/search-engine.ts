@@ -620,8 +620,14 @@ export class SearchEngine {
         return Math.exp(-distance);
 
       case 'hamming':
+        // Hamming returns raw count (0 to N), normalize by vector dimension
+        if (this.dimension > 0) {
+          return 1 - distance / this.dimension;
+        }
+        return 1 / (1 + distance);
+
       case 'jaccard':
-        // These are already in [0, 1] range
+        // Jaccard distance is already in [0, 1] range
         return 1 - distance;
 
       default:

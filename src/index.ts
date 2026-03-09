@@ -112,7 +112,7 @@ export {
 } from './workers/worker-pool.js';
 export {
   SharedMemoryManager,
-  sharedMemoryManager,
+  getSharedMemoryManager,
   type SharedMemoryConfig,
   type MemoryBlock,
   type SharedMemoryLayout,
@@ -158,7 +158,7 @@ export {
 
 // Debug and profiling tools
 export {
-  debug,
+  getDebug,
   debugManager,
   profiler,
   createDebugConsole,

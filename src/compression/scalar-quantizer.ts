@@ -250,10 +250,9 @@ export class ScalarQuantizer extends BaseCompressor {
     const dimension = quantizedValues.length;
     const dataSize = Math.ceil((dimension * bits) / 8);
     const metadataSize = 128; // Fixed size for metadata
-    const totalSize = dataSize + metadataSize;
 
-    const buffer = new ArrayBuffer(totalSize);
-    const metadataView = new DataView(buffer, 0, metadataSize);
+    const headerBuffer = new ArrayBuffer(metadataSize);
+    const metadataView = new DataView(headerBuffer, 0, metadataSize);
 
     // Pack metadata (first 128 bytes)
     let offset = 0;
@@ -282,17 +281,45 @@ export class ScalarQuantizer extends BaseCompressor {
     metadataView.setFloat32(offset, statistics.mean, true);
     offset += 4;
     metadataView.setFloat32(offset, statistics.std, true);
+    offset += 4;
 
-    // Pack quantized data
+    // Flag: hasPerDimensionBounds
+    const hasPerDimBounds =
+      this.scalarConfig.strategy === 'per-dimension' && !!bounds.dimensionBounds;
+    metadataView.setUint32(offset, hasPerDimBounds ? 1 : 0, true);
+
+    // Calculate per-dimension bounds size
+    const perDimBoundsSize = hasPerDimBounds ? dimension * 8 : 0; // 2 x float32 per dimension
+    const totalSize = metadataSize + dataSize + perDimBoundsSize;
+
+    const fullBuffer = new ArrayBuffer(totalSize);
+    // Copy metadata header
+    new Uint8Array(fullBuffer, 0, metadataSize).set(new Uint8Array(headerBuffer));
+
+    // Pack quantized data after metadata
     const quantizedBuffer = new ArrayBuffer(dataSize);
     packQuantizedValues(quantizedValues, bits, quantizedBuffer);
+    new Uint8Array(fullBuffer, metadataSize, dataSize).set(
+      new Uint8Array(quantizedBuffer),
+    );
 
-    // Copy quantized data to the main buffer
-    const targetView = new Uint8Array(buffer, metadataSize);
-    const sourceView = new Uint8Array(quantizedBuffer);
-    targetView.set(sourceView);
+    // Append per-dimension bounds after quantized data
+    if (hasPerDimBounds && bounds.dimensionBounds) {
+      const boundsView = new DataView(
+        fullBuffer,
+        metadataSize + dataSize,
+        perDimBoundsSize,
+      );
+      for (let i = 0; i < dimension; i++) {
+        const dimBound = bounds.dimensionBounds[i];
+        if (dimBound) {
+          boundsView.setFloat32(i * 8, dimBound.min, true);
+          boundsView.setFloat32(i * 8 + 4, dimBound.max, true);
+        }
+      }
+    }
 
-    return buffer;
+    return fullBuffer;
   }
 
   /**
@@ -302,24 +329,53 @@ export class ScalarQuantizer extends BaseCompressor {
     const metadataView = new DataView(buffer, 0, 128);
 
     // Read metadata
-    // Metadata layout: version (4B) | strategy (4B) | bits (4B) | dimension (4B) |
-    //                  globalMin (4B) | globalMax (4B) | statistics (16B skipped)
-    const strategyCode = metadataView.getUint32(4, true);
-    const bits = metadataView.getUint32(8, true);
-    const dimension = metadataView.getUint32(12, true);
-    const globalMin = metadataView.getFloat32(16, true);
-    const globalMax = metadataView.getFloat32(20, true);
+    let offset = 0;
+    /* const version = */ metadataView.getUint32(offset, true);
+    offset += 4;
+    const strategyCode = metadataView.getUint32(offset, true);
+    offset += 4;
+    const bits = metadataView.getUint32(offset, true);
+    offset += 4;
+    const dimension = metadataView.getUint32(offset, true);
+    offset += 4;
 
-    // Unpack quantized data
-    const dataBuffer = buffer.slice(128);
+    const globalMin = metadataView.getFloat32(offset, true);
+    offset += 4;
+    const globalMax = metadataView.getFloat32(offset, true);
+    offset += 4;
+
+    // Skip statistics (4 x float32 = 16 bytes)
+    offset += 16;
+
+    // Read hasPerDimensionBounds flag
+    const hasPerDimBounds = metadataView.getUint32(offset, true);
+
+    // Calculate quantized data size
+    const dataSize = Math.ceil((dimension * bits) / 8);
+
+    // Unpack quantized data (starts at byte 128)
+    const dataBuffer = buffer.slice(128, 128 + dataSize);
     const quantizedValues = unpackQuantizedValues(dataBuffer, dimension, bits);
 
     // Dequantize values
     const result = new Float32Array(dimension);
     const strategy = this.decodeStrategy(strategyCode);
 
-    if (strategy === 'uniform' || strategy === 'percentile') {
-      // Global dequantization
+    if (strategy === 'per-dimension' && hasPerDimBounds === 1) {
+      // Per-dimension dequantization: bounds are stored after quantized data
+      const boundsOffset = 128 + dataSize;
+      const boundsView = new DataView(buffer, boundsOffset);
+      for (let i = 0; i < dimension; i++) {
+        const quantizedValue = quantizedValues[i];
+        if (quantizedValue === undefined) {
+          throw new Error(`Quantized value at index ${i} is undefined`);
+        }
+        const dimMin = boundsView.getFloat32(i * 8, true);
+        const dimMax = boundsView.getFloat32(i * 8 + 4, true);
+        result[i] = dequantizeValue(quantizedValue, dimMin, dimMax, bits);
+      }
+    } else {
+      // Global dequantization (uniform or percentile)
       for (let i = 0; i < dimension; i++) {
         const quantizedValue = quantizedValues[i];
         if (quantizedValue === undefined) {

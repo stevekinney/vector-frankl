@@ -330,23 +330,28 @@ export function packQuantizedValues(
   let bitOffset = 0;
 
   for (const value of values) {
-    // Pack value into buffer at current bit offset
-    const byteOffset = Math.floor(bitOffset / 8);
-    const bitPos = bitOffset % 8;
+    // Pack value into buffer starting at bitOffset, spanning as many bytes as needed
+    let remaining = bits;
+    let currentBit = bitOffset;
 
-    // Handle values that span byte boundaries
-    if (bitPos + bits <= 8) {
-      // Value fits in current byte
-      view[byteOffset]! |= value << (8 - bitPos - bits);
-    } else {
-      // Value spans multiple bytes
-      const bitsInFirstByte = 8 - bitPos;
-      const bitsInSecondByte = bits - bitsInFirstByte;
+    while (remaining > 0) {
+      const byteIndex = Math.floor(currentBit / 8);
+      const bitPosInByte = currentBit % 8;
+      const availableInByte = 8 - bitPosInByte;
+      const bitsToWrite = Math.min(remaining, availableInByte);
 
-      view[byteOffset]! |= value >> bitsInSecondByte;
-      if (byteOffset + 1 < view.length) {
-        view[byteOffset + 1]! |= value << (8 - bitsInSecondByte);
+      // Extract the relevant bits from value (MSB-first)
+      const shift = remaining - bitsToWrite;
+      const mask = (1 << bitsToWrite) - 1;
+      const fragment = (value >> shift) & mask;
+
+      // Place fragment into the correct position within the byte
+      if (byteIndex < view.length) {
+        view[byteIndex]! |= fragment << (availableInByte - bitsToWrite);
       }
+
+      remaining -= bitsToWrite;
+      currentBit += bitsToWrite;
     }
 
     bitOffset += bits;
@@ -363,27 +368,29 @@ export function unpackQuantizedValues(
 ): number[] {
   const view = new Uint8Array(buffer);
   const values: number[] = [];
-  const mask = (1 << bits) - 1;
   let bitOffset = 0;
 
   for (let i = 0; i < dimension; i++) {
-    const byteOffset = Math.floor(bitOffset / 8);
-    const bitPos = bitOffset % 8;
+    let value = 0;
+    let remaining = bits;
+    let currentBit = bitOffset;
 
-    let value: number;
+    while (remaining > 0) {
+      const byteIndex = Math.floor(currentBit / 8);
+      const bitPosInByte = currentBit % 8;
+      const availableInByte = 8 - bitPosInByte;
+      const bitsToRead = Math.min(remaining, availableInByte);
 
-    if (bitPos + bits <= 8) {
-      // Value fits in current byte
-      value = (view[byteOffset]! >> (8 - bitPos - bits)) & mask;
-    } else {
-      // Value spans multiple bytes
-      const bitsInFirstByte = 8 - bitPos;
-      const bitsInSecondByte = bits - bitsInFirstByte;
+      // Read fragment from the correct position within the byte
+      const shift = availableInByte - bitsToRead;
+      const mask = (1 << bitsToRead) - 1;
+      const fragment = byteIndex < view.length ? (view[byteIndex]! >> shift) & mask : 0;
 
-      value = (view[byteOffset]! & ((1 << bitsInFirstByte) - 1)) << bitsInSecondByte;
-      if (byteOffset + 1 < view.length) {
-        value |= view[byteOffset + 1]! >> (8 - bitsInSecondByte);
-      }
+      // Place fragment into value (MSB-first)
+      value = (value << bitsToRead) | fragment;
+
+      remaining -= bitsToRead;
+      currentBit += bitsToRead;
     }
 
     values.push(value);
