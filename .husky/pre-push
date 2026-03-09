@@ -34,13 +34,19 @@ track_job() {
   fi
 }
 
-# 1. Run tests
+# 1. Run tests first (sequentially to avoid Bun segfaults from parallel worker spawning)
 print_info "Running tests..."
-bun run test > /tmp/test_output_$$.log 2>&1 &
-test_pid=$!
-pids+=($test_pid)
+bun run test > /tmp/test_output_$$.log 2>&1
+test_exit=$?
+if [ $test_exit -ne 0 ]; then
+  failed_checks+=("Tests")
+  print_error "  Tests failed"
+  cat /tmp/test_output_$$.log
+else
+  print_success "  Tests passed"
+fi
 
-# 2. Run build
+# 2. Run build, lint, and secret scan in parallel (lightweight tasks)
 print_info "Running build..."
 bun run build > /tmp/build_output_$$.log 2>&1 &
 build_pid=$!
@@ -106,10 +112,9 @@ print_info "Waiting for checks to complete..."
 for i in "${!pids[@]}"; do
   pid=${pids[$i]}
   case $i in
-    0) name="Tests" ;;
-    1) name="Build" ;;
-    2) name="Secret scan" ;;
-    3) name="Lint" ;;
+    0) name="Build" ;;
+    1) name="Secret scan" ;;
+    2) name="Lint" ;;
     *) name="Check $i" ;;
   esac
   
@@ -129,10 +134,9 @@ for i in "${!pids[@]}"; do
     
     # Show output for failed check
     case $i in
-      0) cat /tmp/test_output_$$.log ;;
-      1) cat /tmp/build_output_$$.log ;;
-      2) cat /tmp/secrets_output_$$.log ;;
-      3) cat /tmp/lint_output_$$.log ;;
+      0) cat /tmp/build_output_$$.log ;;
+      1) cat /tmp/secrets_output_$$.log ;;
+      2) cat /tmp/lint_output_$$.log ;;
     esac
   fi
 done
