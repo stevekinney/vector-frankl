@@ -1,3 +1,4 @@
+import { NamespaceExistsError } from '@/core/errors.js';
 import type {
   BatchOptions,
   NamespaceConfig,
@@ -38,19 +39,18 @@ export class VectorFrankl {
 
     // If a default dimension is provided, create a default namespace
     if (this.defaultDimension) {
-      // Check if default namespace exists
-      const defaultExists = await this.namespaceManager.namespaceExists('default');
-
-      if (!defaultExists) {
-        // Create default namespace
+      try {
         this.defaultNamespace = await this.namespaceManager.createNamespace('default', {
           dimension: this.defaultDimension,
           distanceMetric: 'cosine',
           description: 'Default namespace',
         });
-      } else {
-        // Load existing default namespace
-        this.defaultNamespace = await this.namespaceManager.getNamespace('default');
+      } catch (error) {
+        if (error instanceof NamespaceExistsError) {
+          this.defaultNamespace = await this.namespaceManager.getNamespace('default');
+        } else {
+          throw error;
+        }
       }
     }
 
@@ -260,17 +260,19 @@ export class VectorFrankl {
       );
     }
 
-    // Create default namespace on demand
-    const exists = await this.namespaceManager.namespaceExists('default');
-
-    if (!exists) {
+    // Create default namespace on demand — use try-catch to avoid TOCTOU race
+    try {
       this.defaultNamespace = await this.namespaceManager.createNamespace('default', {
         dimension: this.defaultDimension,
         distanceMetric: 'cosine',
         description: 'Default namespace',
       });
-    } else {
-      this.defaultNamespace = await this.namespaceManager.getNamespace('default');
+    } catch (error) {
+      if (error instanceof NamespaceExistsError) {
+        this.defaultNamespace = await this.namespaceManager.getNamespace('default');
+      } else {
+        throw error;
+      }
     }
 
     return this.defaultNamespace;

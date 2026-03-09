@@ -360,12 +360,16 @@ export class HNSWIndex {
     const candidates = Array.from(connections);
     const selected = this.selectConnections(node.vector, candidates, maxConnections);
 
-    // Remove excess connections
+    // Collect IDs to remove, then process after iteration to avoid mutating Set during iteration
+    const toRemove: string[] = [];
     for (const connectedId of connections) {
       if (!selected.includes(connectedId)) {
-        this.removeConnection(nodeId, connectedId, level);
-        this.removeConnection(connectedId, nodeId, level);
+        toRemove.push(connectedId);
       }
+    }
+    for (const connectedId of toRemove) {
+      this.removeConnection(nodeId, connectedId, level);
+      this.removeConnection(connectedId, nodeId, level);
     }
   }
 
@@ -408,13 +412,35 @@ export class HNSWIndex {
   }
 
   /**
-   * Create a seeded random number generator
+   * Create a seeded random number generator using xoshiro128** seeded via splitmix32
    */
   private createSeededRNG(seed: number): () => number {
-    let state = seed;
+    // splitmix32 to derive initial state
+    function splitmix32(state: number): number {
+      state = (state + 0x9e3779b9) | 0;
+      let z = state;
+      z = Math.imul(z ^ (z >>> 16), 0x85ebca6b);
+      z = Math.imul(z ^ (z >>> 13), 0xc2b2ae35);
+      return (z ^ (z >>> 16)) >>> 0;
+    }
+
+    let s0 = splitmix32(seed);
+    let s1 = splitmix32(s0);
+    let s2 = splitmix32(s1);
+    let s3 = splitmix32(s2);
+
     return () => {
-      state = (state * 1664525 + 1013904223) % Math.pow(2, 32);
-      return state / Math.pow(2, 32);
+      const result = Math.imul(s1 * 5, 7) >>> 0;
+      const t = (s1 << 9) >>> 0;
+
+      s2 ^= s0;
+      s3 ^= s1;
+      s1 ^= s2;
+      s0 ^= s3;
+      s2 ^= t;
+      s3 = ((s3 << 11) | (s3 >>> 21)) >>> 0;
+
+      return (result >>> 0) / 0x100000000;
     };
   }
 

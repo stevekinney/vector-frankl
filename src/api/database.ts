@@ -35,6 +35,7 @@ export class VectorDB {
   private distanceMetric: DistanceMetric;
   private initialized = false;
   private autoEviction = false;
+  private quotaWarningListener: ((warning: QuotaWarning) => void) | null = null;
 
   constructor(
     private name: string,
@@ -362,7 +363,7 @@ export class VectorDB {
    * Set up quota monitoring with automatic eviction
    */
   private setupQuotaMonitoring(): void {
-    this.quotaMonitor.addListener(async (warning: QuotaWarning) => {
+    this.quotaWarningListener = async (warning: QuotaWarning) => {
       console.warn(`Storage quota warning: ${warning.message}`);
 
       if (
@@ -395,7 +396,8 @@ export class VectorDB {
           console.error('Automatic eviction failed:', error);
         }
       }
-    });
+    };
+    this.quotaMonitor.addListener(this.quotaWarningListener);
   }
 
   /**
@@ -578,6 +580,10 @@ export class VectorDB {
    * Close the database
    */
   async close(): Promise<void> {
+    if (this.quotaWarningListener) {
+      this.quotaMonitor.removeListener(this.quotaWarningListener);
+      this.quotaWarningListener = null;
+    }
     await this.searchEngine.cleanup();
     await this.database.close();
     this.initialized = false;
@@ -587,6 +593,10 @@ export class VectorDB {
    * Delete the entire database
    */
   async delete(): Promise<void> {
+    if (this.quotaWarningListener) {
+      this.quotaMonitor.removeListener(this.quotaWarningListener);
+      this.quotaWarningListener = null;
+    }
     await this.searchEngine.cleanup();
     await this.database.delete();
     this.initialized = false;

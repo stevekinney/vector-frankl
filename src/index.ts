@@ -3,6 +3,13 @@
  *
  * A high-performance vector database that runs entirely in the browser,
  * built on top of IndexedDB for persistent storage.
+ *
+ * Optional subsystems available via deep imports:
+ *   vector-frankl/gpu         — GPU acceleration
+ *   vector-frankl/workers     — Web Worker pool
+ *   vector-frankl/debug       — Debug/profiling tools
+ *   vector-frankl/benchmarks  — Performance benchmarks
+ *   vector-frankl/compression — Compression internals
  */
 
 // Main API (with namespace support)
@@ -33,6 +40,12 @@ export type {
   SearchResult,
   DistanceMetric,
   MetadataFilter,
+  FilterOperator,
+  FilterValue,
+  SimpleFilter,
+  AndFilter,
+  OrFilter,
+  NotFilter,
 
   // Batch operations
   BatchOptions,
@@ -44,6 +57,8 @@ export type {
   // Index types
   IndexStrategy,
   IndexConfig,
+  HNSWParameters,
+  KDTreeParameters,
   CompressionStrategy,
 } from './core/types.js';
 
@@ -64,7 +79,7 @@ export {
   isVectorDatabaseError,
 } from './core/errors.js';
 
-// Vector utilities (for advanced users)
+// Vector utilities
 export { VectorOperations } from './vectors/operations.js';
 export { VectorFormatHandler } from './vectors/formats.js';
 
@@ -76,6 +91,7 @@ export {
   createDistanceCalculator,
   registerCustomMetric,
   listAvailableMetrics,
+  type DistanceMetricImplementation,
 } from './search/distance-metrics.js';
 export {
   MetadataFilterCompiler,
@@ -103,119 +119,5 @@ export {
   type EvictionResult,
 } from './storage/eviction-policy.js';
 
-// Worker management utilities
-export {
-  WorkerPool,
-  type WorkerTask,
-  type WorkerResponse,
-  type PoolConfig,
-} from './workers/worker-pool.js';
-export {
-  SharedMemoryManager,
-  getSharedMemoryManager,
-  type SharedMemoryConfig,
-  type MemoryBlock,
-  type SharedMemoryLayout,
-  type SharedMemoryStats,
-} from './workers/shared-memory.js';
-
-// GPU acceleration utilities
-export {
-  WebGPUManager,
-  webGPUManager,
-  type WebGPUConfig,
-  type GPUComputeResult,
-  type GPUCapabilities,
-} from './gpu/webgpu-manager.js';
-export {
-  GPUSearchEngine,
-  type GPUSearchConfig,
-  type GPUSearchStats,
-} from './gpu/gpu-search-engine.js';
-
-// Vector compression utilities
-export {
-  CompressionManager,
-  ScalarQuantizer,
-  ProductQuantizer,
-  BaseCompressor,
-  compressVector,
-  decompressVector,
-  getCompressionRecommendation,
-  compareCompressionStrategies,
-  type CompressionConfig,
-  type CompressionMetadata,
-  type CompressionQuality,
-  type CompressedVector,
-  type CompressionManagerConfig,
-  type CompressionRecommendation,
-  type ScalarQuantizationConfig,
-  type QuantizationStrategy,
-  type PQConfig,
-  type PQCodebook,
-  type PQInitMethod,
-} from './compression/index.js';
-
-// Debug and profiling tools
-export {
-  getDebug,
-  debugManager,
-  profiler,
-  createDebugConsole,
-  withProfiling,
-  withContext,
-  debugMethod,
-  createTimer,
-  type DebugConfig,
-  type DebugConsole,
-  type PerformanceStats,
-} from './debug/index.js';
-
-// Performance benchmarking
-export {
-  BenchmarkSuite,
-  BenchmarkRunner,
-  QuickBenchmark,
-  type BenchmarkConfig,
-  type BenchmarkResult,
-  type BenchmarkSummary,
-  type BenchmarkRunnerOptions,
-} from './benchmarks/index.js';
-
-// Version
-export const VERSION = '0.1.0'; // Bumped for namespace support
-
-// Example usage with namespaces:
-/*
-import { VectorFrankl } from 'vector-frankl';
-
-// Create the main database instance
-const db = new VectorFrankl();
-await db.init();
-
-// Create namespaces for different types of embeddings
-const products = await db.createNamespace('products', {
-  dimension: 384,
-  distanceMetric: 'cosine',
-  description: 'Product embeddings from e-commerce catalog'
-});
-
-const docs = await db.createNamespace('documents', {
-  dimension: 768,
-  distanceMetric: 'euclidean',
-  description: 'Document embeddings from knowledge base'
-});
-
-// Add vectors to specific namespaces
-await products.addVector('product-1', productEmbedding, { name: 'Widget' });
-await docs.addVector('doc-1', docEmbedding, { title: 'User Manual' });
-
-// Search within namespaces
-const productResults = await products.search(queryEmbedding, 10);
-const docResults = await docs.search(queryEmbedding, 5);
-
-// Use the simple API for backwards compatibility
-import { VectorDB } from 'vector-frankl';
-const simpleDb = new VectorDB('my-vectors', 384);
-await simpleDb.init();
-*/
+// Version — sourced from package.json to maintain a single source of truth
+export { version as VERSION } from '../package.json';

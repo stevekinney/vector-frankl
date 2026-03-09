@@ -250,20 +250,43 @@ export class VectorStorage {
           ids.map(
             (id) =>
               new Promise<void>((resolve) => {
-                const request = store.delete(id);
+                // Check existence before deleting to report accurate count
+                const getRequest = store.get(id);
 
-                request.onsuccess = () => {
-                  deletedCount++;
-                  resolve();
+                getRequest.onsuccess = () => {
+                  if (!getRequest.result) {
+                    // Key does not exist — skip deletion
+                    resolve();
+                    return;
+                  }
+
+                  const deleteRequest = store.delete(id);
+
+                  deleteRequest.onsuccess = () => {
+                    deletedCount++;
+                    resolve();
+                  };
+
+                  deleteRequest.onerror = () => {
+                    errors.push({
+                      id,
+                      error: new TransactionError(
+                        'delete vector',
+                        `Failed to delete vector: ${id}`,
+                        deleteRequest.error || undefined,
+                      ),
+                    });
+                    resolve();
+                  };
                 };
 
-                request.onerror = () => {
+                getRequest.onerror = () => {
                   errors.push({
                     id,
                     error: new TransactionError(
                       'delete vector',
-                      `Failed to delete vector: ${id}`,
-                      request.error || undefined,
+                      `Failed to check vector existence: ${id}`,
+                      getRequest.error || undefined,
                     ),
                   });
                   resolve();

@@ -772,6 +772,12 @@ export class CompressionManager {
     // Simplified entropy calculation using binning
     const bins = 32;
     const stats = calculateVectorStatistics(vector);
+
+    // Constant vectors have zero entropy by definition
+    if (stats.range === 0) {
+      return 0;
+    }
+
     const binSize = stats.range / bins;
     const binCounts = new Array(bins).fill(0);
 

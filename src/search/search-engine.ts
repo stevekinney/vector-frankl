@@ -68,7 +68,7 @@ export class SearchEngine {
     this.indexId = options?.indexId || 'default';
     this.useWorkers = options?.useWorkers ?? true;
     this.parallelThreshold = options?.workerConfig?.parallelThreshold ?? 1000;
-    this.useGPU = options?.useGPU ?? true;
+    this.useGPU = options?.useGPU ?? false;
     this.gpuThreshold = options?.gpuConfig?.gpuThreshold ?? 5000;
 
     if (this.useIndex) {

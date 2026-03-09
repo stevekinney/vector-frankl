@@ -81,7 +81,7 @@ export class VectorFormatHandler {
 
     switch (format) {
       case 'float32':
-        return vector as Float32Array;
+        return new Float32Array(vector as Float32Array);
 
       case 'float64':
         return new Float32Array(vector as Float64Array);

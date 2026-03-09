@@ -72,10 +72,17 @@ export class ProductQuantizer extends BaseCompressor {
   constructor(config: PQConfig = {}) {
     super(config);
 
+    const centroidsPerSubspace = config.centroidsPerSubspace ?? 256;
+    if (centroidsPerSubspace > 256) {
+      throw new Error(
+        `centroidsPerSubspace must be <= 256 (got ${centroidsPerSubspace}), since codes are stored in Uint8Array`,
+      );
+    }
+
     this.pqConfig = {
       ...this.config,
       subspaces: config.subspaces ?? 8,
-      centroidsPerSubspace: config.centroidsPerSubspace ?? 256,
+      centroidsPerSubspace,
       initMethod: config.initMethod ?? 'kmeans++',
       maxIterations: config.maxIterations ?? 50,
       convergenceThreshold: config.convergenceThreshold ?? 1e-6,

@@ -25,7 +25,7 @@ plugins = ["bun-plugin-tailwind"]
 # Build configuration
 [build]
 # Target environment for builds
-target = "bun"
+target = "browser"
 # Output directory for builds
 outdir = "dist"
 # Entry point for builds

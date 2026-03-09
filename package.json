@@ -28,12 +28,44 @@
   },
   "license": "MIT",
   "author": "Steve Kinney <hello@stevekinney.net>",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
+      "require": "./dist/cjs/index.js",
       "default": "./dist/index.js"
+    },
+    "./gpu": {
+      "types": "./dist/gpu.d.ts",
+      "import": "./dist/gpu.js",
+      "require": "./dist/cjs/gpu.js",
+      "default": "./dist/gpu.js"
+    },
+    "./workers": {
+      "types": "./dist/workers.d.ts",
+      "import": "./dist/workers.js",
+      "require": "./dist/cjs/workers.js",
+      "default": "./dist/workers.js"
+    },
+    "./debug": {
+      "types": "./dist/debug.d.ts",
+      "import": "./dist/debug.js",
+      "require": "./dist/cjs/debug.js",
+      "default": "./dist/debug.js"
+    },
+    "./benchmarks": {
+      "types": "./dist/benchmarks.d.ts",
+      "import": "./dist/benchmarks.js",
+      "require": "./dist/cjs/benchmarks.js",
+      "default": "./dist/benchmarks.js"
+    },
+    "./compression": {
+      "types": "./dist/compression.d.ts",
+      "import": "./dist/compression.js",
+      "require": "./dist/cjs/compression.js",
+      "default": "./dist/compression.js"
     }
   },
   "main": "./dist/index.js",
@@ -45,9 +77,10 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "bun run build:clean && bun run build:types && bun run build:js",
+    "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:cjs",
+    "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
     "build:clean": "rm -rf dist",
-    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts",
+    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "check:env": "bun run scripts/check-environment.ts",
     "clean": "bun run scripts/clean.ts",

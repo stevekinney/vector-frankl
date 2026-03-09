@@ -27,7 +27,8 @@ export abstract class VectorDatabaseError extends Error {
       timestamp: this.timestamp,
       context: this.sanitizeContext(this.context),
       // Stack trace removed for security - only include in development
-      ...(process.env.NODE_ENV === 'development' && { stack: this.stack }),
+      ...(typeof process !== 'undefined' &&
+        process.env?.NODE_ENV === 'development' && { stack: this.stack }),
     };
   }
 

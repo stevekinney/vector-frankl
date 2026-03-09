@@ -3,7 +3,7 @@ import { InvalidFormatError } from '@/core/errors.js';
 /**
  * Interface for distance metric implementations
  */
-export interface DistanceMetric {
+export interface DistanceMetricImplementation {
   name: string;
   calculate(vectorA: Float32Array, vectorB: Float32Array): number;
   requiresNormalized?: boolean;
@@ -15,7 +15,7 @@ export interface DistanceMetric {
  */
 export class DistanceMetrics {
   private static instance: DistanceMetrics;
-  private metrics = new Map<string, DistanceMetric>();
+  private metrics = new Map<string, DistanceMetricImplementation>();
 
   private constructor() {
     // Register default metrics
@@ -35,14 +35,14 @@ export class DistanceMetrics {
   /**
    * Register a distance metric
    */
-  register(metric: DistanceMetric): void {
+  register(metric: DistanceMetricImplementation): void {
     this.metrics.set(metric.name, metric);
   }
 
   /**
    * Get a distance metric by name
    */
-  get(name: string): DistanceMetric {
+  get(name: string): DistanceMetricImplementation {
     const metric = this.metrics.get(name);
     if (!metric) {
       throw new InvalidFormatError(
@@ -228,7 +228,7 @@ export class OptimizedDistanceMetrics {
  * Helper class for distance calculations
  */
 export class DistanceCalculator {
-  private metric: DistanceMetric;
+  private metric: DistanceMetricImplementation;
   private useOptimized: boolean;
 
   constructor(metricName: string, options?: { optimize?: boolean }) {
@@ -339,7 +339,7 @@ export function createDistanceCalculator(
   return new DistanceCalculator(metricName, options);
 }
 
-export function registerCustomMetric(metric: DistanceMetric): void {
+export function registerCustomMetric(metric: DistanceMetricImplementation): void {
   DistanceMetrics.getInstance().register(metric);
 }
 
