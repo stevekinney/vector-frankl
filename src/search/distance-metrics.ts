@@ -322,7 +322,9 @@ export class DistanceCalculator {
   getMetricInfo(): { name: string; requiresNormalized?: boolean } {
     return {
       name: this.metric.name,
-      ...(this.metric.requiresNormalized !== undefined && { requiresNormalized: this.metric.requiresNormalized }),
+      ...(this.metric.requiresNormalized !== undefined && {
+        requiresNormalized: this.metric.requiresNormalized,
+      }),
     };
   }
 }

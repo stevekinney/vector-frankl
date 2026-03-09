@@ -72,7 +72,7 @@ describe('VectorOperations', () => {
     test('should handle epsilon tolerance', async () => {
       const vector = new Float32Array([0.6, 0.8000001]);
       expect(await VectorOperations.isNormalized(vector, 0.001)).toBe(true);
-      expect(await VectorOperations.isNormalized(vector, 0.0000001)).toBe(false);
+      expect(await VectorOperations.isNormalized(vector, 1e-8)).toBe(false);
     });
   });
 
@@ -213,11 +213,11 @@ describe('VectorOperations', () => {
       expect(Math.max(...vector)).toBeLessThanOrEqual(10);
     });
 
-    test('should create random unit vector', () => {
+    test('should create random unit vector', async () => {
       const vector = VectorOperations.randomUnit(100);
 
       expect(vector.length).toBe(100);
-      expect(VectorOperations.magnitude(vector)).toBeCloseTo(1);
+      expect(await VectorOperations.magnitude(vector)).toBeCloseTo(1);
     });
   });
 

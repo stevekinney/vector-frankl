@@ -1,9 +1,34 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'bun:test';
 
+import {
+  cleanupIndexedDBMocks,
+  setupIndexedDBMocks,
+} from '../../tests/mocks/indexeddb-mock.js';
 import { BenchmarkSuite } from './benchmark-suite.js';
 
 describe('BenchmarkSuite', () => {
   let suite: BenchmarkSuite;
+  let originalWorker: typeof globalThis.Worker;
+
+  beforeAll(() => {
+    setupIndexedDBMocks();
+    // Disable Web Workers in test environment to avoid module resolution failures
+    originalWorker = globalThis.Worker;
+    (globalThis as any).Worker = undefined;
+  });
+
+  afterAll(() => {
+    globalThis.Worker = originalWorker;
+    cleanupIndexedDBMocks();
+  });
 
   beforeEach(() => {
     suite = new BenchmarkSuite({
@@ -102,9 +127,12 @@ describe('BenchmarkSuite', () => {
   it('should measure operations per second correctly', async () => {
     const summary = await suite.runSuite();
 
-    // All successful tests should have positive ops/sec
-    const successfulResults = summary.results.filter((r) => !r.error);
-    for (const result of successfulResults) {
+    // All successful timed tests should have positive ops/sec
+    // (memory category tests have duration 0 by design)
+    const timedResults = summary.results.filter(
+      (r) => !r.error && r.category !== 'memory',
+    );
+    for (const result of timedResults) {
       expect(result.operationsPerSecond).toBeGreaterThan(0);
       expect(result.duration).toBeGreaterThan(0);
     }

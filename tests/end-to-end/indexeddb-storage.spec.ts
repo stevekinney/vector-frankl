@@ -53,7 +53,7 @@ test.describe('IndexedDB Storage Tests', () => {
           `Vector persisted with correct metadata`,
         );
       } catch (error) {
-        window.addTestResult('Data Persistence', 'error', error.message);
+        window.addTestResult('Data Persistence', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -101,7 +101,7 @@ test.describe('IndexedDB Storage Tests', () => {
 
         // Test search with large vector
         const searchStart = performance.now();
-        const _searchResults = await window.db.search(largeVector, 1);
+        await window.db.search(largeVector, 1);
         const searchTime = performance.now() - searchStart;
 
         window.log(
@@ -114,7 +114,7 @@ test.describe('IndexedDB Storage Tests', () => {
           `Stored and retrieved ${dimension}D vector with large metadata successfully`,
         );
       } catch (error) {
-        window.addTestResult('Large Vector Storage', 'error', error.message);
+        window.addTestResult('Large Vector Storage', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -135,7 +135,7 @@ test.describe('IndexedDB Storage Tests', () => {
         // Check if we can access IndexedDB directly to verify structure
         const dbRequest = indexedDB.open('test-db');
 
-        const db = await new Promise((resolve, reject) => {
+        const db = await new Promise<IDBDatabase>((resolve, reject) => {
           dbRequest.onsuccess = () => resolve(dbRequest.result);
           dbRequest.onerror = () => reject(dbRequest.error);
         });
@@ -161,7 +161,7 @@ test.describe('IndexedDB Storage Tests', () => {
           `Database contains ${objectStoreNames.length} object stores`,
         );
       } catch (error) {
-        window.addTestResult('Database Structure', 'error', error.message);
+        window.addTestResult('Database Structure', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -203,7 +203,9 @@ test.describe('IndexedDB Storage Tests', () => {
 
         // Verify all writes succeeded
         const vectors = await window.db.getAllVectors();
-        const concurrentVectors = vectors.filter((v) => v.id.startsWith('concurrent_'));
+        const concurrentVectors = vectors.filter((v: { id: string }) =>
+          v.id.startsWith('concurrent_'),
+        );
 
         if (concurrentVectors.length !== numOperations) {
           throw new Error(
@@ -238,7 +240,7 @@ test.describe('IndexedDB Storage Tests', () => {
           `${numOperations} concurrent writes/reads completed successfully`,
         );
       } catch (error) {
-        window.addTestResult('Concurrent Operations', 'error', error.message);
+        window.addTestResult('Concurrent Operations', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -296,7 +298,7 @@ test.describe('IndexedDB Storage Tests', () => {
           );
         }
       } catch (error) {
-        window.addTestResult('Storage Quota', 'error', error.message);
+        window.addTestResult('Storage Quota', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -357,7 +359,7 @@ test.describe('IndexedDB Storage Tests', () => {
           throw new Error(`Only ${errorCount} error conditions handled properly`);
         }
       } catch (error) {
-        window.addTestResult('Error Handling', 'error', error.message);
+        window.addTestResult('Error Handling', 'error', (error as Error).message);
         throw error;
       }
     });

@@ -61,7 +61,9 @@ test.describe('Web Workers Tests', () => {
         const queryVector = new Array(100).fill(0.6);
 
         // Send work to worker
-        const workerResult = await new Promise((resolve, reject) => {
+        const workerResult = await new Promise<{
+          results: { index: number; score: number }[];
+        }>((resolve, reject) => {
           const timeout = setTimeout(() => reject(new Error('Worker timeout')), 5000);
 
           worker.onmessage = (e) => {
@@ -84,7 +86,7 @@ test.describe('Web Workers Tests', () => {
 
         // Check that results are sorted by score
         for (let i = 1; i < workerResult.results.length; i++) {
-          if (workerResult.results[i].score > workerResult.results[i - 1].score) {
+          if (workerResult.results[i]!.score > workerResult.results[i - 1]!.score) {
             throw new Error('Worker results not properly sorted');
           }
         }
@@ -98,7 +100,7 @@ test.describe('Web Workers Tests', () => {
           `Worker processed ${testVectors.length} vectors successfully`,
         );
       } catch (error) {
-        window.addTestResult('Web Workers Support', 'error', error.message);
+        window.addTestResult('Web Workers Support', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -123,7 +125,11 @@ test.describe('Web Workers Tests', () => {
 
         // Simple worker pool implementation for testing
         class SimpleWorkerPool {
-          constructor(size = 2) {
+          workers: Worker[];
+          queue: any[];
+          busy: Set<Worker>;
+
+          constructor(size: number = 2) {
             this.workers = [];
             this.queue = [];
             this.busy = new Set();
@@ -133,7 +139,7 @@ test.describe('Web Workers Tests', () => {
             }
           }
 
-          createWorker(_id) {
+          createWorker(_id: number) {
             const workerCode = `
               self.onmessage = function(e) {
                 const { taskId, data } = e.data;
@@ -153,9 +159,9 @@ test.describe('Web Workers Tests', () => {
               this.busy.delete(worker);
 
               // Find the pending task and resolve it
-              const taskIndex = this.queue.findIndex((task) => task.id === taskId);
+              const taskIndex = this.queue.findIndex((task: any) => task.id === taskId);
               if (taskIndex !== -1) {
-                const task = this.queue.splice(taskIndex, 1)[0];
+                const task = this.queue.splice(taskIndex, 1)[0]!;
                 task.resolve(result);
               }
 
@@ -165,7 +171,7 @@ test.describe('Web Workers Tests', () => {
             this.workers.push(worker);
           }
 
-          async execute(data) {
+          async execute(data: number[]) {
             const taskId = Date.now() + Math.random();
 
             return new Promise((resolve, reject) => {
@@ -177,10 +183,10 @@ test.describe('Web Workers Tests', () => {
           processQueue() {
             if (this.queue.length === 0) return;
 
-            const availableWorker = this.workers.find((w) => !this.busy.has(w));
+            const availableWorker = this.workers.find((w: Worker) => !this.busy.has(w));
             if (!availableWorker) return;
 
-            const task = this.queue.find((t) => !t.started);
+            const task = this.queue.find((t: any) => !t.started);
             if (!task) return;
 
             task.started = true;
@@ -193,7 +199,7 @@ test.describe('Web Workers Tests', () => {
           }
 
           terminate() {
-            this.workers.forEach((worker) => worker.terminate());
+            this.workers.forEach((worker: Worker) => worker.terminate());
           }
         }
 
@@ -234,7 +240,7 @@ test.describe('Web Workers Tests', () => {
           `Pool of 3 workers completed 10 tasks in ${totalTime.toFixed(2)}ms`,
         );
       } catch (error) {
-        window.addTestResult('Worker Pool', 'error', error.message);
+        window.addTestResult('Worker Pool', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -298,24 +304,26 @@ test.describe('Web Workers Tests', () => {
         const blob = new Blob([workerCode], { type: 'application/javascript' });
         const worker = new Worker(URL.createObjectURL(blob));
 
-        const workerResult = await new Promise((resolve, reject) => {
-          const timeout = setTimeout(
-            () => reject(new Error('SharedArrayBuffer worker timeout')),
-            5000,
-          );
+        const workerResult = await new Promise<{ sum: number; length: number }>(
+          (resolve, reject) => {
+            const timeout = setTimeout(
+              () => reject(new Error('SharedArrayBuffer worker timeout')),
+              5000,
+            );
 
-          worker.onmessage = (e) => {
-            clearTimeout(timeout);
-            resolve(e.data);
-          };
+            worker.onmessage = (e) => {
+              clearTimeout(timeout);
+              resolve(e.data);
+            };
 
-          worker.onerror = (error) => {
-            clearTimeout(timeout);
-            reject(error);
-          };
+            worker.onerror = (error) => {
+              clearTimeout(timeout);
+              reject(error);
+            };
 
-          worker.postMessage({ sharedBuffer });
-        });
+            worker.postMessage({ sharedBuffer });
+          },
+        );
 
         // Verify worker could access shared memory
         if (workerResult.length !== sharedArray.length) {
@@ -325,7 +333,7 @@ test.describe('Web Workers Tests', () => {
         // Compute sum in main thread for comparison
         let mainSum = 0;
         for (let i = 0; i < sharedArray.length; i++) {
-          mainSum += sharedArray[i];
+          mainSum += sharedArray[i]!;
         }
 
         const difference = Math.abs(workerResult.sum - mainSum);
@@ -345,7 +353,7 @@ test.describe('Web Workers Tests', () => {
           `Worker accessed shared memory with ${sharedArray.length} elements`,
         );
       } catch (error) {
-        window.addTestResult('SharedArrayBuffer', 'error', error.message);
+        window.addTestResult('SharedArrayBuffer', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -386,7 +394,7 @@ test.describe('Web Workers Tests', () => {
           const blob = new Blob([badWorkerCode], { type: 'application/javascript' });
           const badWorker = new Worker(URL.createObjectURL(blob));
 
-          const errorPromise = new Promise((_resolve) => {
+          const errorPromise = new Promise<void>((_resolve) => {
             badWorker.onerror = () => {
               errorsCaught++;
               _resolve();
@@ -396,14 +404,14 @@ test.describe('Web Workers Tests', () => {
 
           await Promise.race([
             errorPromise,
-            new Promise((_resolve, reject) =>
+            new Promise<void>((_resolve, reject) =>
               setTimeout(() => reject(new Error('Worker error timeout')), 2000),
             ),
           ]);
 
           badWorker.terminate();
         } catch (error) {
-          window.log(`Worker error test failed: ${error.message}`);
+          window.log(`Worker error test failed: ${(error as Error).message}`);
         }
 
         // Test worker that throws runtime error
@@ -417,7 +425,7 @@ test.describe('Web Workers Tests', () => {
           const blob = new Blob([errorWorkerCode], { type: 'application/javascript' });
           const errorWorker = new Worker(URL.createObjectURL(blob));
 
-          const runtimeErrorPromise = new Promise((_resolve) => {
+          const runtimeErrorPromise = new Promise<void>((_resolve) => {
             errorWorker.onerror = () => {
               errorsCaught++;
               _resolve();
@@ -427,14 +435,14 @@ test.describe('Web Workers Tests', () => {
 
           await Promise.race([
             runtimeErrorPromise,
-            new Promise((_resolve, reject) =>
+            new Promise<void>((_resolve, reject) =>
               setTimeout(() => reject(new Error('Runtime error timeout')), 2000),
             ),
           ]);
 
           errorWorker.terminate();
         } catch (error) {
-          window.log(`Runtime error test failed: ${error.message}`);
+          window.log(`Runtime error test failed: ${(error as Error).message}`);
         }
 
         // Test worker termination
@@ -475,7 +483,7 @@ test.describe('Web Workers Tests', () => {
           throw new Error(`Only ${errorsCaught} error conditions handled`);
         }
       } catch (error) {
-        window.addTestResult('Worker Error Handling', 'error', error.message);
+        window.addTestResult('Worker Error Handling', 'error', (error as Error).message);
         throw error;
       }
     });

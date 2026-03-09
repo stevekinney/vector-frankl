@@ -1,5 +1,17 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'bun:test';
 
+import {
+  cleanupIndexedDBMocks,
+  setupIndexedDBMocks,
+} from '../../tests/mocks/indexeddb-mock.js';
 import { DimensionMismatchError } from '@/core/errors.js';
 import type { NamespaceConfig } from '@/core/types.js';
 import { VectorOperations } from '@/vectors/operations.js';
@@ -7,6 +19,14 @@ import { VectorNamespace } from './namespace.js';
 
 describe('VectorNamespace', () => {
   let namespace: VectorNamespace;
+
+  beforeAll(() => {
+    setupIndexedDBMocks();
+  });
+
+  afterAll(() => {
+    cleanupIndexedDBMocks();
+  });
   const config: NamespaceConfig = {
     dimension: 128,
     distanceMetric: 'cosine',

@@ -217,20 +217,20 @@ describe('Compression Integration', () => {
       expect(compressed.metadata.compressionRatio).toBeGreaterThan(1);
     });
 
-    it('should provide compression recommendations', () => {
+    it('should provide compression recommendations', async () => {
       const vector = new Float32Array(Array.from({ length: 100 }, () => Math.random()));
 
-      const recommendation = getCompressionRecommendation(vector);
+      const recommendation = await getCompressionRecommendation(vector);
 
       expect((recommendation as any).strategy).toBeDefined();
       expect((recommendation as any).estimatedRatio).toBeGreaterThan(1);
       expect((recommendation as any).reasoning).toBeDefined();
     });
 
-    it('should compare strategies via convenience function', () => {
+    it('should compare strategies via convenience function', async () => {
       const vector = new Float32Array(Array.from({ length: 100 }, () => Math.random()));
 
-      const comparisons = compareCompressionStrategies(vector);
+      const comparisons = await compareCompressionStrategies(vector);
 
       expect((comparisons as any).size).toBeGreaterThan(0);
       expect((comparisons as any).has('scalar')).toBe(true);

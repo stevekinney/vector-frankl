@@ -476,10 +476,10 @@ export class VectorOperations {
       id,
       vector: finalVector,
       magnitude,
+      normalized: options?.normalize ?? false,
       timestamp: Date.now(),
       ...(metadata && { metadata }),
       ...(options?.format && { format: options.format }),
-      ...(options?.normalize && { normalized: options.normalize }),
     };
   }
 }

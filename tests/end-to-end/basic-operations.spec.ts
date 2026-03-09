@@ -29,13 +29,14 @@ test.describe('Vector Database Basic Operations', () => {
     // Try to access the module manually to see if it loads
     const moduleTest = await page.evaluate(async () => {
       try {
+        // @ts-expect-error dynamic browser import
         const module = await import('/dist/index.js');
         return { success: true, keys: Object.keys(module), module: typeof module };
       } catch (error) {
-        return { 
-          success: false, 
-          error: error instanceof Error ? error.message : String(error), 
-          stack: error instanceof Error ? error.stack : undefined 
+        return {
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
         };
       }
     });
@@ -124,12 +125,12 @@ test.describe('Vector Database Basic Operations', () => {
         window.log('Deleted vector successfully');
 
         // Test vector search
-        const searchResults = await window.db.search(testVectors[0].vector, 5);
+        const searchResults = await window.db.search(testVectors[0]!.vector, 5);
         if (searchResults.length === 0) throw new Error('Search returned no results');
         window.log(`Search returned ${searchResults.length} results`);
 
         // Test metadata filtering
-        const filtered = await window.db.search(testVectors[0].vector, 5, {
+        const filtered = await window.db.search(testVectors[0]!.vector, 5, {
           filter: { category: 'demo' },
         });
         window.log(`Filtered search returned ${filtered.length} results`);
@@ -140,8 +141,8 @@ test.describe('Vector Database Basic Operations', () => {
           'All operations completed successfully',
         );
       } catch (error) {
-        window.addTestResult('CRUD Operations', 'error', error.message);
-        window.log(`CRUD test failed: ${error.message}`, 'error');
+        window.addTestResult('CRUD Operations', 'error', (error as Error).message);
+        window.log(`CRUD test failed: ${(error as Error).message}`, 'error');
         throw error;
       }
     });
@@ -188,7 +189,7 @@ test.describe('Vector Database Basic Operations', () => {
         }
 
         window.log(
-          `Search results order: ${cosineResults.map((r) => `${r.id}(${r.score.toFixed(3)})`).join(', ')}`,
+          `Search results order: ${cosineResults.map((r: any) => `${r.id}(${r.score.toFixed(3)})`).join(', ')}`,
         );
 
         window.addTestResult(
@@ -197,7 +198,7 @@ test.describe('Vector Database Basic Operations', () => {
           `Found ${cosineResults.length} results with proper scoring`,
         );
       } catch (error) {
-        window.addTestResult('Vector Search', 'error', error.message);
+        window.addTestResult('Vector Search', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -257,7 +258,7 @@ test.describe('Vector Database Basic Operations', () => {
 
         // Test batch search
         const searchStart = performance.now();
-        const searchResults = await window.db.search(vectors[0].vector, 10);
+        const searchResults = await window.db.search(vectors[0]!.vector, 10);
         const searchTime = performance.now() - searchStart;
 
         window.log(
@@ -285,7 +286,7 @@ test.describe('Vector Database Basic Operations', () => {
           `Added ${batchSize} vectors (${avgAddTime.toFixed(2)}ms avg), search: ${searchTime.toFixed(2)}ms`,
         );
       } catch (error) {
-        window.addTestResult('Batch Operations', 'error', error.message);
+        window.addTestResult('Batch Operations', 'error', (error as Error).message);
         throw error;
       }
     });

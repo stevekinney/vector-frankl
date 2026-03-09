@@ -27,11 +27,11 @@ describe('VectorOperations SIMD Integration', () => {
       expect(VectorOperations.isSIMDEnabled()).toBe(true);
     });
 
-    it('should set SIMD threshold', () => {
+    it('should set SIMD threshold', async () => {
       VectorOperations.setSIMDThreshold(32);
 
       // Test with vector below new threshold
-      const result = VectorOperations.magnitude(largeVector);
+      const result = await VectorOperations.magnitude(largeVector);
       expect(result).toBeGreaterThan(0);
 
       // Reset
@@ -40,14 +40,14 @@ describe('VectorOperations SIMD Integration', () => {
   });
 
   describe('Magnitude with SIMD', () => {
-    it('should calculate magnitude for small vectors (scalar)', () => {
-      const result = VectorOperations.magnitude(smallVector);
+    it('should calculate magnitude for small vectors (scalar)', async () => {
+      const result = await VectorOperations.magnitude(smallVector);
       const expected = Math.sqrt(1 + 4 + 9 + 16); // sqrt(30)
       expect(result).toBeCloseTo(expected, 6);
     });
 
-    it('should calculate magnitude for large vectors (SIMD)', () => {
-      const result = VectorOperations.magnitude(largeVector);
+    it('should calculate magnitude for large vectors (SIMD)', async () => {
+      const result = await VectorOperations.magnitude(largeVector);
       const expected = Math.sqrt(largeVector.reduce((sum, val) => sum + val * val, 0));
       expect(result).toBeCloseTo(expected, 6);
     });

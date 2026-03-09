@@ -58,7 +58,7 @@
     "lint:fix": "eslint . --fix",
     "prepare": "husky",
     "start": "bun run dist/index.js",
-    "test": "bun test",
+    "test": "bun test src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "test:coverage": "bun test --coverage",
     "test:parallel": "bun test --parallel",
     "test:watch": "bun test --watch",

@@ -34,7 +34,8 @@ export class NamespaceRegistry {
     }
 
     // Override the default schema creation
-    (this.database as VectorDatabase & { createSchema: (db: IDBDatabase) => void })['createSchema'] = (db: IDBDatabase) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (this.database as any)['createSchema'] = (db: IDBDatabase) => {
       // Namespaces store
       if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.NAMESPACES)) {
         const namespaceStore = db.createObjectStore(NamespaceRegistry.STORES.NAMESPACES, {

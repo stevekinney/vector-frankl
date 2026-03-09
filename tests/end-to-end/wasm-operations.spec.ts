@@ -48,7 +48,7 @@ test.describe('WASM Operations Tests', () => {
           `WebAssembly supported with ${supportedFeatures.length}/6 features`,
         );
       } catch (error) {
-        window.addTestResult('WASM Support', 'error', error.message);
+        window.addTestResult('WASM Support', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -85,7 +85,7 @@ test.describe('WASM Operations Tests', () => {
         window.log(`WASM module compiled in ${compileTime.toFixed(2)}ms`);
 
         // Test the exported function
-        const addFunction = wasmModule.instance.exports.add;
+        const addFunction = wasmModule.instance.exports['add'];
         if (typeof addFunction !== 'function') {
           throw new Error('WASM add function not exported properly');
         }
@@ -103,7 +103,7 @@ test.describe('WASM Operations Tests', () => {
           `Module compiled in ${compileTime.toFixed(2)}ms, add(5,3)=${result}`,
         );
       } catch (error) {
-        window.addTestResult('WASM Module', 'error', error.message);
+        window.addTestResult('WASM Module', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -144,10 +144,10 @@ test.describe('WASM Operations Tests', () => {
         // Verify data
         let checksum = 0;
         for (let i = 0; i < 100; i++) {
-          if (view[i] !== i % 256) {
+          if (view[i]! !== i % 256) {
             throw new Error(`Memory data mismatch at index ${i}`);
           }
-          checksum += view[i];
+          checksum += view[i]!;
         }
 
         window.log(`WASM memory test: wrote/read 100 bytes, checksum=${checksum}`);
@@ -167,7 +167,7 @@ test.describe('WASM Operations Tests', () => {
           `Memory operations completed, initial size: ${initialSize} bytes`,
         );
       } catch (error) {
-        window.addTestResult('WASM Memory', 'error', error.message);
+        window.addTestResult('WASM Memory', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -204,8 +204,8 @@ test.describe('WASM Operations Tests', () => {
           const wasmModule = await WebAssembly.instantiate(vectorWasmBytes);
 
           // Test simple functions first
-          const addFn = wasmModule.instance.exports.add;
-          if (addFn && addFn(2, 3) === 5) {
+          const addFn = wasmModule.instance.exports['add'];
+          if (typeof addFn === 'function' && addFn(2, 3) === 5) {
             window.log('WASM vector module basic function works');
           }
 
@@ -217,7 +217,7 @@ test.describe('WASM Operations Tests', () => {
         } catch (wasmError) {
           // If complex WASM fails, fall back to simple vector operations
           window.log(
-            `Complex WASM failed (${wasmError.message}), testing simpler approach`,
+            `Complex WASM failed (${(wasmError as Error).message}), testing simpler approach`,
           );
 
           // Simulate vector operations without actual WASM
@@ -227,7 +227,7 @@ test.describe('WASM Operations Tests', () => {
           // Manual dot product for comparison
           let dotProduct = 0;
           for (let i = 0; i < vector1.length; i++) {
-            dotProduct += vector1[i] * vector2[i];
+            dotProduct += vector1[i]! * vector2[i]!;
           }
 
           window.log(`JavaScript dot product: ${dotProduct}`);
@@ -240,7 +240,7 @@ test.describe('WASM Operations Tests', () => {
           // Verify data integrity
           let matches = true;
           for (let i = 0; i < vector1.length; i++) {
-            if (Math.abs(wasmView[i] - vector1[i]) > 0.001) {
+            if (Math.abs(wasmView[i]! - vector1[i]!) > 0.001) {
               matches = false;
               break;
             }
@@ -257,7 +257,7 @@ test.describe('WASM Operations Tests', () => {
           );
         }
       } catch (error) {
-        window.addTestResult('WASM Vector Ops', 'error', error.message);
+        window.addTestResult('WASM Vector Ops', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -337,7 +337,7 @@ test.describe('WASM Operations Tests', () => {
           throw new Error(`Only ${errorsHandled} error conditions handled properly`);
         }
       } catch (error) {
-        window.addTestResult('WASM Error Handling', 'error', error.message);
+        window.addTestResult('WASM Error Handling', 'error', (error as Error).message);
         throw error;
       }
     });
@@ -368,10 +368,10 @@ test.describe('WASM Operations Tests', () => {
         const testSize = 10000;
 
         // JavaScript implementation
-        function jsVectorSum(arr) {
+        function jsVectorSum(arr: Float32Array) {
           let sum = 0;
           for (let i = 0; i < arr.length; i++) {
-            sum += arr[i];
+            sum += arr[i]!;
           }
           return sum;
         }
@@ -404,11 +404,10 @@ test.describe('WASM Operations Tests', () => {
         const compileTime = performance.now() - compileStart;
 
         // Test WASM function call overhead
-        const wasmFunction = wasmModule.instance.exports.add;
+        const wasmFunction = wasmModule.instance.exports['add'] as CallableFunction;
         const callStart = performance.now();
-        let _wasmSum = 0;
         for (let i = 0; i < 1000; i++) {
-          _wasmSum += wasmFunction(i, i);
+          wasmFunction(i, i);
         }
         const callTime = performance.now() - callStart;
 
@@ -428,7 +427,7 @@ test.describe('WASM Operations Tests', () => {
           `JS: ${jsTime.toFixed(3)}ms, WASM compile: ${compileTime.toFixed(3)}ms, calls: ${callTime.toFixed(3)}ms`,
         );
       } catch (error) {
-        window.addTestResult('WASM Performance', 'error', error.message);
+        window.addTestResult('WASM Performance', 'error', (error as Error).message);
         throw error;
       }
     });

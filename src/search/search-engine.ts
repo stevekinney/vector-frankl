@@ -179,7 +179,13 @@ export class SearchEngine {
 
     // Use GPU acceleration for very large datasets
     if (this.gpuSearchEngine && candidates.length >= this.gpuThreshold) {
-      return this.searchWithGPU(processedQuery, candidates, k, metric || { name: 'cosine' }, options);
+      return this.searchWithGPU(
+        processedQuery,
+        candidates,
+        k,
+        metric || { name: 'cosine' },
+        options,
+      );
     }
 
     // Use parallel processing for large datasets
@@ -188,7 +194,11 @@ export class SearchEngine {
     }
 
     // Calculate distances sequentially for smaller datasets
-    const scoredCandidates = this.scoreVectors(processedQuery, candidates, metric || { name: 'cosine' });
+    const scoredCandidates = this.scoreVectors(
+      processedQuery,
+      candidates,
+      metric || { name: 'cosine' },
+    );
 
     // Sort by distance (ascending) and take top k
     scoredCandidates.sort((a, b) => a.distance - b.distance);
@@ -344,7 +354,11 @@ export class SearchEngine {
     options?: SearchOptions,
   ): SearchResult[] {
     const metric = this.distanceCalculator.getMetricInfo();
-    const scoredCandidates = this.scoreVectors(queryVector, candidates, metric || { name: 'cosine' });
+    const scoredCandidates = this.scoreVectors(
+      queryVector,
+      candidates,
+      metric || { name: 'cosine' },
+    );
 
     // Sort by distance (ascending) and take top k
     scoredCandidates.sort((a, b) => a.distance - b.distance);
@@ -561,7 +575,11 @@ export class SearchEngine {
       ? VectorOperations.normalizeSync(queryVector)
       : queryVector;
 
-    const scoredCandidates = this.scoreVectors(processedQuery, candidates, metric || { name: 'cosine' });
+    const scoredCandidates = this.scoreVectors(
+      processedQuery,
+      candidates,
+      metric || { name: 'cosine' },
+    );
 
     // Sort and take top k
     scoredCandidates.sort((a, b) => a.distance - b.distance);

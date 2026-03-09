@@ -47,6 +47,7 @@ export class VectorDB {
         efConstruction?: number;
         maxLevel?: number;
       };
+      useWorkers?: boolean;
       autoEviction?: boolean;
       quotaConfig?: {
         safetyMargin?: number;
@@ -73,6 +74,7 @@ export class VectorDB {
     this.searchEngine = new SearchEngine(this.storage, dimension, this.distanceMetric, {
       ...(options?.useIndex !== undefined && { useIndex: options.useIndex }),
       ...(options?.indexConfig !== undefined && { indexConfig: options.indexConfig }),
+      ...(options?.useWorkers !== undefined && { useWorkers: options.useWorkers }),
       database: this.database,
       indexId: `${this.name}-main`,
     });

@@ -1,12 +1,32 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'bun:test';
 
 import { NamespaceExistsError, NamespaceNotFoundError } from '@/core/errors.js';
 import { VectorOperations } from '@/vectors/operations.js';
+import {
+  cleanupIndexedDBMocks,
+  setupIndexedDBMocks,
+} from '../../tests/mocks/indexeddb-mock.js';
 import { NamespaceManager } from './manager.js';
 
 describe('NamespaceManager', () => {
   let manager: NamespaceManager;
   const testDbName = 'test-manager-' + Date.now();
+
+  beforeAll(() => {
+    setupIndexedDBMocks();
+  });
+
+  afterAll(() => {
+    cleanupIndexedDBMocks();
+  });
 
   beforeEach(async () => {
     manager = new NamespaceManager(testDbName);

@@ -60,8 +60,6 @@ export class WorkerPool {
     this.maxWorkers = config.maxWorkers || navigator.hardwareConcurrency || 4;
     this.workerScript = config.workerScript || '/src/workers/vector-worker.js';
     this.defaultTimeout = config.timeout || 30000; // 30 seconds
-    this._retries = config.retries || 2;
-
     // Initialize shared memory manager if enabled
     if (
       config.sharedMemoryConfig?.enableOptimizations &&
@@ -197,7 +195,11 @@ export class WorkerPool {
     const task: WorkerTask = { taskId, operation, data, transferables };
 
     return new Promise<T>((resolve, reject) => {
-      const taskInfo = { task, resolve: resolve as (value: unknown) => void, reject: reject as (reason?: unknown) => void };
+      const taskInfo = {
+        task,
+        resolve: resolve as (value: unknown) => void,
+        reject: reject as (reason?: unknown) => void,
+      };
 
       const availableWorker = this.getAvailableWorker();
 

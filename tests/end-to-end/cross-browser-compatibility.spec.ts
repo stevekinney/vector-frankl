@@ -43,7 +43,11 @@ test.describe('Cross-Browser Compatibility Tests', () => {
           'Basic operations work correctly',
         );
       } catch (error) {
-        window.addTestResult(`${browser} Compatibility`, 'error', error.message);
+        window.addTestResult(
+          `${browser} Compatibility`,
+          'error',
+          (error as Error).message,
+        );
         throw error;
       }
     }, browserName);
@@ -68,7 +72,7 @@ test.describe('Cross-Browser Compatibility Tests', () => {
         cryptoAPI: !!window.crypto && !!window.crypto.subtle,
         performanceAPI: !!window.performance && !!window.performance.now,
         storageAPI: 'storage' in navigator && 'estimate' in navigator.storage,
-        deviceMemory: navigator.deviceMemory || null,
+        deviceMemory: (navigator as any).deviceMemory || null,
         hardwareConcurrency: navigator.hardwareConcurrency || null,
         platform: navigator.platform,
         language: navigator.language,
@@ -127,9 +131,8 @@ test.describe('Cross-Browser Compatibility Tests', () => {
     await page.evaluate(async (browser) => {
       try {
         // Test storage estimation API
-        let _storageInfo = null;
         if ('storage' in navigator && 'estimate' in navigator.storage) {
-          _storageInfo = await navigator.storage.estimate();
+          await navigator.storage.estimate();
         }
 
         // Add vectors until we approach a reasonable limit
@@ -150,12 +153,12 @@ test.describe('Cross-Browser Compatibility Tests', () => {
 
         // Test retrieval performance with many vectors
         const retrievalStart = performance.now();
-        const _allVectors = await window.db.getAllVectors();
+        await window.db.getAllVectors();
         const retrievalTime = performance.now() - retrievalStart;
 
         // Test search performance with many vectors
         const searchStart = performance.now();
-        const _searchResults = await window.db.search(new Array(384).fill(0.5), 5);
+        await window.db.search(new Array(384).fill(0.5), 5);
         const searchTime = performance.now() - searchStart;
 
         window.log(
@@ -172,7 +175,11 @@ test.describe('Cross-Browser Compatibility Tests', () => {
           `Stored ${vectors.length} vectors, search: ${searchTime.toFixed(2)}ms ${performanceOk ? '✓' : '⚠'}`,
         );
       } catch (error) {
-        window.addTestResult(`${browser} Storage Limits`, 'error', error.message);
+        window.addTestResult(
+          `${browser} Storage Limits`,
+          'error',
+          (error as Error).message,
+        );
         throw error;
       }
     }, browserName);
@@ -206,7 +213,7 @@ test.describe('Cross-Browser Compatibility Tests', () => {
             window.log(`${browser}: Crypto API working`);
           }
         } catch (error) {
-          window.log(`${browser}: Crypto API failed: ${error.message}`);
+          window.log(`${browser}: Crypto API failed: ${(error as Error).message}`);
         }
 
         // Test Performance API
@@ -217,7 +224,7 @@ test.describe('Cross-Browser Compatibility Tests', () => {
           apiTests.performance = elapsed > 5 && elapsed < 50;
           window.log(`${browser}: Performance API working (${elapsed.toFixed(2)}ms)`);
         } catch (error) {
-          window.log(`${browser}: Performance API failed: ${error.message}`);
+          window.log(`${browser}: Performance API failed: ${(error as Error).message}`);
         }
 
         // Test IndexedDB
@@ -237,7 +244,7 @@ test.describe('Cross-Browser Compatibility Tests', () => {
           apiTests.indexedDB = true;
           window.log(`${browser}: IndexedDB API working`);
         } catch (error) {
-          window.log(`${browser}: IndexedDB API failed: ${error.message}`);
+          window.log(`${browser}: IndexedDB API failed: ${(error as Error).message}`);
         }
 
         // Test Web Workers
@@ -264,7 +271,7 @@ test.describe('Cross-Browser Compatibility Tests', () => {
             window.log(`${browser}: Web Workers API working`);
           }
         } catch (error) {
-          window.log(`${browser}: Web Workers API failed: ${error.message}`);
+          window.log(`${browser}: Web Workers API failed: ${(error as Error).message}`);
         }
 
         // Test WebAssembly
@@ -297,7 +304,11 @@ test.describe('Cross-Browser Compatibility Tests', () => {
             .join(', ')}`,
         );
       } catch (error) {
-        window.addTestResult(`${browser} API Compatibility`, 'error', error.message);
+        window.addTestResult(
+          `${browser} API Compatibility`,
+          'error',
+          (error as Error).message,
+        );
         throw error;
       }
     }, browserName);

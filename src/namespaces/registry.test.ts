@@ -1,11 +1,31 @@
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'bun:test';
 
 import { NamespaceExistsError, NamespaceNotFoundError } from '@/core/errors.js';
+import {
+  cleanupIndexedDBMocks,
+  setupIndexedDBMocks,
+} from '../../tests/mocks/indexeddb-mock.js';
 import { NamespaceRegistry } from './registry.js';
 
 describe('NamespaceRegistry', () => {
   let registry: NamespaceRegistry;
   const testDbName = 'test-registry-' + Date.now();
+
+  beforeAll(() => {
+    setupIndexedDBMocks();
+  });
+
+  afterAll(() => {
+    cleanupIndexedDBMocks();
+  });
 
   beforeEach(async () => {
     registry = new NamespaceRegistry(testDbName);

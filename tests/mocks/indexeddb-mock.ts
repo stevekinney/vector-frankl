@@ -75,10 +75,15 @@ export class MockIDBCursor<T = unknown> {
   primaryKey: IDBValidKey | null = null;
   private data: T[];
   private index = 0;
+  private parentRequest: MockIDBRequest | null = null;
 
   constructor(data: T[]) {
     this.data = data;
     this.update();
+  }
+
+  setParentRequest(request: MockIDBRequest): void {
+    this.parentRequest = request;
   }
 
   private update() {
@@ -94,10 +99,19 @@ export class MockIDBCursor<T = unknown> {
     }
   }
 
-  continue(): MockIDBRequest<MockIDBCursor<T> | null> {
+  continue(): void {
     this.index++;
     this.update();
-    return new MockIDBRequest(this.index < this.data.length ? this : null);
+    // Re-trigger the parent request's onsuccess, like real IndexedDB.
+    // Use queueMicrotask so cursor iteration completes within the same
+    // macrotask cycle, well before the transaction's oncomplete timer.
+    if (this.parentRequest) {
+      this.parentRequest.result = this.index < this.data.length ? this : null;
+      queueMicrotask(() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        this.parentRequest!.onsuccess?.({ target: this.parentRequest! } as any);
+      });
+    }
   }
 }
 
@@ -135,7 +149,10 @@ export class MockIDBObjectStore {
       this.data.set(actualKey, { ...(value as Record<string, unknown>) });
       return new MockIDBRequest<IDBValidKey>(actualKey);
     }
-    return new MockIDBRequest<IDBValidKey>(null as IDBValidKey, new Error('No key provided'));
+    return new MockIDBRequest<IDBValidKey>(
+      null as unknown as IDBValidKey,
+      new Error('No key provided'),
+    );
   }
 
   add<T = unknown>(value: T, key?: IDBValidKey): MockIDBRequest<IDBValidKey> {
@@ -144,7 +161,10 @@ export class MockIDBObjectStore {
       this.data.set(actualKey, { ...(value as Record<string, unknown>) });
       return new MockIDBRequest<IDBValidKey>(actualKey);
     }
-    return new MockIDBRequest<IDBValidKey>(null as IDBValidKey, new Error('Key already exists'));
+    return new MockIDBRequest<IDBValidKey>(
+      null as unknown as IDBValidKey,
+      new Error('Key already exists'),
+    );
   }
 
   delete(key: IDBValidKey): MockIDBRequest<boolean> {
@@ -173,7 +193,10 @@ export class MockIDBObjectStore {
       return new MockIDBRequest(null);
     }
     const cursor = new MockIDBCursor(values);
-    return new MockIDBRequest(cursor);
+    const request = new MockIDBRequest<MockIDBCursor | null>(cursor);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    cursor.setParentRequest(request as any);
+    return request;
   }
 
   createIndex(
@@ -234,7 +257,10 @@ export class MockIDBIndex {
       return new MockIDBRequest(null);
     }
     const cursor = new MockIDBCursor(values);
-    return new MockIDBRequest(cursor);
+    const request = new MockIDBRequest<MockIDBCursor | null>(cursor);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    cursor.setParentRequest(request as any);
+    return request;
   }
 
   count(): MockIDBRequest<number> {
@@ -287,10 +313,12 @@ export class MockIDBTransaction {
       }
     }
 
-    // Auto-complete transaction
+    // Auto-complete transaction after pending request callbacks settle.
+    // Use 10ms delay to ensure all setTimeout(0) request callbacks and their
+    // resulting microtask (Promise) chains complete before oncomplete fires.
     setTimeout(() => {
       this.oncomplete?.({ target: this });
-    }, 0);
+    }, 10);
   }
 
   get complete(): Promise<void> {
@@ -451,8 +479,9 @@ export class MockIDBOpenDBRequest {
       this.result = db;
 
       // Always trigger upgrade for new databases (simulate schema creation)
-      const upgradeEvent: IDBVersionChangeEvent = {
-        target: this as IDBRequest,
+      const upgradeEvent = {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        target: this as any,
         oldVersion: 0,
         newVersion: version || 1,
       };

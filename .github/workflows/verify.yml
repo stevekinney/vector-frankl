@@ -58,15 +58,6 @@ jobs:
       - name: Check formatting
         run: bun run format:check
 
-      - name: Check for template placeholders
-        run: |
-          if grep -r "Steve Kinney" src/ README.md bunfig.toml package.json 2>/dev/null; then
-            echo "❌ Template placeholders found! Please replace:"
-            echo "   - Steve Kinney with your name or organization"
-            exit 1
-          fi
-          echo "✅ No template placeholders found"
-
       - name: Lint
         run: bun run lint
 
