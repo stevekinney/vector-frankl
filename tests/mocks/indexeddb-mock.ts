@@ -55,16 +55,16 @@ export class MockIDBRequest<T = unknown> {
   constructor(result?: T | null, error?: Error) {
     if (error) {
       this.error = error;
-      setTimeout(() => {
+      queueMicrotask(() => {
         this.readyState = 'done';
         this.onerror?.({ target: this });
-      }, 0);
+      });
     } else {
       this.result = result ?? null;
-      setTimeout(() => {
+      queueMicrotask(() => {
         this.readyState = 'done';
         this.onsuccess?.({ target: this });
-      }, 0);
+      });
     }
   }
 }
