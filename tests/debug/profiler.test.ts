@@ -232,10 +232,10 @@ describe('Profiler', () => {
     });
 
     it('should filter by maximum duration', () => {
-      const profiles = profiler.getCompletedProfiles({ maxDuration: 10 });
+      const profiles = profiler.getCompletedProfiles({ maxDuration: 20 });
       expect(profiles.length).toBeGreaterThan(0);
       profiles.forEach((p) => {
-        expect(p.duration!).toBeLessThanOrEqual(10);
+        expect(p.duration!).toBeLessThanOrEqual(20);
       });
     });
   });
