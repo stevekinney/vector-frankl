@@ -32,19 +32,22 @@ if ! run_with_spinner "Type checking TypeScript files..." bun run typecheck; the
   all_checks_passed=false
 fi
 
-# 3. Check lock file (only if package.json is staged)
+# 3. Check lock file (only if dependency fields in package.json changed)
 if git diff --cached --name-only | grep -q "package.json"; then
-  print_info "package.json modified, checking lock file..."
-  
-  # Check if bun.lock is also staged
-  if ! git diff --cached --name-only | grep -q "bun.lock"; then
-    print_warning "package.json is staged but bun.lock is not"
-    print_info "Run 'bun install' and stage bun.lock"
-    all_checks_passed=false
-  else
-    # Verify lock file is in sync
-    if ! "$SCRIPT_DIR/check-dependencies.sh" --skip-audit; then
+  # Only require bun.lock when dependencies actually changed, not for script-only edits
+  if git diff --cached package.json | grep -qE '^\+.*"(dependencies|devDependencies|peerDependencies|optionalDependencies|overrides|resolutions)"'; then
+    print_info "package.json dependencies modified, checking lock file..."
+
+    # Check if bun.lock is also staged
+    if ! git diff --cached --name-only | grep -q "bun.lock"; then
+      print_warning "package.json dependencies changed but bun.lock is not staged"
+      print_info "Run 'bun install' and stage bun.lock"
       all_checks_passed=false
+    else
+      # Verify lock file is in sync
+      if ! "$SCRIPT_DIR/check-dependencies.sh" --skip-audit; then
+        all_checks_passed=false
+      fi
     fi
   fi
 fi

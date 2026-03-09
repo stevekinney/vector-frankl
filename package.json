@@ -60,9 +60,9 @@
     "prepare": "husky",
     "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
     "start": "bun run dist/index.js",
-    "test": "bun test src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test": "bun test src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "test:all": "bun run test && bun run test:end-to-end",
-    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "test:end-to-end": "playwright test",
     "test:end-to-end:chromium": "playwright test --project=chromium",
     "test:end-to-end:firefox": "playwright test --project=firefox",
@@ -70,8 +70,8 @@
     "test:end-to-end:mobile": "playwright test --project=mobile-chrome --project=mobile-safari",
     "test:end-to-end:ui": "playwright test --ui",
     "test:end-to-end:webkit": "playwright test --project=webkit",
-    "test:parallel": "bun test --parallel src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
-    "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test:parallel": "bun test --parallel src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "lint-staged": {
