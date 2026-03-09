@@ -18,19 +18,17 @@
     "simd",
     "wasm"
   ],
-  "author": "Steve Kinney <hello@stevekinney.net>",
-  "license": "MIT",
   "homepage": "https://github.com/stevekinney/vector-frankl#readme",
+  "bugs": {
+    "url": "https://github.com/stevekinney/vector-frankl/issues"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/stevekinney/vector-frankl.git"
   },
-  "bugs": {
-    "url": "https://github.com/stevekinney/vector-frankl/issues"
-  },
+  "license": "MIT",
+  "author": "Steve Kinney <hello@stevekinney.net>",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -38,6 +36,8 @@
       "default": "./dist/index.js"
     }
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "files": [
     "dist",
     "LICENSE",
@@ -47,8 +47,8 @@
   "scripts": {
     "build": "bun run build:clean && bun run build:types && bun run build:js",
     "build:clean": "rm -rf dist",
-    "build:types": "tsc -p tsconfig.build.json",
     "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts",
+    "build:types": "tsc -p tsconfig.build.json",
     "check:env": "bun run scripts/check-environment.ts",
     "clean": "bun run scripts/clean.ts",
     "dev": "bun --watch run src/index.ts",
@@ -56,23 +56,23 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "prepack": "bun run build",
     "prepare": "husky",
+    "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
     "start": "bun run dist/index.js",
     "test": "bun test src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
-    "test:coverage": "bun test --coverage",
-    "test:parallel": "bun test --parallel",
-    "test:watch": "bun test --watch",
+    "test:all": "bun run test && bun run test:end-to-end",
+    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "test:end-to-end": "playwright test",
-    "test:end-to-end:ui": "playwright test --ui",
-    "test:end-to-end:headed": "playwright test --headed",
     "test:end-to-end:chromium": "playwright test --project=chromium",
     "test:end-to-end:firefox": "playwright test --project=firefox",
-    "test:end-to-end:webkit": "playwright test --project=webkit",
+    "test:end-to-end:headed": "playwright test --headed",
     "test:end-to-end:mobile": "playwright test --project=mobile-chrome --project=mobile-safari",
-    "test:all": "bun test && bun run test:end-to-end",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "bun run lint && bun run typecheck && bun test && bun run build",
-    "prepack": "bun run build"
+    "test:end-to-end:ui": "playwright test --ui",
+    "test:end-to-end:webkit": "playwright test --project=webkit",
+    "test:parallel": "bun test --parallel src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "lint-staged": {
     "src/**/*.{js,ts,tsx,jsx,mjs,cjs}": [
@@ -120,8 +120,8 @@
     "typescript-eslint": "^8.32.1"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "bun": ">=1.13.0"
+    "bun": ">=1.13.0",
+    "node": ">=18.0.0"
   },
   "publishConfig": {
     "access": "public",
