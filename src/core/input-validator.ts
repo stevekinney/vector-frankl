@@ -211,6 +211,7 @@ export class InputValidator {
       } catch (error) {
         throw new Error(
           `Invalid item at index ${index}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          { cause: error },
         );
       }
     });

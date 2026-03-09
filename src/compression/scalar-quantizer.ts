@@ -282,7 +282,6 @@ export class ScalarQuantizer extends BaseCompressor {
     metadataView.setFloat32(offset, statistics.mean, true);
     offset += 4;
     metadataView.setFloat32(offset, statistics.std, true);
-    offset += 4;
 
     // Pack quantized data
     const quantizedBuffer = new ArrayBuffer(dataSize);
@@ -303,23 +302,13 @@ export class ScalarQuantizer extends BaseCompressor {
     const metadataView = new DataView(buffer, 0, 128);
 
     // Read metadata
-    let offset = 0;
-    /* const version = */ metadataView.getUint32(offset, true);
-    offset += 4;
-    const strategyCode = metadataView.getUint32(offset, true);
-    offset += 4;
-    const bits = metadataView.getUint32(offset, true);
-    offset += 4;
-    const dimension = metadataView.getUint32(offset, true);
-    offset += 4;
-
-    const globalMin = metadataView.getFloat32(offset, true);
-    offset += 4;
-    const globalMax = metadataView.getFloat32(offset, true);
-    offset += 4;
-
-    // Skip statistics for now
-    offset += 16;
+    // Metadata layout: version (4B) | strategy (4B) | bits (4B) | dimension (4B) |
+    //                  globalMin (4B) | globalMax (4B) | statistics (16B skipped)
+    const strategyCode = metadataView.getUint32(4, true);
+    const bits = metadataView.getUint32(8, true);
+    const dimension = metadataView.getUint32(12, true);
+    const globalMin = metadataView.getFloat32(16, true);
+    const globalMax = metadataView.getFloat32(20, true);
 
     // Unpack quantized data
     const dataBuffer = buffer.slice(128);

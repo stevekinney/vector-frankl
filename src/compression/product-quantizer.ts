@@ -618,7 +618,6 @@ export class ProductQuantizer extends BaseCompressor {
     metadataView.setFloat32(offset, this.codebook.trainingStats.trainingTime, true);
     offset += 4;
     metadataView.setFloat32(offset, this.codebook.trainingStats.totalDistortion, true);
-    offset += 4;
 
     // Pack codes with alignment
     const codesView = new Uint8Array(buffer, metadataSize, alignedCodesSize);
@@ -651,19 +650,9 @@ export class ProductQuantizer extends BaseCompressor {
   private decompressData(buffer: ArrayBuffer, originalDimension: number): Float32Array {
     const metadataView = new DataView(buffer, 0, 256);
 
-    // Read metadata
-    let offset = 0;
-    // Skip version for now
-    offset += 4;
-    const subspaces = metadataView.getUint32(offset, true);
-    offset += 4;
-    const centroidsPerSubspace = metadataView.getUint32(offset, true);
-    offset += 4;
-    // Skip dimension for now
-    offset += 4;
-
-    // Skip training stats for now
-    offset += 16;
+    // Read metadata: version (4B) | subspaces (4B) | centroidsPerSubspace (4B) | ...
+    const subspaces = metadataView.getUint32(4, true);
+    const centroidsPerSubspace = metadataView.getUint32(8, true);
 
     // Read codes
     const alignedCodesSize = Math.ceil(subspaces / 4) * 4;

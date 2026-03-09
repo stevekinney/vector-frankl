@@ -247,7 +247,7 @@ test.describe('WASM Operations Tests', () => {
           }
 
           if (!matches) {
-            throw new Error('Float32Array data transfer failed');
+            throw new Error('Float32Array data transfer failed', { cause: wasmError });
           }
 
           window.addTestResult(
