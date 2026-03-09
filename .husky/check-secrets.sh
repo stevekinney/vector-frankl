@@ -67,6 +67,9 @@ EXCLUDE_PATTERNS=(
   "*.spec.ts"
   "*.test.js"
   "*.spec.js"
+  ".env.example"
+  "docs/SECURITY.md"
+  "tsconfig.json"
 )
 
 # Check if file should be excluded
