@@ -13,7 +13,7 @@ import globals from 'globals';
 
 const commonFiles = '**/*.{js,jsx,cjs,mjs,ts,tsx}';
 const tsFiles = '**/*.{ts,tsx}';
-const testFiles = '**/*.{test,spec}.{js,jsx,ts,tsx}';
+const testFiles = '**/*.{test,spec,e2e}.{js,jsx,ts,tsx}';
 
 const commonPlugins = {
   promise,
