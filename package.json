@@ -93,7 +93,7 @@
     "prepare": "husky",
     "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
     "start": "bun run dist/index.js",
-    "test": "bun test src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test": "bun test src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "test:all": "bun run test && bun run test:end-to-end",
     "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "test:end-to-end": "playwright test",
