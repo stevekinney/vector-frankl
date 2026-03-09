@@ -917,7 +917,7 @@ export class SearchEngine {
       await this.workerPool.init();
       return await this.workerPool.sharedMemorySearch(vectors, queryVector, k, metric);
     } catch (error) {
-      throw new Error(`Shared memory search failed: ${error}`);
+      throw new Error(`Shared memory search failed: ${error}`, { cause: error });
     }
   }
 

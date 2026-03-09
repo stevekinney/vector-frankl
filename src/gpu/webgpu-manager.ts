@@ -143,6 +143,7 @@ export class WebGPUManager {
     } catch (error) {
       throw new Error(
         `Failed to initialize WebGPU: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       );
     }
   }
@@ -215,6 +216,7 @@ export class WebGPUManager {
     } catch (error) {
       throw new Error(
         `GPU compute failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       );
     }
   }

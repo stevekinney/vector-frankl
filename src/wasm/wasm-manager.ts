@@ -345,7 +345,7 @@ export class WASMManager {
       try {
         this.memory.grow(requiredPages - currentPages);
       } catch (error) {
-        throw new Error(`Failed to allocate WASM memory: ${error}`);
+        throw new Error(`Failed to allocate WASM memory: ${error}`, { cause: error });
       }
     }
 
@@ -419,7 +419,7 @@ export class WASMManager {
 
       return result;
     } catch (error) {
-      throw new Error(`WASM dot product failed: ${error}`);
+      throw new Error(`WASM dot product failed: ${error}`, { cause: error });
     }
   }
 
@@ -461,7 +461,7 @@ export class WASMManager {
 
       return result;
     } catch (error) {
-      throw new Error(`WASM magnitude failed: ${error}`);
+      throw new Error(`WASM magnitude failed: ${error}`, { cause: error });
     }
   }
 
@@ -501,7 +501,7 @@ export class WASMManager {
 
       return result;
     } catch (error) {
-      throw new Error(`WASM vector add failed: ${error}`);
+      throw new Error(`WASM vector add failed: ${error}`, { cause: error });
     }
   }
 

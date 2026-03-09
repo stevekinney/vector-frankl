@@ -262,10 +262,9 @@ export function calculateOptimalBits(
 ): number {
   const stats = calculateVectorStatistics(vector);
 
-  // Start with 8 bits and adjust based on precision requirements
-  let bits = 8;
+  // Determine bits based on precision requirements
+  let bits: number;
 
-  // If we have very high precision requirements, use 16 bits
   if (targetPrecisionLoss < 0.001) {
     bits = 16;
   } else if (targetPrecisionLoss < 0.01) {
@@ -371,7 +370,7 @@ export function unpackQuantizedValues(
     const byteOffset = Math.floor(bitOffset / 8);
     const bitPos = bitOffset % 8;
 
-    let value = 0;
+    let value: number;
 
     if (bitPos + bits <= 8) {
       // Value fits in current byte

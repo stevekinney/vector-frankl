@@ -48,7 +48,9 @@ function validateEnvironment(env?: Record<string, string | undefined>): Environm
       const errorMessage = error.errors
         .map((err) => `${err.path.join('.')}: ${err.message}`)
         .join('\n');
-      throw new Error(`Environment validation failed:\n${errorMessage}`);
+      throw new Error(`Environment validation failed:\n${errorMessage}`, {
+        cause: error,
+      });
     }
     throw error;
   }

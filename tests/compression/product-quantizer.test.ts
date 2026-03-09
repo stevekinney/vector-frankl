@@ -257,12 +257,12 @@ describe('ProductQuantizer', () => {
       // Time full decompression approach
       const fullStart = performance.now();
       const decompressed = await quantizer.decompress(compressed);
-      let _fullDist = 0;
+      let fullDist = 0;
       for (let i = 0; i < queryVector!.length; i++) {
         const diff = queryVector![i]! - decompressed[i]!;
-        _fullDist += diff * diff;
+        fullDist += diff * diff;
       }
-      _fullDist = Math.sqrt(_fullDist);
+      void Math.sqrt(fullDist);
       const fullTime = performance.now() - fullStart;
 
       // Asymmetric should be faster or at least not significantly slower
