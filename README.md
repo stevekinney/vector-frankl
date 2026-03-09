@@ -14,14 +14,25 @@ A high-performance vector database that runs entirely in the browser, built on I
 - **Rich Feature Set:** From advanced vector compression and multiple distance metrics to robust namespace management and comprehensive debugging tools, Vector Frankl provides everything you need to build sophisticated vector-based applications.
 - **Developer-Friendly:** With 100% TypeScript support, a clear API, and built-in performance monitoring, integrating and optimizing your AI workflows has never been easier.
 
-## 💡 Potential Use Cases
+## Use Cases
 
-- **Privacy-Preserving AI:** Build applications where sensitive user data never leaves the device, enabling highly personalized experiences without compromising privacy.
-- **Offline-First Applications:** Develop AI features that function seamlessly without an internet connection, ideal for mobile web apps or environments with intermittent connectivity.
-- **Edge AI & Real-time Processing:** Perform real-time semantic search, content recommendations, or anomaly detection directly on the user's device, reducing latency and server load.
-- **Interactive Machine Learning Demos:** Create compelling, interactive AI prototypes and educational tools that run entirely in the browser, making them easily shareable and accessible.
-- **Personalized Content Filtering:** Implement client-side content filtering or recommendation engines that adapt instantly to user preferences and behavior.
-- **Local Document Search:** Enable semantic search capabilities over user-generated content or locally stored documents without relying on a backend server.
+The broader pattern here is moving vector search compute to the edge—the browser—which unlocks use cases where latency, privacy, cost, or offline access are constraints. The tradeoff is index size and embedding compute, but with quantized models and WebGPU acceleration, that ceiling keeps rising.
+
+- **Privacy-first semantic search:** All embeddings stay on the user's device. You could build a personal knowledge base, journal, or note-taking app where semantic search works entirely offline with zero data leaving the browser. No API calls, no cloud storage, no privacy policy needed.
+
+- **Offline-capable RAG:** Pair it with a small local model (like one running via WebLLM or ONNX Runtime Web) and you've got a fully client-side retrieval-augmented generation pipeline. Think a field technician querying a maintenance manual on a tablet with no connectivity.
+
+- **Personalized UI without a backend:** Embed user interactions—clicks, searches, navigation patterns—as vectors and do nearest-neighbor lookups to surface contextually relevant UI elements, recommendations, or shortcuts. All without a single network request.
+
+- **Cross-tab and cross-session memory:** Since IndexedDB persists across sessions and is shared across tabs for the same origin, you could build agents or assistants that accumulate semantic memory over time. A support chatbot that "remembers" what the user struggled with last week, entirely client-side.
+
+- **Edge-computed semantic caching:** Cache LLM responses keyed by embedding similarity rather than exact string match. If a user asks something semantically close to a previous query, serve the cached response instantly. This cuts API costs and latency dramatically for conversational UIs.
+
+- **Federated or hybrid search architectures:** Run a first-pass vector search locally against the user's personal corpus, then only fan out to the server for the public or shared corpus. You reduce server load and latency while keeping personal data local.
+
+- **Progressive enrichment:** As a user browses, background-embed page content (or snippets they highlight and bookmark) into the local vector store, gradually building a personal semantic index of "everything I've read." Then offer recall like "you read something about X last month" without any server involvement.
+
+- **Developer tooling in the browser:** Imagine a browser DevTools extension that embeds console errors, network responses, and component trees, then lets you do semantic search across your debugging session. "Find me the request that looked like the one that failed yesterday."
 
 ## 🌟 Features
 
