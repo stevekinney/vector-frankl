@@ -330,6 +330,152 @@ export function runStorageAdapterTests(
       });
     });
 
+    // ── lifecycle ───────────────────────────────────────────────────────
+
+    describe('lifecycle', () => {
+      it('close() completes without error', async () => {
+        await adapter.close();
+        // Re-init so afterEach cleanup can still destroy
+        await adapter.init();
+      });
+
+      it('init() can be called multiple times (idempotent)', async () => {
+        await adapter.init();
+        await adapter.init();
+        // Should not throw
+      });
+    });
+
+    // ── putBatch without options ────────────────────────────────────────
+
+    describe('putBatch without options', () => {
+      it('stores vectors with no options (default batch size)', async () => {
+        const vectors = Array.from({ length: 5 }, (_, i) =>
+          makeVector(`no-opts-${i}`, [i]),
+        );
+
+        await adapter.putBatch(vectors);
+        expect(await adapter.count()).toBe(5);
+      });
+    });
+
+    // ── put sets timestamp when absent ─────────────────────────────────
+
+    describe('put timestamp handling', () => {
+      it('sets timestamp when not provided', async () => {
+        const vec: VectorData = {
+          id: 'no-ts',
+          vector: new Float32Array([1, 2]),
+          magnitude: Math.sqrt(5),
+          timestamp: 0,
+        };
+        await adapter.put(vec);
+
+        const retrieved = await adapter.get('no-ts');
+        expect(retrieved.timestamp).toBeGreaterThan(0);
+      });
+    });
+
+    // ── updateVector option branches ───────────────────────────────────
+
+    describe('updateVector options', () => {
+      it('skips magnitude recalculation when updateMagnitude is false', async () => {
+        await adapter.put(makeVector('uv-mag', [1, 0, 0]));
+
+        const original = await adapter.get('uv-mag');
+        const originalMagnitude = original.magnitude;
+
+        await adapter.updateVector('uv-mag', new Float32Array([3, 4, 0]), {
+          updateMagnitude: false,
+        });
+
+        const updated = await adapter.get('uv-mag');
+        expect(updated.vector).toEqual(new Float32Array([3, 4, 0]));
+        expect(updated.magnitude).toBeCloseTo(originalMagnitude);
+      });
+
+      it('skips timestamp update when updateTimestamp is false', async () => {
+        await adapter.put(makeVector('uv-ts', [1, 0, 0]));
+
+        const original = await adapter.get('uv-ts');
+        const originalTimestamp = original.timestamp;
+
+        await adapter.updateVector('uv-ts', new Float32Array([3, 4, 0]), {
+          updateTimestamp: false,
+        });
+
+        const updated = await adapter.get('uv-ts');
+        expect(updated.timestamp).toBe(originalTimestamp);
+      });
+    });
+
+    // ── updateMetadata with no prior metadata ──────────────────────────
+
+    describe('updateMetadata edge cases', () => {
+      it('sets metadata on a vector that had no metadata', async () => {
+        // Create a vector without metadata
+        const vec: VectorData = {
+          id: 'no-meta',
+          vector: new Float32Array([1]),
+          magnitude: 1,
+          timestamp: Date.now(),
+        };
+        await adapter.put(vec);
+
+        await adapter.updateMetadata('no-meta', { added: true });
+
+        const updated = await adapter.get('no-meta');
+        expect(updated.metadata).toEqual({ added: true });
+      });
+    });
+
+    // ── updateBatch with both vector and metadata ──────────────────────
+
+    describe('updateBatch edge cases', () => {
+      it('updates both vector and metadata in a single entry', async () => {
+        await adapter.put(makeVector('ub-both', [1], { original: true }));
+
+        const result = await adapter.updateBatch([
+          {
+            id: 'ub-both',
+            vector: new Float32Array([5, 5]),
+            metadata: { updated: true },
+          },
+        ]);
+
+        expect(result.succeeded).toBe(1);
+        expect(result.failed).toBe(0);
+
+        const updated = await adapter.get('ub-both');
+        expect(updated.vector).toEqual(new Float32Array([5, 5]));
+        expect(updated.metadata).toEqual({ original: true, updated: true });
+        expect(updated.magnitude).toBeCloseTo(Math.sqrt(50));
+      });
+
+      it('handles all-success batch', async () => {
+        await adapter.put(makeVector('ub-ok-1', [1]));
+        await adapter.put(makeVector('ub-ok-2', [2]));
+
+        const result = await adapter.updateBatch([
+          { id: 'ub-ok-1', metadata: { done: true } },
+          { id: 'ub-ok-2', metadata: { done: true } },
+        ]);
+
+        expect(result.succeeded).toBe(2);
+        expect(result.failed).toBe(0);
+        expect(result.errors).toHaveLength(0);
+      });
+    });
+
+    // ── delete non-existent ID ─────────────────────────────────────────
+
+    describe('delete edge cases', () => {
+      it('does not throw when deleting a non-existent ID', async () => {
+        await adapter.delete('never-existed');
+        // Should complete without error
+      });
+    });
+
     // ── access tracking ───────────────────────────────────────────────
 
     describe('access tracking', () => {
