@@ -1,4 +1,5 @@
 import { VectorDatabase } from '@/core/database.js';
+import { BatchOperationError } from '@/core/errors.js';
 import { VectorStorage } from '@/core/storage.js';
 import type { BatchOptions, StorageAdapter, VectorData } from '@/core/types.js';
 
@@ -81,7 +82,16 @@ export class IndexedDatabaseStorageAdapter implements StorageAdapter {
 
   async getMany(ids: string[]): Promise<VectorData[]> {
     const storage = this.requireStorage();
-    return storage.getMany(ids);
+    try {
+      return await storage.getMany(ids);
+    } catch (error) {
+      // VectorStorage throws BatchOperationError when all IDs are missing.
+      // The StorageAdapter contract returns an empty array instead.
+      if (error instanceof BatchOperationError && error.succeeded === 0) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getAll(): Promise<VectorData[]> {
