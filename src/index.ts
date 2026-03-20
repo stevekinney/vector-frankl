@@ -52,6 +52,8 @@ export type {
   BatchProgress,
 
   // Storage types
+  StorageAdapter,
+  StorageAdapterFactory,
   StorageEstimate,
 
   // Index types
@@ -100,6 +102,10 @@ export {
 } from './search/metadata-filter.js';
 export { HNSWIndex } from './search/hnsw-index.js';
 export { IndexPersistence, IndexCache } from './search/index-persistence.js';
+
+// Storage adapters (universally usable)
+export { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';
+export { IndexedDatabaseStorageAdapter } from './storage/adapters/indexed-database-adapter.js';
 
 // Storage management utilities
 export {

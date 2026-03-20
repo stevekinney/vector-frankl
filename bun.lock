@@ -35,6 +35,12 @@
         "sort-package-json": "^3.2.1",
         "typescript-eslint": "^8.56.1",
       },
+      "peerDependencies": {
+        "sql.js": ">=1.8.0",
+      },
+      "optionalPeers": [
+        "sql.js",
+      ],
     },
   },
   "packages": {

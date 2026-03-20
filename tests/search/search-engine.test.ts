@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
 import { DimensionMismatchError } from '@/core/errors.js';
-import type { VectorData } from '@/core/types.js';
+import type { StorageAdapter, VectorData } from '@/core/types.js';
 import { SearchEngine } from '@/search/search-engine.js';
-import type { VectorStorage } from '@/core/storage.js';
+import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
 /**
  * Build a VectorData object from raw values.
@@ -23,40 +23,16 @@ function makeVector(
 }
 
 /**
- * Minimal mock that satisfies the VectorStorage interface used by SearchEngine.
- *
- * SearchEngine only calls `storage.getAll()` (for brute-force / range search)
- * and `storage.get(id)` (to retrieve vectors after an index search).  We store
- * vectors in an in-memory Map so no IndexedDB is needed.
+ * Create a MemoryStorageAdapter pre-populated with vectors.
  */
-function createMockStorage(vectors: VectorData[] = []): VectorStorage {
-  const store = new Map<string, VectorData>();
+function createMockStorage(vectors: VectorData[] = []): StorageAdapter {
+  const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
   for (const v of vectors) {
-    store.set(v.id, v);
+    // Synchronously seed the internal map by calling put (returns a promise,
+    // but MemoryStorageAdapter.put is synchronous under the hood).
+    void adapter.put(v);
   }
-
-  return {
-    getAll: async () => Array.from(store.values()),
-    get: async (id: string) => {
-      const v = store.get(id);
-      if (!v) {
-        throw new Error(`Vector not found: ${id}`);
-      }
-      return v;
-    },
-    // SearchEngine never calls these, but they exist on the real class.
-    put: async () => {},
-    delete: async () => {},
-    exists: async () => false,
-    count: async () => store.size,
-    clear: async () => {},
-    deleteMany: async () => 0,
-    getMany: async () => [],
-    putBatch: async () => {},
-    updateVector: async () => {},
-    updateMetadata: async () => {},
-    updateBatch: async () => ({ succeeded: 0, failed: 0, errors: [] }),
-  } as unknown as VectorStorage;
+  return adapter;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,10 @@
 import { NamespaceNotFoundError } from '@/core/errors.js';
-import type { NamespaceConfig, NamespaceInfo, NamespaceStats } from '@/core/types.js';
+import type {
+  NamespaceConfig,
+  NamespaceInfo,
+  NamespaceStats,
+  StorageAdapterFactory,
+} from '@/core/types.js';
 import { log } from '@/utilities/logger.js';
 import { VectorNamespace } from './namespace.js';
 import { NamespaceRegistry } from './registry.js';
@@ -11,10 +16,15 @@ export class NamespaceManager {
   private registry: NamespaceRegistry;
   private namespaces: Map<string, VectorNamespace>;
   private initialized = false;
+  private storageFactory: StorageAdapterFactory | undefined;
 
-  constructor(private rootDatabaseName = 'vector-frankl-root') {
+  constructor(
+    private rootDatabaseName = 'vector-frankl-root',
+    storageFactory?: StorageAdapterFactory,
+  ) {
     this.registry = new NamespaceRegistry(rootDatabaseName);
     this.namespaces = new Map();
+    this.storageFactory = storageFactory;
   }
 
   /**
@@ -40,7 +50,12 @@ export class NamespaceManager {
 
     try {
       // Create the namespace instance
-      const namespace = new VectorNamespace(name, config, this.rootDatabaseName);
+      const namespace = new VectorNamespace(
+        name,
+        config,
+        this.rootDatabaseName,
+        this.storageFactory,
+      );
       await namespace.init();
 
       // Cache the namespace
@@ -72,7 +87,12 @@ export class NamespaceManager {
     }
 
     // Create and cache namespace instance
-    const namespace = new VectorNamespace(name, info.config, this.rootDatabaseName);
+    const namespace = new VectorNamespace(
+      name,
+      info.config,
+      this.rootDatabaseName,
+      this.storageFactory,
+    );
     await namespace.init();
 
     this.namespaces.set(name, namespace);

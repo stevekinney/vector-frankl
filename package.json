@@ -66,6 +66,12 @@
       "import": "./dist/compression.js",
       "require": "./dist/cjs/compression.js",
       "default": "./dist/compression.js"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "import": "./dist/storage.js",
+      "require": "./dist/cjs/storage.js",
+      "default": "./dist/storage.js"
     }
   },
   "main": "./dist/index.js",
@@ -78,9 +84,9 @@
   ],
   "scripts": {
     "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:cjs",
-    "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
+    "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts ./src/storage.ts",
     "build:clean": "rm -rf dist",
-    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
+    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts ./src/storage.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "check:env": "bun run scripts/check-environment.ts",
     "clean": "bun run scripts/clean.ts",
@@ -151,6 +157,14 @@
     "prettier": "^3.5.3",
     "sort-package-json": "^3.2.1",
     "typescript-eslint": "^8.56.1"
+  },
+  "peerDependencies": {
+    "sql.js": ">=1.8.0"
+  },
+  "peerDependenciesMeta": {
+    "sql.js": {
+      "optional": true
+    }
   },
   "engines": {
     "bun": ">=1.13.0",

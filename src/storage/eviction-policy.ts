@@ -1,5 +1,4 @@
-import { VectorStorage } from '@/core/storage.js';
-import type { VectorData } from '@/core/types.js';
+import type { StorageAdapter, VectorData } from '@/core/types.js';
 import { log } from '@/utilities/logger.js';
 
 /**
@@ -40,7 +39,7 @@ interface VectorScore {
  * Base class for eviction policies
  */
 abstract class BaseEvictionPolicy {
-  constructor(protected storage: VectorStorage) {}
+  constructor(protected storage: StorageAdapter) {}
 
   abstract evict(config: EvictionConfig): Promise<EvictionResult>;
 
@@ -426,7 +425,7 @@ export class HybridEvictionPolicy extends BaseEvictionPolicy {
 export class EvictionManager {
   private policies: Map<string, BaseEvictionPolicy> = new Map();
 
-  constructor(private storage: VectorStorage) {
+  constructor(private storage: StorageAdapter) {
     this.policies.set('lru', new LRUEvictionPolicy(storage));
     this.policies.set('lfu', new LFUEvictionPolicy(storage));
     this.policies.set('ttl', new TTLEvictionPolicy(storage));

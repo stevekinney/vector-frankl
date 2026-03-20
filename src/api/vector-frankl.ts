@@ -5,6 +5,7 @@ import type {
   NamespaceInfo,
   SearchOptions,
   SearchResult,
+  StorageAdapterFactory,
   VectorData,
   VectorFormat,
 } from '@/core/types.js';
@@ -23,8 +24,9 @@ export class VectorFrankl {
   constructor(
     private _rootDatabaseName = 'vector-frankl',
     private defaultDimension?: number,
+    storageFactory?: StorageAdapterFactory,
   ) {
-    this.namespaceManager = new NamespaceManager(this._rootDatabaseName);
+    this.namespaceManager = new NamespaceManager(this._rootDatabaseName, storageFactory);
   }
 
   /**
