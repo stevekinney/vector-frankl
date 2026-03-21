@@ -152,17 +152,23 @@
     "eslint-plugin-unused-imports": "^4.1.4",
     "globals": "^16.1.0",
     "husky": "^9.1.7",
+    "level": "^10.0.0",
     "lint-staged": "^16.0.0",
+    "lmdb": "^3.0.0",
     "playwright": "^1.53.2",
     "prettier": "^3.5.3",
     "sort-package-json": "^3.2.1",
     "typescript-eslint": "^8.56.1"
   },
   "peerDependencies": {
-    "sql.js": ">=1.8.0"
+    "level": ">=8.0.0",
+    "lmdb": ">=3.0.0"
   },
   "peerDependenciesMeta": {
-    "sql.js": {
+    "level": {
+      "optional": true
+    },
+    "lmdb": {
       "optional": true
     }
   },
