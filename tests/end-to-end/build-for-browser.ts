@@ -24,6 +24,29 @@ if (!result.success) {
   process.exit(1);
 }
 
+// Build browser-compatible storage adapters (OPFS only — SQLite/FileSystem
+// have non-browser dependencies and are excluded).
+const storageResult = await Bun.build({
+  entrypoints: ['./src/storage/adapters/opfs-adapter.ts'],
+  outdir: './dist',
+  format: 'esm',
+  target: 'browser',
+  minify: true,
+  sourcemap: 'external',
+  splitting: false,
+  naming: '[dir]/storage.[ext]',
+});
+
+if (!storageResult.success) {
+  console.error('Storage adapter build failed:');
+  for (const message of storageResult.logs) {
+    console.error(message);
+  }
+  process.exit(1);
+}
+
+console.log('Storage adapter build completed');
+
 // Read the built file and ensure it has proper exports
 const builtFile = await file('./dist/index.js').text();
 
