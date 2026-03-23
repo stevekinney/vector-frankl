@@ -9,9 +9,13 @@ interface SuiteResult {
 test.describe('Storage Adapters E2E', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/storage-adapters.html');
-    await page.waitForFunction(() => (window as any).__STORAGE_ADAPTERS_READY__ === true, null, {
-      timeout: 10_000,
-    });
+    await page.waitForFunction(
+      () => (window as any).__STORAGE_ADAPTERS_READY__ === true,
+      null,
+      {
+        timeout: 10_000,
+      },
+    );
   });
 
   // ── MemoryStorageAdapter (baseline sanity check) ────────────────────
@@ -23,7 +27,10 @@ test.describe('Storage Adapters E2E', () => {
       });
 
       if (result.failures.length > 0) {
-        console.log('MemoryStorageAdapter failures:', JSON.stringify(result.failures, null, 2));
+        console.log(
+          'MemoryStorageAdapter failures:',
+          JSON.stringify(result.failures, null, 2),
+        );
       }
 
       expect(result.failed).toBe(0);
@@ -108,14 +115,19 @@ test.describe('Storage Adapters E2E', () => {
       });
 
       if (result.failures.length > 0) {
-        console.log('OPFSStorageAdapter failures:', JSON.stringify(result.failures, null, 2));
+        console.log(
+          'OPFSStorageAdapter failures:',
+          JSON.stringify(result.failures, null, 2),
+        );
       }
 
       expect(result.failed).toBe(0);
       expect(result.passed).toBeGreaterThan(0);
     });
 
-    test('binary format round-trip preserves Float32Array precision', async ({ page }) => {
+    test('binary format round-trip preserves Float32Array precision', async ({
+      page,
+    }) => {
       const result = await page.evaluate(() => {
         return (window as any).testOPFSBinaryFormat();
       });

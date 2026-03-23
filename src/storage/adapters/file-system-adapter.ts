@@ -1,7 +1,12 @@
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
 import { VectorNotFoundError } from '@/core/errors.js';
-import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from '@/core/types.js';
+import type {
+  BatchOptions,
+  BatchProgress,
+  StorageAdapter,
+  VectorData,
+} from '@/core/types.js';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -121,7 +126,11 @@ function jsonToVectorData(json: string): VectorData {
 
 function vectorDataToBinary(data: VectorData): Uint8Array {
   const vectorLength = data.vector.length;
-  const vectorBytes = new Uint8Array(data.vector.buffer, data.vector.byteOffset, data.vector.byteLength);
+  const vectorBytes = new Uint8Array(
+    data.vector.buffer,
+    data.vector.byteOffset,
+    data.vector.byteLength,
+  );
 
   // Build the JSON payload for everything except the vector itself.
   const fields: Record<string, unknown> = {
@@ -157,7 +166,10 @@ function binaryToVectorData(arrayBuffer: ArrayBuffer): VectorData {
   const vector = new Float32Array(arrayBuffer.slice(4, 4 + vectorByteLength));
 
   const jsonBytes = new Uint8Array(arrayBuffer, 4 + vectorByteLength);
-  const fields = JSON.parse(new TextDecoder().decode(jsonBytes)) as Record<string, unknown>;
+  const fields = JSON.parse(new TextDecoder().decode(jsonBytes)) as Record<
+    string,
+    unknown
+  >;
 
   const result: VectorData = {
     id: fields['id'] as string,
@@ -166,11 +178,15 @@ function binaryToVectorData(arrayBuffer: ArrayBuffer): VectorData {
     timestamp: fields['timestamp'] as number,
   };
 
-  if (fields['metadata'] !== undefined) result.metadata = fields['metadata'] as Record<string, unknown>;
+  if (fields['metadata'] !== undefined)
+    result.metadata = fields['metadata'] as Record<string, unknown>;
   if (fields['format'] !== undefined) result.format = fields['format'] as string;
-  if (fields['normalized'] !== undefined) result.normalized = fields['normalized'] as boolean;
-  if (fields['lastAccessed'] !== undefined) result.lastAccessed = fields['lastAccessed'] as number;
-  if (fields['accessCount'] !== undefined) result.accessCount = fields['accessCount'] as number;
+  if (fields['normalized'] !== undefined)
+    result.normalized = fields['normalized'] as boolean;
+  if (fields['lastAccessed'] !== undefined)
+    result.lastAccessed = fields['lastAccessed'] as number;
+  if (fields['accessCount'] !== undefined)
+    result.accessCount = fields['accessCount'] as number;
   if (fields['compression'] !== undefined) {
     result.compression = fields['compression'] as NonNullable<VectorData['compression']>;
   }
@@ -412,9 +428,17 @@ export class FileSystemStorageAdapter implements StorageAdapter {
   }
 
   async updateBatch(
-    updates: Array<{ id: string; vector?: Float32Array; metadata?: Record<string, unknown> }>,
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
     _options?: BatchOptions,
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     let succeeded = 0;
     let failed = 0;
     const errors: Array<{ id: string; error: Error }> = [];

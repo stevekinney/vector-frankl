@@ -95,8 +95,12 @@ describe('LRUEvictionPolicy', () => {
     const storage = new TestStorage();
     const now = Date.now();
 
-    storage.addTestVector(createTestVector({ id: 'old', lastAccessed: now - 3 * ONE_DAY }));
-    storage.addTestVector(createTestVector({ id: 'mid', lastAccessed: now - 2 * ONE_DAY }));
+    storage.addTestVector(
+      createTestVector({ id: 'old', lastAccessed: now - 3 * ONE_DAY }),
+    );
+    storage.addTestVector(
+      createTestVector({ id: 'mid', lastAccessed: now - 2 * ONE_DAY }),
+    );
     storage.addTestVector(createTestVector({ id: 'new', lastAccessed: now }));
 
     const policy = new LRUEvictionPolicy(storage.asAdapter());
@@ -150,7 +154,9 @@ describe('LRUEvictionPolicy', () => {
         metadata: { permanent: true },
       }),
     );
-    storage.addTestVector(createTestVector({ id: 'normal', lastAccessed: now - 5 * ONE_DAY }));
+    storage.addTestVector(
+      createTestVector({ id: 'normal', lastAccessed: now - 5 * ONE_DAY }),
+    );
 
     const policy = new LRUEvictionPolicy(storage.asAdapter());
     const result = await policy.evict({
@@ -177,7 +183,9 @@ describe('LRUEvictionPolicy', () => {
         metadata: { permanent: true },
       }),
     );
-    storage.addTestVector(createTestVector({ id: 'normal', lastAccessed: now - 5 * ONE_DAY }));
+    storage.addTestVector(
+      createTestVector({ id: 'normal', lastAccessed: now - 5 * ONE_DAY }),
+    );
 
     const policy = new LRUEvictionPolicy(storage.asAdapter());
     const result = await policy.evict({
@@ -198,9 +206,7 @@ describe('LRUEvictionPolicy', () => {
     storage.addTestVector(
       createTestVector({ id: 'old-ts', timestamp: now - 5 * ONE_DAY }),
     );
-    storage.addTestVector(
-      createTestVector({ id: 'new-ts', timestamp: now }),
-    );
+    storage.addTestVector(createTestVector({ id: 'new-ts', timestamp: now }));
 
     const policy = new LRUEvictionPolicy(storage.asAdapter());
     const result = await policy.evict({ strategy: 'lru', maxVectors: 1 });
@@ -230,9 +236,15 @@ describe('LFUEvictionPolicy', () => {
     const storage = new TestStorage();
     const now = Date.now();
 
-    storage.addTestVector(createTestVector({ id: 'rare', accessCount: 1, lastAccessed: now }));
-    storage.addTestVector(createTestVector({ id: 'popular', accessCount: 100, lastAccessed: now }));
-    storage.addTestVector(createTestVector({ id: 'medium', accessCount: 10, lastAccessed: now }));
+    storage.addTestVector(
+      createTestVector({ id: 'rare', accessCount: 1, lastAccessed: now }),
+    );
+    storage.addTestVector(
+      createTestVector({ id: 'popular', accessCount: 100, lastAccessed: now }),
+    );
+    storage.addTestVector(
+      createTestVector({ id: 'medium', accessCount: 10, lastAccessed: now }),
+    );
 
     const policy = new LFUEvictionPolicy(storage.asAdapter());
     const result = await policy.evict({ strategy: 'lfu', maxVectors: 1 });
@@ -250,7 +262,11 @@ describe('LFUEvictionPolicy', () => {
     const now = Date.now();
 
     storage.addTestVector(
-      createTestVector({ id: 'old-access', accessCount: 5, lastAccessed: now - 3 * ONE_DAY }),
+      createTestVector({
+        id: 'old-access',
+        accessCount: 5,
+        lastAccessed: now - 3 * ONE_DAY,
+      }),
     );
     storage.addTestVector(
       createTestVector({ id: 'new-access', accessCount: 5, lastAccessed: now }),
@@ -268,7 +284,11 @@ describe('LFUEvictionPolicy', () => {
     const storage = new TestStorage();
 
     storage.addTestVector(
-      createTestVector({ id: 'permanent', accessCount: 0, metadata: { permanent: true } }),
+      createTestVector({
+        id: 'permanent',
+        accessCount: 0,
+        metadata: { permanent: true },
+      }),
     );
     storage.addTestVector(createTestVector({ id: 'normal', accessCount: 0 }));
 
@@ -295,7 +315,11 @@ describe('TTLEvictionPolicy', () => {
     const now = Date.now();
 
     storage.addTestVector(
-      createTestVector({ id: 'expired', lastAccessed: now - 2 * ONE_DAY, timestamp: now - 3 * ONE_DAY }),
+      createTestVector({
+        id: 'expired',
+        lastAccessed: now - 2 * ONE_DAY,
+        timestamp: now - 3 * ONE_DAY,
+      }),
     );
     storage.addTestVector(
       createTestVector({ id: 'fresh', lastAccessed: now, timestamp: now }),
@@ -639,12 +663,8 @@ describe('EvictionManager', () => {
     const storage = new TestStorage();
     const now = Date.now();
 
-    storage.addTestVector(
-      createTestVector({ id: 'a', lastAccessed: now - 5 * ONE_DAY }),
-    );
-    storage.addTestVector(
-      createTestVector({ id: 'b', lastAccessed: now }),
-    );
+    storage.addTestVector(createTestVector({ id: 'a', lastAccessed: now - 5 * ONE_DAY }));
+    storage.addTestVector(createTestVector({ id: 'b', lastAccessed: now }));
 
     const manager = new EvictionManager(storage.asAdapter());
     const result = await manager.evict({ strategy: 'lru', maxVectors: 1 });
@@ -660,9 +680,9 @@ describe('EvictionManager', () => {
     const storage = new TestStorage();
     const manager = new EvictionManager(storage.asAdapter());
 
-    expect(
-      manager.evict({ strategy: 'unknown' as 'lru' }),
-    ).rejects.toThrow('Unknown eviction strategy: unknown');
+    expect(manager.evict({ strategy: 'unknown' as 'lru' })).rejects.toThrow(
+      'Unknown eviction strategy: unknown',
+    );
   });
 
   describe('getEvictionStats', () => {
@@ -808,8 +828,12 @@ describe('Error handling', () => {
     const storage = new TestStorage();
     const now = Date.now();
 
-    storage.addTestVector(createTestVector({ id: 'good', lastAccessed: now - 2 * ONE_DAY }));
-    storage.addTestVector(createTestVector({ id: 'also-good', lastAccessed: now - ONE_DAY }));
+    storage.addTestVector(
+      createTestVector({ id: 'good', lastAccessed: now - 2 * ONE_DAY }),
+    );
+    storage.addTestVector(
+      createTestVector({ id: 'also-good', lastAccessed: now - ONE_DAY }),
+    );
 
     // Intercept delete so it fails for a specific id.
     const failSet = new Set(['good']);
@@ -838,8 +862,12 @@ describe('Error handling', () => {
     const storage = new TestStorage();
     const now = Date.now();
 
-    storage.addTestVector(createTestVector({ id: 'fail-me', accessCount: 0, lastAccessed: now - ONE_DAY }));
-    storage.addTestVector(createTestVector({ id: 'keep-going', accessCount: 1, lastAccessed: now }));
+    storage.addTestVector(
+      createTestVector({ id: 'fail-me', accessCount: 0, lastAccessed: now - ONE_DAY }),
+    );
+    storage.addTestVector(
+      createTestVector({ id: 'keep-going', accessCount: 1, lastAccessed: now }),
+    );
 
     const failSet = new Set(['fail-me']);
     storage.deleteInterceptor = async (id: string) => {

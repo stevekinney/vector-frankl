@@ -1,5 +1,10 @@
 import { VectorNotFoundError } from '@/core/errors.js';
-import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from '@/core/types.js';
+import type {
+  BatchOptions,
+  BatchProgress,
+  StorageAdapter,
+  VectorData,
+} from '@/core/types.js';
 
 // ---------------------------------------------------------------------------
 // Bun.RedisClient types (declared inline since the @types/bun version may
@@ -157,7 +162,9 @@ export class RedisStorageAdapter implements StorageAdapter {
 
   async init(): Promise<void> {
     if (typeof Bun === 'undefined' || !Bun.RedisClient) {
-      throw new Error('RedisStorageAdapter requires the Bun runtime with built-in Redis support');
+      throw new Error(
+        'RedisStorageAdapter requires the Bun runtime with built-in Redis support',
+      );
     }
 
     const RedisClient = Bun.RedisClient as unknown as BunRedisClientConstructor;
@@ -394,9 +401,17 @@ export class RedisStorageAdapter implements StorageAdapter {
   }
 
   async updateBatch(
-    updates: Array<{ id: string; vector?: Float32Array; metadata?: Record<string, unknown> }>,
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
     _options?: BatchOptions,
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     const client = this.getClient();
     let succeeded = 0;
     let failed = 0;

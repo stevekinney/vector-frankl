@@ -140,7 +140,10 @@ export class WebGPUManager {
       log.info('WebGPU initialized successfully');
 
       if (this.config.debug) {
-        log.debug('GPU Capabilities', this.capabilities as unknown as Record<string, unknown>);
+        log.debug(
+          'GPU Capabilities',
+          this.capabilities as unknown as Record<string, unknown>,
+        );
       }
     } catch (error) {
       throw new Error(

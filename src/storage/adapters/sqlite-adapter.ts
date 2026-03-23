@@ -1,7 +1,12 @@
 import { rm } from 'node:fs/promises';
 
 import { VectorNotFoundError } from '@/core/errors.js';
-import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from '@/core/types.js';
+import type {
+  BatchOptions,
+  BatchProgress,
+  StorageAdapter,
+  VectorData,
+} from '@/core/types.js';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -79,7 +84,9 @@ function rowToVectorData(row: VectorRow): VectorData {
   }
 
   if (row.compression !== null) {
-    data.compression = JSON.parse(row.compression) as NonNullable<VectorData['compression']>;
+    data.compression = JSON.parse(row.compression) as NonNullable<
+      VectorData['compression']
+    >;
   }
 
   return data;
@@ -273,7 +280,9 @@ export class SQLiteStorageAdapter implements StorageAdapter {
 
   async count(): Promise<number> {
     const database = this.requireDatabase();
-    const row = database.query('SELECT COUNT(*) as total FROM vectors').get() as { total: number } | null;
+    const row = database.query('SELECT COUNT(*) as total FROM vectors').get() as {
+      total: number;
+    } | null;
     return row?.total ?? 0;
   }
 
@@ -308,24 +317,22 @@ export class SQLiteStorageAdapter implements StorageAdapter {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
 
-    const runBatch = database.transaction(
-      (batch: VectorData[]) => {
-        for (const vector of batch) {
-          insertStatement.run(
-            vector.id,
-            vectorToBlob(vector.vector),
-            vector.metadata !== undefined ? JSON.stringify(vector.metadata) : null,
-            vector.magnitude,
-            vector.format ?? null,
-            vector.normalized ? 1 : 0,
-            vector.timestamp || now,
-            now,
-            vector.accessCount ?? 0,
-            vector.compression !== undefined ? JSON.stringify(vector.compression) : null,
-          );
-        }
-      },
-    );
+    const runBatch = database.transaction((batch: VectorData[]) => {
+      for (const vector of batch) {
+        insertStatement.run(
+          vector.id,
+          vectorToBlob(vector.vector),
+          vector.metadata !== undefined ? JSON.stringify(vector.metadata) : null,
+          vector.magnitude,
+          vector.format ?? null,
+          vector.normalized ? 1 : 0,
+          vector.timestamp || now,
+          now,
+          vector.accessCount ?? 0,
+          vector.compression !== undefined ? JSON.stringify(vector.compression) : null,
+        );
+      }
+    });
 
     for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
       if (options?.abortSignal?.aborted) {
@@ -365,7 +372,8 @@ export class SQLiteStorageAdapter implements StorageAdapter {
       throw new VectorNotFoundError(id);
     }
 
-    const magnitude = options?.updateMagnitude !== false ? calculateMagnitude(vector) : undefined;
+    const magnitude =
+      options?.updateMagnitude !== false ? calculateMagnitude(vector) : undefined;
     const timestamp = options?.updateTimestamp !== false ? Date.now() : undefined;
 
     let sql = 'UPDATE vectors SET vector = ?';
@@ -393,9 +401,9 @@ export class SQLiteStorageAdapter implements StorageAdapter {
   ): Promise<void> {
     const database = this.requireDatabase();
 
-    const row = database
-      .query('SELECT metadata FROM vectors WHERE id = ?')
-      .get(id) as { metadata: string | null } | null;
+    const row = database.query('SELECT metadata FROM vectors WHERE id = ?').get(id) as {
+      metadata: string | null;
+    } | null;
 
     if (!row) {
       throw new VectorNotFoundError(id);
@@ -426,9 +434,17 @@ export class SQLiteStorageAdapter implements StorageAdapter {
   }
 
   async updateBatch(
-    updates: Array<{ id: string; vector?: Float32Array; metadata?: Record<string, unknown> }>,
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
     _options?: BatchOptions,
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     const database = this.requireDatabase();
     let succeeded = 0;
     let failed = 0;
@@ -456,7 +472,9 @@ export class SQLiteStorageAdapter implements StorageAdapter {
           }
 
           if (update.metadata) {
-            const existing = row.metadata ? (JSON.parse(row.metadata) as Record<string, unknown>) : {};
+            const existing = row.metadata
+              ? (JSON.parse(row.metadata) as Record<string, unknown>)
+              : {};
             const merged = { ...existing, ...update.metadata };
             setClauses.push('metadata = ?');
             params.push(JSON.stringify(merged));

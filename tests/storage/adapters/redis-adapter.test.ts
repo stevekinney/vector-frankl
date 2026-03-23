@@ -97,11 +97,8 @@ const { RedisStorageAdapter } = await import('@/storage/adapters/redis-adapter.j
 // Run the shared adapter test suite
 // ---------------------------------------------------------------------------
 
-runStorageAdapterTests(
-  'RedisStorageAdapter',
-  async () => {
-    store.clear();
-    sets.clear();
-    return new RedisStorageAdapter({ prefix: 'test' });
-  },
-);
+runStorageAdapterTests('RedisStorageAdapter', async () => {
+  store.clear();
+  sets.clear();
+  return new RedisStorageAdapter({ prefix: 'test' });
+});

@@ -23,7 +23,9 @@ runStorageAdapterTests(
 
 describe('IndexedDatabaseStorageAdapter-specific', () => {
   it('exposes the underlying VectorDatabase via getDatabase()', async () => {
-    const adapter = new IndexedDatabaseStorageAdapter({ name: `test-idb-escape-${counter++}` });
+    const adapter = new IndexedDatabaseStorageAdapter({
+      name: `test-idb-escape-${counter++}`,
+    });
     await adapter.init();
 
     const database = adapter.getDatabase();

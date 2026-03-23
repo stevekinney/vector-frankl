@@ -4,10 +4,7 @@ import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 import { runStorageAdapterTests } from './adapter-test-suite.js';
 
 // Run the shared behavioral test suite with default options (clone on)
-runStorageAdapterTests(
-  'MemoryStorageAdapter',
-  () => new MemoryStorageAdapter(),
-);
+runStorageAdapterTests('MemoryStorageAdapter', () => new MemoryStorageAdapter());
 
 // Run the shared suite again with cloning disabled to cover those branches
 runStorageAdapterTests(
@@ -93,7 +90,10 @@ describe('MemoryStorageAdapter-specific', () => {
     });
 
     it('returns the same reference when cloneOnRead is false', async () => {
-      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
       await adapter.put({
         id: 'ref',
         vector: new Float32Array([1, 2]),

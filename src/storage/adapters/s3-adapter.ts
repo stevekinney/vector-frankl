@@ -1,5 +1,10 @@
 import { VectorNotFoundError } from '@/core/errors.js';
-import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from '@/core/types.js';
+import type {
+  BatchOptions,
+  BatchProgress,
+  StorageAdapter,
+  VectorData,
+} from '@/core/types.js';
 
 // ---------------------------------------------------------------------------
 // Bun S3 types (declared inline since @types/bun may not yet include the
@@ -163,7 +168,9 @@ export class S3StorageAdapter implements StorageAdapter {
 
   async init(): Promise<void> {
     if (typeof Bun === 'undefined' || !Bun.s3) {
-      throw new Error('S3StorageAdapter requires the Bun runtime with built-in S3 support');
+      throw new Error(
+        'S3StorageAdapter requires the Bun runtime with built-in S3 support',
+      );
     }
 
     this.s3 = Bun.s3 as unknown as BunS3Client;
@@ -405,9 +412,17 @@ export class S3StorageAdapter implements StorageAdapter {
   }
 
   async updateBatch(
-    updates: Array<{ id: string; vector?: Float32Array; metadata?: Record<string, unknown> }>,
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
     _options?: BatchOptions,
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     let succeeded = 0;
     let failed = 0;
     const errors: Array<{ id: string; error: Error }> = [];

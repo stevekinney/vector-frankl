@@ -146,9 +146,17 @@ export class IndexedDatabaseStorageAdapter implements StorageAdapter {
   }
 
   async updateBatch(
-    updates: Array<{ id: string; vector?: Float32Array; metadata?: Record<string, unknown> }>,
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
     options?: BatchOptions,
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     const storage = this.requireStorage();
     return storage.updateBatch(updates, options);
   }

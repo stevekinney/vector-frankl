@@ -179,7 +179,8 @@ export class WorkerPool {
       this.workers[this.workers.indexOf(worker)] = newWorker;
     } catch (recreateError) {
       log.error('Failed to recreate worker', {
-        error: recreateError instanceof Error ? recreateError.message : String(recreateError),
+        error:
+          recreateError instanceof Error ? recreateError.message : String(recreateError),
       });
     }
   }

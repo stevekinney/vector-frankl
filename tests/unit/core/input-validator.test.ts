@@ -24,18 +24,30 @@ describe('InputValidator', () => {
     });
 
     test('throws when the identifier is not a string', () => {
-      expect(() => InputValidator.validateVectorId(123)).toThrow('Vector ID must be a string');
-      expect(() => InputValidator.validateVectorId(null)).toThrow('Vector ID must be a string');
+      expect(() => InputValidator.validateVectorId(123)).toThrow(
+        'Vector ID must be a string',
+      );
+      expect(() => InputValidator.validateVectorId(null)).toThrow(
+        'Vector ID must be a string',
+      );
       expect(() => InputValidator.validateVectorId(undefined)).toThrow(
         'Vector ID must be a string',
       );
-      expect(() => InputValidator.validateVectorId(true)).toThrow('Vector ID must be a string');
-      expect(() => InputValidator.validateVectorId({})).toThrow('Vector ID must be a string');
-      expect(() => InputValidator.validateVectorId([])).toThrow('Vector ID must be a string');
+      expect(() => InputValidator.validateVectorId(true)).toThrow(
+        'Vector ID must be a string',
+      );
+      expect(() => InputValidator.validateVectorId({})).toThrow(
+        'Vector ID must be a string',
+      );
+      expect(() => InputValidator.validateVectorId([])).toThrow(
+        'Vector ID must be a string',
+      );
     });
 
     test('throws when the identifier is an empty string', () => {
-      expect(() => InputValidator.validateVectorId('')).toThrow('Vector ID cannot be empty');
+      expect(() => InputValidator.validateVectorId('')).toThrow(
+        'Vector ID cannot be empty',
+      );
     });
 
     test('throws when the identifier exceeds 255 characters', () => {
@@ -100,27 +112,39 @@ describe('InputValidator', () => {
     });
 
     test('throws when the value is not a number', () => {
-      expect(() => InputValidator.validateDimension('384')).toThrow('Dimension must be a number');
-      expect(() => InputValidator.validateDimension(null)).toThrow('Dimension must be a number');
+      expect(() => InputValidator.validateDimension('384')).toThrow(
+        'Dimension must be a number',
+      );
+      expect(() => InputValidator.validateDimension(null)).toThrow(
+        'Dimension must be a number',
+      );
       expect(() => InputValidator.validateDimension(undefined)).toThrow(
         'Dimension must be a number',
       );
     });
 
     test('throws when the value is not an integer', () => {
-      expect(() => InputValidator.validateDimension(3.14)).toThrow('Dimension must be an integer');
+      expect(() => InputValidator.validateDimension(3.14)).toThrow(
+        'Dimension must be an integer',
+      );
       expect(() => InputValidator.validateDimension(384.5)).toThrow(
         'Dimension must be an integer',
       );
     });
 
     test('throws when the value is zero', () => {
-      expect(() => InputValidator.validateDimension(0)).toThrow('Dimension must be positive');
+      expect(() => InputValidator.validateDimension(0)).toThrow(
+        'Dimension must be positive',
+      );
     });
 
     test('throws when the value is negative', () => {
-      expect(() => InputValidator.validateDimension(-1)).toThrow('Dimension must be positive');
-      expect(() => InputValidator.validateDimension(-100)).toThrow('Dimension must be positive');
+      expect(() => InputValidator.validateDimension(-1)).toThrow(
+        'Dimension must be positive',
+      );
+      expect(() => InputValidator.validateDimension(-100)).toThrow(
+        'Dimension must be positive',
+      );
     });
 
     test('throws when the value exceeds 100,000', () => {
@@ -130,7 +154,9 @@ describe('InputValidator', () => {
     });
 
     test('throws when the value is NaN', () => {
-      expect(() => InputValidator.validateDimension(NaN)).toThrow('Dimension must be an integer');
+      expect(() => InputValidator.validateDimension(NaN)).toThrow(
+        'Dimension must be an integer',
+      );
     });
 
     test('throws when the value is Infinity', () => {
@@ -154,8 +180,12 @@ describe('InputValidator', () => {
     });
 
     test('throws when the value is not a number', () => {
-      expect(() => InputValidator.validateK('5')).toThrow('Search parameter k must be a number');
-      expect(() => InputValidator.validateK(null)).toThrow('Search parameter k must be a number');
+      expect(() => InputValidator.validateK('5')).toThrow(
+        'Search parameter k must be a number',
+      );
+      expect(() => InputValidator.validateK(null)).toThrow(
+        'Search parameter k must be a number',
+      );
     });
 
     test('throws when the value is not an integer', () => {
@@ -165,11 +195,15 @@ describe('InputValidator', () => {
     });
 
     test('throws when the value is zero', () => {
-      expect(() => InputValidator.validateK(0)).toThrow('Search parameter k must be positive');
+      expect(() => InputValidator.validateK(0)).toThrow(
+        'Search parameter k must be positive',
+      );
     });
 
     test('throws when the value is negative', () => {
-      expect(() => InputValidator.validateK(-1)).toThrow('Search parameter k must be positive');
+      expect(() => InputValidator.validateK(-1)).toThrow(
+        'Search parameter k must be positive',
+      );
     });
 
     test('throws when the value exceeds 10,000', () => {
@@ -198,31 +232,45 @@ describe('InputValidator', () => {
     });
 
     test('throws when the value is not a number', () => {
-      expect(() => InputValidator.validateDistance('0.5')).toThrow('Distance must be a number');
-      expect(() => InputValidator.validateDistance(null)).toThrow('Distance must be a number');
+      expect(() => InputValidator.validateDistance('0.5')).toThrow(
+        'Distance must be a number',
+      );
+      expect(() => InputValidator.validateDistance(null)).toThrow(
+        'Distance must be a number',
+      );
     });
 
     test('throws when the value is Infinity', () => {
-      expect(() => InputValidator.validateDistance(Infinity)).toThrow('Distance must be finite');
-      expect(() => InputValidator.validateDistance(-Infinity)).toThrow('Distance must be finite');
+      expect(() => InputValidator.validateDistance(Infinity)).toThrow(
+        'Distance must be finite',
+      );
+      expect(() => InputValidator.validateDistance(-Infinity)).toThrow(
+        'Distance must be finite',
+      );
     });
 
     test('throws when the value is NaN', () => {
-      expect(() => InputValidator.validateDistance(NaN)).toThrow('Distance must be finite');
+      expect(() => InputValidator.validateDistance(NaN)).toThrow(
+        'Distance must be finite',
+      );
     });
 
     test('throws when the value is negative', () => {
       expect(() => InputValidator.validateDistance(-0.001)).toThrow(
         'Distance must be non-negative',
       );
-      expect(() => InputValidator.validateDistance(-1)).toThrow('Distance must be non-negative');
+      expect(() => InputValidator.validateDistance(-1)).toThrow(
+        'Distance must be non-negative',
+      );
     });
 
     test('throws when the value exceeds 1000', () => {
       expect(() => InputValidator.validateDistance(1000.001)).toThrow(
         'Distance cannot exceed 1000',
       );
-      expect(() => InputValidator.validateDistance(1001)).toThrow('Distance cannot exceed 1000');
+      expect(() => InputValidator.validateDistance(1001)).toThrow(
+        'Distance cannot exceed 1000',
+      );
     });
   });
 
@@ -250,8 +298,12 @@ describe('InputValidator', () => {
       expect(() => InputValidator.validateMetadata('string')).toThrow(
         'Metadata must be an object',
       );
-      expect(() => InputValidator.validateMetadata(42)).toThrow('Metadata must be an object');
-      expect(() => InputValidator.validateMetadata(true)).toThrow('Metadata must be an object');
+      expect(() => InputValidator.validateMetadata(42)).toThrow(
+        'Metadata must be an object',
+      );
+      expect(() => InputValidator.validateMetadata(true)).toThrow(
+        'Metadata must be an object',
+      );
     });
 
     test('throws when the number of properties exceeds the default limit of 1000', () => {
@@ -292,9 +344,9 @@ describe('InputValidator', () => {
       });
 
       test('throws when a key starts with double underscores (prototype pollution attempt)', () => {
-        expect(() => InputValidator.validateMetadata({ __constructor__: 'value' })).toThrow(
-          'Invalid metadata key',
-        );
+        expect(() =>
+          InputValidator.validateMetadata({ __constructor__: 'value' }),
+        ).toThrow('Invalid metadata key');
         expect(() => InputValidator.validateMetadata({ __lookup__: 'value' })).toThrow(
           'Invalid metadata key',
         );
@@ -316,9 +368,9 @@ describe('InputValidator', () => {
       });
 
       test('throws when a key contains a forward slash', () => {
-        expect(() => InputValidator.validateMetadata({ 'path/to/file': 'value' })).toThrow(
-          'Invalid metadata key',
-        );
+        expect(() =>
+          InputValidator.validateMetadata({ 'path/to/file': 'value' }),
+        ).toThrow('Invalid metadata key');
       });
     });
 
@@ -354,9 +406,9 @@ describe('InputValidator', () => {
       });
 
       test('throws when a value has a disallowed type (e.g. function)', () => {
-        expect(() =>
-          InputValidator.validateMetadata({ fn: () => {} }),
-        ).toThrow('Invalid metadata value type: function');
+        expect(() => InputValidator.validateMetadata({ fn: () => {} })).toThrow(
+          'Invalid metadata value type: function',
+        );
       });
 
       test('rejects a type when it is excluded from the allowedTypes set', () => {
@@ -437,7 +489,9 @@ describe('InputValidator', () => {
       expect(() => InputValidator.validateVectorIds(null)).toThrow(
         'Vector IDs must be an array',
       );
-      expect(() => InputValidator.validateVectorIds({})).toThrow('Vector IDs must be an array');
+      expect(() => InputValidator.validateVectorIds({})).toThrow(
+        'Vector IDs must be an array',
+      );
     });
 
     test('throws when the array is empty', () => {
@@ -465,9 +519,9 @@ describe('InputValidator', () => {
     });
 
     test('validates each individual identifier (rejects invalid IDs within the array)', () => {
-      expect(() => InputValidator.validateVectorIds(['valid', 123 as unknown as string])).toThrow(
-        'Vector ID must be a string',
-      );
+      expect(() =>
+        InputValidator.validateVectorIds(['valid', 123 as unknown as string]),
+      ).toThrow('Vector ID must be a string');
       expect(() => InputValidator.validateVectorIds(['valid', ''])).toThrow(
         'Vector ID cannot be empty',
       );
@@ -479,13 +533,15 @@ describe('InputValidator', () => {
 
     test('applies the item validator to each element and returns results', () => {
       const doubleValidator = (item: unknown, _index: number) => (item as number) * 2;
-      expect(InputValidator.validateBatchData([1, 2, 3], doubleValidator)).toEqual([2, 4, 6]);
+      expect(InputValidator.validateBatchData([1, 2, 3], doubleValidator)).toEqual([
+        2, 4, 6,
+      ]);
     });
 
     test('throws when the data is not an array', () => {
-      expect(() => InputValidator.validateBatchData('not-array', identityValidator)).toThrow(
-        'Batch data must be an array',
-      );
+      expect(() =>
+        InputValidator.validateBatchData('not-array', identityValidator),
+      ).toThrow('Batch data must be an array');
       expect(() => InputValidator.validateBatchData(null, identityValidator)).toThrow(
         'Batch data must be an array',
       );
@@ -525,9 +581,9 @@ describe('InputValidator', () => {
         if (index === 2) throw new Error('third item is bad');
         return index;
       };
-      expect(() => InputValidator.validateBatchData([1, 2, 3], failOnThirdValidator)).toThrow(
-        'Invalid item at index 2: third item is bad',
-      );
+      expect(() =>
+        InputValidator.validateBatchData([1, 2, 3], failOnThirdValidator),
+      ).toThrow('Invalid item at index 2: third item is bad');
     });
 
     test('handles non-Error exceptions in the item validator', () => {
@@ -623,12 +679,18 @@ describe('InputValidator', () => {
     });
 
     test('throws when the namespace is not a string', () => {
-      expect(() => InputValidator.validateNamespace(42)).toThrow('Namespace must be a string');
-      expect(() => InputValidator.validateNamespace(null)).toThrow('Namespace must be a string');
+      expect(() => InputValidator.validateNamespace(42)).toThrow(
+        'Namespace must be a string',
+      );
+      expect(() => InputValidator.validateNamespace(null)).toThrow(
+        'Namespace must be a string',
+      );
     });
 
     test('throws when the namespace is empty', () => {
-      expect(() => InputValidator.validateNamespace('')).toThrow('Namespace cannot be empty');
+      expect(() => InputValidator.validateNamespace('')).toThrow(
+        'Namespace cannot be empty',
+      );
     });
 
     test('throws when the namespace exceeds 64 characters', () => {
@@ -690,7 +752,9 @@ describe('InputValidator', () => {
     });
 
     test('handles a string composed entirely of control characters', () => {
-      expect(InputValidator.sanitizeString('\x00\x01\x02\x03\x04\x05\x06\x07\x08')).toBe('');
+      expect(InputValidator.sanitizeString('\x00\x01\x02\x03\x04\x05\x06\x07\x08')).toBe(
+        '',
+      );
     });
 
     test('preserves unicode characters', () => {
@@ -731,9 +795,9 @@ describe('InputValidator', () => {
     });
 
     test('throws when the filter property is not valid metadata', () => {
-      expect(() => InputValidator.validateSearchOptions({ filter: 'not-an-object' })).toThrow(
-        'Metadata must be an object',
-      );
+      expect(() =>
+        InputValidator.validateSearchOptions({ filter: 'not-an-object' }),
+      ).toThrow('Metadata must be an object');
     });
 
     test('validates includeMetadata as a boolean', () => {
@@ -749,9 +813,9 @@ describe('InputValidator', () => {
       expect(() => InputValidator.validateSearchOptions({ includeMetadata: 1 })).toThrow(
         'includeMetadata must be a boolean',
       );
-      expect(() => InputValidator.validateSearchOptions({ includeMetadata: 'true' })).toThrow(
-        'includeMetadata must be a boolean',
-      );
+      expect(() =>
+        InputValidator.validateSearchOptions({ includeMetadata: 'true' }),
+      ).toThrow('includeMetadata must be a boolean');
     });
 
     test('validates includeVector as a boolean', () => {

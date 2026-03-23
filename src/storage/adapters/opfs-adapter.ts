@@ -1,5 +1,14 @@
-import { BatchOperationError, BrowserSupportError, VectorNotFoundError } from '@/core/errors.js';
-import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from '@/core/types.js';
+import {
+  BatchOperationError,
+  BrowserSupportError,
+  VectorNotFoundError,
+} from '@/core/errors.js';
+import type {
+  BatchOptions,
+  BatchProgress,
+  StorageAdapter,
+  VectorData,
+} from '@/core/types.js';
 
 // OPFS types declared inline since they may not be in the TypeScript lib.
 
@@ -8,7 +17,10 @@ interface FileSystemDirectoryHandle {
     name: string,
     options?: { create?: boolean },
   ): Promise<FileSystemDirectoryHandle>;
-  getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>;
+  getFileHandle(
+    name: string,
+    options?: { create?: boolean },
+  ): Promise<FileSystemFileHandle>;
   removeEntry(name: string, options?: { recursive?: boolean }): Promise<void>;
   values(): AsyncIterableIterator<FileSystemHandle>;
 }
@@ -279,9 +291,12 @@ export class OPFSStorageAdapter implements StorageAdapter {
       throw new BrowserSupportError('Origin Private File System');
     }
 
-    const opfsRoot = (await navigator.storage.getDirectory()) as unknown as FileSystemDirectoryHandle;
+    const opfsRoot =
+      (await navigator.storage.getDirectory()) as unknown as FileSystemDirectoryHandle;
     this.rootHandle = await opfsRoot.getDirectoryHandle(this.directory, { create: true });
-    this.vectorsHandle = await this.rootHandle.getDirectoryHandle('vectors', { create: true });
+    this.vectorsHandle = await this.rootHandle.getDirectoryHandle('vectors', {
+      create: true,
+    });
   }
 
   async close(): Promise<void> {
@@ -289,7 +304,8 @@ export class OPFSStorageAdapter implements StorageAdapter {
   }
 
   async destroy(): Promise<void> {
-    const opfsRoot = (await navigator.storage.getDirectory()) as unknown as FileSystemDirectoryHandle;
+    const opfsRoot =
+      (await navigator.storage.getDirectory()) as unknown as FileSystemDirectoryHandle;
     await opfsRoot.removeEntry(this.directory, { recursive: true });
     this.rootHandle = undefined;
     this.vectorsHandle = undefined;
@@ -386,7 +402,10 @@ export class OPFSStorageAdapter implements StorageAdapter {
         if (isNotFoundError(error)) {
           errors.push({ id, error: new VectorNotFoundError(id) });
         } else {
-          errors.push({ id, error: error instanceof Error ? error : new Error(String(error)) });
+          errors.push({
+            id,
+            error: error instanceof Error ? error : new Error(String(error)),
+          });
         }
       }
     }
@@ -575,9 +594,17 @@ export class OPFSStorageAdapter implements StorageAdapter {
   }
 
   async updateBatch(
-    updates: Array<{ id: string; vector?: Float32Array; metadata?: Record<string, unknown> }>,
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
     options?: BatchOptions,
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     const directory = this.requireVectorsHandle();
     let succeeded = 0;
     let failed = 0;
@@ -681,7 +708,9 @@ export class OPFSStorageAdapter implements StorageAdapter {
     }
   }
 
-  private async readVectorFromHandle(fileHandle: FileSystemFileHandle): Promise<VectorData> {
+  private async readVectorFromHandle(
+    fileHandle: FileSystemFileHandle,
+  ): Promise<VectorData> {
     const file = await fileHandle.getFile();
 
     if (this.format === 'binary') {

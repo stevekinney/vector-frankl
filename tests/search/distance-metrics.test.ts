@@ -63,7 +63,14 @@ describe('DistanceMetrics', () => {
 
   describe('get', () => {
     it('should return a metric implementation for each default name', () => {
-      for (const name of ['cosine', 'euclidean', 'manhattan', 'hamming', 'jaccard', 'dot']) {
+      for (const name of [
+        'cosine',
+        'euclidean',
+        'manhattan',
+        'hamming',
+        'jaccard',
+        'dot',
+      ]) {
         const metric = registry.get(name);
         expect(metric.name).toBe(name);
         expect(typeof metric.calculate).toBe('function');
@@ -378,14 +385,16 @@ describe('OptimizedDistanceMetrics', () => {
     });
 
     it('should handle vectors with length 1 (no unrolled iterations)', () => {
-      expect(OptimizedDistanceMetrics.euclideanOptimized(float32(3), float32(7))).toBeCloseTo(
-        4,
-        5,
-      );
+      expect(
+        OptimizedDistanceMetrics.euclideanOptimized(float32(3), float32(7)),
+      ).toBeCloseTo(4, 5);
     });
 
     it('should handle vectors with length 2', () => {
-      const result = OptimizedDistanceMetrics.euclideanOptimized(float32(0, 0), float32(3, 4));
+      const result = OptimizedDistanceMetrics.euclideanOptimized(
+        float32(0, 0),
+        float32(3, 4),
+      );
       expect(result).toBeCloseTo(5, 5);
     });
 
@@ -429,7 +438,10 @@ describe('OptimizedDistanceMetrics', () => {
       const defaultMetric = DistanceMetrics.getInstance().get('cosine');
       const expected = defaultMetric.calculate(vectorA, vectorB);
 
-      expect(OptimizedDistanceMetrics.cosineOptimized(vectorA, vectorB)).toBeCloseTo(expected, 5);
+      expect(OptimizedDistanceMetrics.cosineOptimized(vectorA, vectorB)).toBeCloseTo(
+        expected,
+        5,
+      );
     });
 
     it('should return 0 for identical normalized vectors', () => {
@@ -444,7 +456,10 @@ describe('OptimizedDistanceMetrics', () => {
       const defaultMetric = DistanceMetrics.getInstance().get('cosine');
       const expected = defaultMetric.calculate(vectorA, vectorB);
 
-      expect(OptimizedDistanceMetrics.cosineOptimized(vectorA, vectorB)).toBeCloseTo(expected, 5);
+      expect(OptimizedDistanceMetrics.cosineOptimized(vectorA, vectorB)).toBeCloseTo(
+        expected,
+        5,
+      );
     });
 
     it('should handle single-element normalized vectors', () => {
@@ -466,7 +481,10 @@ describe('OptimizedDistanceMetrics', () => {
       const defaultMetric = DistanceMetrics.getInstance().get('cosine');
       const expected = defaultMetric.calculate(vectorA, vectorB);
 
-      expect(OptimizedDistanceMetrics.cosineOptimized(vectorA, vectorB)).toBeCloseTo(expected, 3);
+      expect(OptimizedDistanceMetrics.cosineOptimized(vectorA, vectorB)).toBeCloseTo(
+        expected,
+        3,
+      );
     });
   });
 });
@@ -482,7 +500,14 @@ describe('DistanceCalculator', () => {
     });
 
     it('should accept all default metric names without error', () => {
-      for (const name of ['cosine', 'euclidean', 'manhattan', 'hamming', 'jaccard', 'dot']) {
+      for (const name of [
+        'cosine',
+        'euclidean',
+        'manhattan',
+        'hamming',
+        'jaccard',
+        'dot',
+      ]) {
         expect(() => new DistanceCalculator(name)).not.toThrow();
       }
     });
@@ -725,13 +750,21 @@ describe('registerCustomMetric', () => {
       name: '__overwrite_target',
       calculate: () => 1,
     });
-    expect(DistanceMetrics.getInstance().get('__overwrite_target').calculate(float32(), float32())).toBe(1);
+    expect(
+      DistanceMetrics.getInstance()
+        .get('__overwrite_target')
+        .calculate(float32(), float32()),
+    ).toBe(1);
 
     registerCustomMetric({
       name: '__overwrite_target',
       calculate: () => 2,
     });
-    expect(DistanceMetrics.getInstance().get('__overwrite_target').calculate(float32(), float32())).toBe(2);
+    expect(
+      DistanceMetrics.getInstance()
+        .get('__overwrite_target')
+        .calculate(float32(), float32()),
+    ).toBe(2);
   });
 });
 
@@ -837,7 +870,9 @@ describe('Edge cases', () => {
       const calculator = new DistanceCalculator('euclidean');
       const vectorA = float32(1, 2, 3);
       const vectorB = float32(4, 5, 6);
-      expect(calculator.calculate(vectorA, vectorB)).toBe(calculator.calculate(vectorB, vectorA));
+      expect(calculator.calculate(vectorA, vectorB)).toBe(
+        calculator.calculate(vectorB, vectorA),
+      );
     });
 
     it('should produce symmetric results for cosine', () => {
@@ -854,21 +889,27 @@ describe('Edge cases', () => {
       const calculator = new DistanceCalculator('manhattan');
       const vectorA = float32(1, 2, 3);
       const vectorB = float32(4, 5, 6);
-      expect(calculator.calculate(vectorA, vectorB)).toBe(calculator.calculate(vectorB, vectorA));
+      expect(calculator.calculate(vectorA, vectorB)).toBe(
+        calculator.calculate(vectorB, vectorA),
+      );
     });
 
     it('should produce symmetric results for hamming', () => {
       const calculator = new DistanceCalculator('hamming');
       const vectorA = float32(1, 0, 1);
       const vectorB = float32(0, 1, 1);
-      expect(calculator.calculate(vectorA, vectorB)).toBe(calculator.calculate(vectorB, vectorA));
+      expect(calculator.calculate(vectorA, vectorB)).toBe(
+        calculator.calculate(vectorB, vectorA),
+      );
     });
 
     it('should produce symmetric results for jaccard', () => {
       const calculator = new DistanceCalculator('jaccard');
       const vectorA = float32(1, 0, 1);
       const vectorB = float32(0, 1, 1);
-      expect(calculator.calculate(vectorA, vectorB)).toBe(calculator.calculate(vectorB, vectorA));
+      expect(calculator.calculate(vectorA, vectorB)).toBe(
+        calculator.calculate(vectorB, vectorA),
+      );
     });
   });
 

@@ -1,5 +1,14 @@
-import { BatchOperationError, BrowserSupportError, VectorNotFoundError } from '@/core/errors.js';
-import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from '@/core/types.js';
+import {
+  BatchOperationError,
+  BrowserSupportError,
+  VectorNotFoundError,
+} from '@/core/errors.js';
+import type {
+  BatchOptions,
+  BatchProgress,
+  StorageAdapter,
+  VectorData,
+} from '@/core/types.js';
 
 declare const chrome: {
   storage: {
@@ -484,9 +493,17 @@ export class ChromeStorageAdapter implements StorageAdapter {
   }
 
   async updateBatch(
-    updates: Array<{ id: string; vector?: Float32Array; metadata?: Record<string, unknown> }>,
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
     options?: BatchOptions,
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     const batchSize = options?.batchSize ?? DEFAULT_BATCH_SIZE;
     let succeeded = 0;
     let failed = 0;

@@ -248,9 +248,7 @@ describe('SearchEngine', () => {
 
       const wrongDimension = new Float32Array([1, 2, 3]); // 3 instead of 4
 
-      expect(engine.search(wrongDimension, 5)).rejects.toThrow(
-        DimensionMismatchError,
-      );
+      expect(engine.search(wrongDimension, 5)).rejects.toThrow(DimensionMismatchError);
     });
 
     it('should throw DimensionMismatchError on searchRange with wrong dimension', async () => {
@@ -342,9 +340,7 @@ describe('SearchEngine', () => {
     });
 
     it('should not include metadata when includeMetadata is false or omitted', async () => {
-      const vectors = [
-        makeVector('tagged', [1, 0, 0], { category: 'science' }),
-      ];
+      const vectors = [makeVector('tagged', [1, 0, 0], { category: 'science' })];
       const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
@@ -382,10 +378,7 @@ describe('SearchEngine', () => {
     });
 
     it('should return all vectors when k exceeds collection size', async () => {
-      const vectors = [
-        makeVector('a', [1, 0, 0]),
-        makeVector('b', [0, 1, 0]),
-      ];
+      const vectors = [makeVector('a', [1, 0, 0]), makeVector('b', [0, 1, 0])];
       const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
@@ -412,12 +405,9 @@ describe('SearchEngine', () => {
 
     it('should produce score of 1 for an identical vector with euclidean', async () => {
       const vectors = [makeVector('same', [1, 0, 0])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([1, 0, 0]), 1);
       // Euclidean distance 0 => score = exp(0) = 1
@@ -426,12 +416,9 @@ describe('SearchEngine', () => {
 
     it('should produce score of 1 for an identical vector with manhattan', async () => {
       const vectors = [makeVector('same', [1, 0, 0])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'manhattan',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'manhattan', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([1, 0, 0]), 1);
       // Manhattan distance 0 => score = exp(0) = 1
@@ -461,12 +448,9 @@ describe('SearchEngine', () => {
         makeVector('mid', [3, 0, 0]),
         makeVector('far', [10, 0, 0]),
       ];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([0, 0, 0]), 3);
       // Results are sorted by distance (ascending), so scores should be descending.
@@ -476,12 +460,9 @@ describe('SearchEngine', () => {
 
     it('should produce score of 1 for identical binary vectors with hamming', async () => {
       const vectors = [makeVector('same', [1, 0, 1, 0])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        4,
-        'hamming',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 4, 'hamming', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([1, 0, 1, 0]), 1);
       // Hamming distance 0 => score = 1 - 0/dimension = 1
@@ -490,12 +471,9 @@ describe('SearchEngine', () => {
 
     it('should produce score of 1 for identical vectors with jaccard', async () => {
       const vectors = [makeVector('same', [1, 0, 1, 0])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        4,
-        'jaccard',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 4, 'jaccard', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([1, 0, 1, 0]), 1);
       // Jaccard distance 0 => score = 1 - 0 = 1
@@ -519,16 +497,10 @@ describe('SearchEngine', () => {
   // -----------------------------------------------------------------------
   describe('searchRange', () => {
     it('should return vectors within the distance threshold', async () => {
-      const vectors = [
-        makeVector('near', [1, 0, 0]),
-        makeVector('far', [0, 0, 1]),
-      ];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const vectors = [makeVector('near', [1, 0, 0]), makeVector('far', [0, 0, 1])];
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       // Distance from [1,0,0] to [1,0,0] is 0, to [0,0,1] is sqrt(2) ~= 1.414
       const results = await engine.searchRange(new Float32Array([1, 0, 0]), 0.5);
@@ -538,17 +510,11 @@ describe('SearchEngine', () => {
 
     it('should return empty array when nothing is within threshold', async () => {
       const vectors = [makeVector('far', [10, 10, 10])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
-      const results = await engine.searchRange(
-        new Float32Array([0, 0, 0]),
-        0.01,
-      );
+      const results = await engine.searchRange(new Float32Array([0, 0, 0]), 0.01);
       expect(results).toHaveLength(0);
     });
 
@@ -556,19 +522,14 @@ describe('SearchEngine', () => {
       const vectors = Array.from({ length: 20 }, (_, i) =>
         makeVector(`v${i}`, [1, 0, 0]),
       );
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       // All vectors are identical => distance 0 for all.
-      const results = await engine.searchRange(
-        new Float32Array([1, 0, 0]),
-        1.0,
-        { maxResults: 5 },
-      );
+      const results = await engine.searchRange(new Float32Array([1, 0, 0]), 1.0, {
+        maxResults: 5,
+      });
       expect(results.length).toBeLessThanOrEqual(5);
     });
 
@@ -578,21 +539,13 @@ describe('SearchEngine', () => {
         makeVector('b', [5, 0, 0]),
         makeVector('c', [1, 0, 0]),
       ];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
-      const results = await engine.searchRange(
-        new Float32Array([0, 0, 0]),
-        100,
-      );
+      const results = await engine.searchRange(new Float32Array([0, 0, 0]), 100);
       for (let i = 1; i < results.length; i++) {
-        expect(results[i]!.distance!).toBeGreaterThanOrEqual(
-          results[i - 1]!.distance!,
-        );
+        expect(results[i]!.distance!).toBeGreaterThanOrEqual(results[i - 1]!.distance!);
       }
     });
   });
@@ -605,18 +558,15 @@ describe('SearchEngine', () => {
       const vectors = Array.from({ length: 15 }, (_, i) =>
         makeVector(`v${i}`, [i + 1, 0, 0]),
       );
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       const batches: number[] = [];
-      for await (const batch of engine.searchStream(
-        new Float32Array([0, 0, 0]),
-        { batchSize: 5, maxResults: 15 },
-      )) {
+      for await (const batch of engine.searchStream(new Float32Array([0, 0, 0]), {
+        batchSize: 5,
+        maxResults: 15,
+      })) {
         batches.push(batch.length);
       }
 
@@ -628,18 +578,15 @@ describe('SearchEngine', () => {
       const vectors = Array.from({ length: 10 }, (_, i) =>
         makeVector(`v${i}`, [i + 1, 0, 0]),
       );
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       let totalYielded = 0;
-      for await (const batch of engine.searchStream(
-        new Float32Array([0, 0, 0]),
-        { batchSize: 3, maxResults: 7 },
-      )) {
+      for await (const batch of engine.searchStream(new Float32Array([0, 0, 0]), {
+        batchSize: 3,
+        maxResults: 7,
+      })) {
         totalYielded += batch.length;
       }
       expect(totalYielded).toBe(7);
@@ -713,10 +660,7 @@ describe('SearchEngine', () => {
   // -----------------------------------------------------------------------
   describe('batchSimilarity', () => {
     it('should compute pairwise similarity scores', async () => {
-      const vectors = [
-        makeVector('a', [1, 0, 0]),
-        makeVector('b', [0, 1, 0]),
-      ];
+      const vectors = [makeVector('a', [1, 0, 0]), makeVector('b', [0, 1, 0])];
       const queries = [new Float32Array([1, 0, 0])];
 
       const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {

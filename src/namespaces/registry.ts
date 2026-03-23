@@ -25,9 +25,12 @@ export class NamespaceRegistry {
       onUpgrade: (db: IDBDatabase) => {
         // Namespaces store
         if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.NAMESPACES)) {
-          const namespaceStore = db.createObjectStore(NamespaceRegistry.STORES.NAMESPACES, {
-            keyPath: 'name',
-          });
+          const namespaceStore = db.createObjectStore(
+            NamespaceRegistry.STORES.NAMESPACES,
+            {
+              keyPath: 'name',
+            },
+          );
           namespaceStore.createIndex('created', 'created');
           namespaceStore.createIndex('modified', 'modified');
           namespaceStore.createIndex('vectorCount', ['stats', 'vectorCount']);

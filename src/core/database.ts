@@ -13,7 +13,9 @@ export class VectorDatabase {
   private database: IDBDatabase | null = null;
   private readonly name: string;
   private readonly version: number;
-  private readonly onUpgrade: ((database: IDBDatabase, oldVersion: number) => void) | undefined;
+  private readonly onUpgrade:
+    | ((database: IDBDatabase, oldVersion: number) => void)
+    | undefined;
   private initializationPromise: Promise<void> | null = null;
 
   /**
