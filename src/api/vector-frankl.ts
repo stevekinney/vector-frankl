@@ -32,7 +32,10 @@ export class VectorFrankl {
     options?: VectorFranklOptions,
   ) {
     this.defaultDimension = options?.defaultDimension;
-    this.namespaceManager = new NamespaceManager(this._rootDatabaseName, options?.storageFactory);
+    this.namespaceManager = new NamespaceManager(
+      this._rootDatabaseName,
+      options?.storageFactory,
+    );
   }
 
   /**
