@@ -180,10 +180,10 @@ export class MemoryStorageAdapter implements StorageAdapter {
       throw new VectorNotFoundError(id);
     }
 
-    entry.vector = vector;
+    entry.vector = this.cloneOnWrite ? vector.slice() : vector;
 
     if (options?.updateMagnitude !== false) {
-      entry.magnitude = calculateMagnitude(vector);
+      entry.magnitude = calculateMagnitude(entry.vector);
     }
 
     if (options?.updateTimestamp !== false) {
@@ -202,10 +202,12 @@ export class MemoryStorageAdapter implements StorageAdapter {
       throw new VectorNotFoundError(id);
     }
 
+    const incomingMetadata = this.cloneOnWrite ? structuredClone(metadata) : metadata;
+
     if (options?.merge !== false && entry.metadata) {
-      entry.metadata = { ...entry.metadata, ...metadata };
+      entry.metadata = { ...entry.metadata, ...incomingMetadata };
     } else {
-      entry.metadata = metadata;
+      entry.metadata = incomingMetadata;
     }
 
     if (options?.updateTimestamp !== false) {
@@ -238,14 +240,17 @@ export class MemoryStorageAdapter implements StorageAdapter {
         }
 
         if (update.vector) {
-          entry.vector = update.vector;
-          entry.magnitude = calculateMagnitude(update.vector);
+          entry.vector = this.cloneOnWrite ? update.vector.slice() : update.vector;
+          entry.magnitude = calculateMagnitude(entry.vector);
         }
 
         if (update.metadata) {
-          entry.metadata = entry.metadata
-            ? { ...entry.metadata, ...update.metadata }
+          const incomingMetadata = this.cloneOnWrite
+            ? structuredClone(update.metadata)
             : update.metadata;
+          entry.metadata = entry.metadata
+            ? { ...entry.metadata, ...incomingMetadata }
+            : incomingMetadata;
         }
 
         entry.timestamp = Date.now();

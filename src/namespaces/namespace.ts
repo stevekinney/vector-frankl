@@ -29,6 +29,7 @@ export class VectorNamespace {
     this.vectorDatabase = new VectorDB(this.databaseName, config.dimension, {
       name: this.databaseName,
       version: 1,
+      ...(config.distanceMetric && { distanceMetric: config.distanceMetric }),
       ...(storageFactory && { storageFactory }),
     });
   }
