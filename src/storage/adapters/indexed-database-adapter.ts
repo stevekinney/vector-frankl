@@ -90,9 +90,11 @@ export class IndexedDatabaseStorageAdapter implements StorageAdapter {
     try {
       return await storage.getMany(ids);
     } catch (error) {
-      // VectorStorage throws BatchOperationError when all IDs are missing.
-      // The StorageAdapter contract returns an empty array instead.
-      if (error instanceof BatchOperationError && error.succeeded === 0) {
+      // VectorStorage throws BatchOperationError when all requested IDs are
+      // missing.  The StorageAdapter contract silently returns the found
+      // subset (possibly empty) rather than throwing, so we catch all
+      // BatchOperationError instances regardless of succeeded count.
+      if (error instanceof BatchOperationError) {
         return [];
       }
       throw error;

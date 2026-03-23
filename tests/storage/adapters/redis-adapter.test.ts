@@ -84,6 +84,8 @@ bunRecord['RedisClient'] = MockRedisClient;
 afterAll(() => {
   if (originalRedisClient !== undefined) {
     bunRecord['RedisClient'] = originalRedisClient;
+  } else {
+    delete bunRecord['RedisClient'];
   }
 });
 

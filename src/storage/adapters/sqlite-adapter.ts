@@ -217,7 +217,7 @@ export class SQLiteStorageAdapter implements StorageAdapter {
   async exists(id: string): Promise<boolean> {
     const database = this.requireDatabase();
     const row = database.query('SELECT 1 FROM vectors WHERE id = ? LIMIT 1').get(id);
-    return row !== null;
+    return row != null;
   }
 
   async delete(id: string): Promise<void> {

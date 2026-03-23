@@ -8,8 +8,10 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import {
+  binaryToVectorData,
   calculateMagnitude,
   jsonToVectorData,
+  vectorDataToBinary,
   vectorDataToJson,
 } from './serialization.js';
 
@@ -35,83 +37,6 @@ function encodeVectorId(id: string): string {
   return id.replace(UNSAFE_FILENAME_CHARACTERS, (character) => {
     return `%${character.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase()}`;
   });
-}
-
-// ---------------------------------------------------------------------------
-// Serialization — Binary format
-//
-// Layout: [4-byte uint32 vector length][Float32Array bytes][UTF-8 JSON for
-// remaining fields]
-// ---------------------------------------------------------------------------
-
-function vectorDataToBinary(data: VectorData): Uint8Array {
-  const vectorLength = data.vector.length;
-  const vectorBytes = new Uint8Array(
-    data.vector.buffer,
-    data.vector.byteOffset,
-    data.vector.byteLength,
-  );
-
-  // Build the JSON payload for everything except the vector itself.
-  const fields: Record<string, unknown> = {
-    id: data.id,
-    magnitude: data.magnitude,
-    timestamp: data.timestamp,
-  };
-
-  if (data.metadata !== undefined) fields['metadata'] = data.metadata;
-  if (data.format !== undefined) fields['format'] = data.format;
-  if (data.normalized !== undefined) fields['normalized'] = data.normalized;
-  if (data.lastAccessed !== undefined) fields['lastAccessed'] = data.lastAccessed;
-  if (data.accessCount !== undefined) fields['accessCount'] = data.accessCount;
-  if (data.compression !== undefined) fields['compression'] = data.compression;
-
-  const jsonBytes = new TextEncoder().encode(JSON.stringify(fields));
-
-  // 4 bytes (uint32 vector length) + vector data + JSON tail
-  const buffer = new Uint8Array(4 + vectorBytes.byteLength + jsonBytes.byteLength);
-  const view = new DataView(buffer.buffer);
-  view.setUint32(0, vectorLength, true); // little-endian
-  buffer.set(vectorBytes, 4);
-  buffer.set(jsonBytes, 4 + vectorBytes.byteLength);
-
-  return buffer;
-}
-
-function binaryToVectorData(arrayBuffer: ArrayBuffer): VectorData {
-  const view = new DataView(arrayBuffer);
-  const vectorLength = view.getUint32(0, true);
-  const vectorByteLength = vectorLength * Float32Array.BYTES_PER_ELEMENT;
-
-  const vector = new Float32Array(arrayBuffer.slice(4, 4 + vectorByteLength));
-
-  const jsonBytes = new Uint8Array(arrayBuffer, 4 + vectorByteLength);
-  const fields = JSON.parse(new TextDecoder().decode(jsonBytes)) as Record<
-    string,
-    unknown
-  >;
-
-  const result: VectorData = {
-    id: fields['id'] as string,
-    vector,
-    magnitude: fields['magnitude'] as number,
-    timestamp: fields['timestamp'] as number,
-  };
-
-  if (fields['metadata'] !== undefined)
-    result.metadata = fields['metadata'] as Record<string, unknown>;
-  if (fields['format'] !== undefined) result.format = fields['format'] as string;
-  if (fields['normalized'] !== undefined)
-    result.normalized = fields['normalized'] as boolean;
-  if (fields['lastAccessed'] !== undefined)
-    result.lastAccessed = fields['lastAccessed'] as number;
-  if (fields['accessCount'] !== undefined)
-    result.accessCount = fields['accessCount'] as number;
-  if (fields['compression'] !== undefined) {
-    result.compression = fields['compression'] as NonNullable<VectorData['compression']>;
-  }
-
-  return result;
 }
 
 // ---------------------------------------------------------------------------

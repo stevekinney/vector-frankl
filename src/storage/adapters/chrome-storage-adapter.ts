@@ -9,6 +9,11 @@ import type {
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import {
+  type SerializedVectorData,
+  serializableToVectorData,
+  vectorDataToSerializable,
+} from './serialization.js';
 
 declare const chrome: {
   storage: {
@@ -21,29 +26,6 @@ interface ChromeStorageArea {
   get(keys: string | string[]): Promise<Record<string, unknown>>;
   set(items: Record<string, unknown>): Promise<void>;
   remove(keys: string | string[]): Promise<void>;
-}
-
-/**
- * JSON-serializable representation of VectorData.
- * Float32Array is stored as a plain number array so chrome.storage can persist it.
- */
-interface SerializedVectorData {
-  id: string;
-  vector: number[];
-  metadata?: Record<string, unknown>;
-  magnitude: number;
-  format?: string;
-  normalized?: boolean;
-  timestamp: number;
-  lastAccessed?: number;
-  accessCount?: number;
-  compression?: {
-    strategy: string;
-    originalSize: number;
-    compressedSize: number;
-    compressionRatio: number;
-    precisionLoss: number;
-  };
 }
 
 interface ChromeStorageAdapterOptions {
@@ -124,72 +106,11 @@ export class ChromeStorageAdapter implements StorageAdapter {
   // ---------------------------------------------------------------------------
 
   private serialize(vector: VectorData): SerializedVectorData {
-    const serialized: SerializedVectorData = {
-      id: vector.id,
-      vector: Array.from(vector.vector),
-      magnitude: vector.magnitude,
-      timestamp: vector.timestamp,
-    };
-
-    if (vector.metadata !== undefined) {
-      serialized.metadata = vector.metadata;
-    }
-    if (vector.format !== undefined) {
-      serialized.format = vector.format;
-    }
-    if (vector.normalized !== undefined) {
-      serialized.normalized = vector.normalized;
-    }
-    if (vector.lastAccessed !== undefined) {
-      serialized.lastAccessed = vector.lastAccessed;
-    }
-    if (vector.accessCount !== undefined) {
-      serialized.accessCount = vector.accessCount;
-    }
-    if (vector.compression !== undefined) {
-      serialized.compression = vector.compression;
-    }
-
-    return serialized;
+    return vectorDataToSerializable(vector);
   }
 
   private deserialize(data: SerializedVectorData): VectorData {
-    const vector: VectorData = {
-      id: data.id,
-      vector: new Float32Array(data.vector),
-      magnitude: data.magnitude,
-      timestamp: data.timestamp,
-    };
-
-    if (data.metadata !== undefined) {
-      vector.metadata = data.metadata;
-    }
-    if (data.format !== undefined) {
-      vector.format = data.format;
-    }
-    if (data.normalized !== undefined) {
-      vector.normalized = data.normalized;
-    }
-    if (data.lastAccessed !== undefined) {
-      vector.lastAccessed = data.lastAccessed;
-    }
-    if (data.accessCount !== undefined) {
-      vector.accessCount = data.accessCount;
-    }
-    if (data.compression !== undefined) {
-      vector.compression = {
-        ...data.compression,
-        strategy: data.compression.strategy as VectorData['compression'] extends
-          | infer C
-          | undefined
-          ? C extends { strategy: infer S }
-            ? S
-            : never
-          : never,
-      };
-    }
-
-    return vector;
+    return serializableToVectorData(data);
   }
 
   // ---------------------------------------------------------------------------

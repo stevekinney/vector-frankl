@@ -33,7 +33,7 @@ const storageResult = await Bun.build({
   minify: false,
   sourcemap: 'none',
   splitting: false,
-  naming: '[dir]/storage.[ext]',
+  naming: 'storage.[ext]',
 });
 
 if (!storageResult.success) {
