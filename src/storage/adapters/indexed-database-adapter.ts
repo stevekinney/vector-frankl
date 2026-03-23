@@ -1,5 +1,5 @@
 import { VectorDatabase } from '@/core/database.js';
-import { BatchOperationError } from '@/core/errors.js';
+import { BatchOperationError, VectorNotFoundError } from '@/core/errors.js';
 import { VectorStorage } from '@/core/storage.js';
 import type { BatchOptions, StorageAdapter, VectorData } from '@/core/types.js';
 
@@ -90,11 +90,19 @@ export class IndexedDatabaseStorageAdapter implements StorageAdapter {
     try {
       return await storage.getMany(ids);
     } catch (error) {
-      // VectorStorage throws BatchOperationError when all requested IDs are
-      // missing.  The StorageAdapter contract silently returns the found
-      // subset (possibly empty) rather than throwing, so we catch all
-      // BatchOperationError instances regardless of succeeded count.
+      // VectorStorage throws BatchOperationError when all requested IDs fail.
+      // This can happen for two distinct reasons:
+      //   1. All IDs were simply not found (VectorNotFoundError) — expected;
+      //      the StorageAdapter contract returns the found subset (empty here).
+      //   2. All requests failed due to I/O / transaction errors — unexpected;
+      //      we must re-throw so the caller knows about the storage failure.
       if (error instanceof BatchOperationError) {
+        const hasTransactionFailure = error.errors.some(
+          (entry) => !(entry.error instanceof VectorNotFoundError),
+        );
+        if (hasTransactionFailure) {
+          throw error;
+        }
         return [];
       }
       throw error;
