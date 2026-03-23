@@ -3,7 +3,6 @@ import {
   NamespaceExistsError,
   NamespaceNotFoundError,
   TransactionError,
-
 } from '@/core/errors.js';
 import type { NamespaceConfig, NamespaceInfo, NamespaceStats } from '@/core/types.js';
 import { validateNamespaceName } from './validate-namespace-name.js';
