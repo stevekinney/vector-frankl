@@ -144,16 +144,13 @@ export class NamespaceManager {
       throw new NamespaceNotFoundError(name);
     }
 
-    // Close and remove from cache if loaded
+    // Delete and remove from cache if loaded — this destroys the original adapter's data
     if (this.namespaces.has(name)) {
       const namespace = this.namespaces.get(name)!;
-      await namespace.close();
+      await namespace.delete();
       this.namespaces.delete(name);
-    }
-
-    // Delete the namespace storage
-    if (this.storageFactory) {
-      // Adapter-backed: create a temporary adapter for the namespace and destroy it
+    } else if (this.storageFactory) {
+      // Not loaded: create a temporary adapter to destroy persistent storage
       const namespaceDatabaseName = this.getNamespaceDatabaseName(name);
       const adapter = this.storageFactory(namespaceDatabaseName);
       await adapter.init();
