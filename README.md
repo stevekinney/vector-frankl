@@ -1,6 +1,6 @@
 # Vector Frankl 🚀
 
-A high-performance vector database that runs entirely in the browser, built on IndexedDB for persistent storage. Perfect for building AI-powered applications with semantic search capabilities, vector similarity search, and machine learning workflows directly in the browser.
+A high-performance vector database built on IndexedDB for browser-based storage, with pluggable storage adapters for server-side runtimes. Perfect for building AI-powered applications with semantic search capabilities, vector similarity search, and machine learning workflows.
 
 [![CI](https://github.com/stevekinney/vector-frankl/workflows/CI/badge.svg)](https://github.com/stevekinney/vector-frankl/actions)
 [![TypeScript](https://img.shields.io/badge/TypeScript-100%25_Type_Safe-blue.svg)](https://www.typescriptlang.org/)
@@ -10,7 +10,7 @@ A high-performance vector database that runs entirely in the browser, built on I
 ## ✨ Why Vector Frankl is Awesome
 
 - **Unparalleled Performance:** Leveraging SIMD, WebAssembly, and WebGPU, Vector Frankl delivers near-native speed for vector operations, ensuring your AI features are responsive and efficient, even with large datasets.
-- **True Client-Side AI:** All data storage and vector computations happen directly in the user's browser. This means enhanced privacy, reduced server costs, and the ability to build applications that work seamlessly offline.
+- **Runs Anywhere:** Defaults to IndexedDB in the browser for zero-config client-side AI, but pluggable storage adapters let you run the same API on top of SQLite, LevelDB, LMDB, Redis, S3, or the file system in Bun and Node.
 - **Rich Feature Set:** From advanced vector compression and multiple distance metrics to robust namespace management and comprehensive debugging tools, Vector Frankl provides everything you need to build sophisticated vector-based applications.
 - **Developer-Friendly:** With 100% TypeScript support, a clear API, and built-in performance monitoring, integrating and optimizing your AI workflows has never been easier.
 
@@ -40,7 +40,7 @@ The broader pattern here is moving vector search compute to the edge—the brows
 
 **Vector Storage & Management**
 
-- 🗄️ **Persistent Storage**: Built on IndexedDB for reliable browser-based storage
+- 🗄️ **Pluggable Storage**: IndexedDB (browser default), SQLite, LevelDB, LMDB, Redis, S3, OPFS, Chrome Storage, file system, or in-memory
 - 📊 **Multiple Vector Formats**: Support for Float32Array, Float64Array, Int8Array, Uint8Array, and regular arrays
 - 🔍 **Similarity Search**: Fast brute-force and optimized search algorithms
 - 📝 **Rich Metadata**: Attach and filter by custom metadata with advanced query support
@@ -66,6 +66,7 @@ The broader pattern here is moving vector search compute to the edge—the brows
 
 **Storage Management**
 
+- 🔌 **Pluggable Adapters**: 10 storage backends behind a single `StorageAdapter` interface
 - 📊 **Quota Monitoring**: Track storage usage with automatic cleanup policies
 - 🗑️ **Eviction Strategies**: LRU, LFU, TTL, score-based, and hybrid policies
 - 💾 **Memory Management**: Shared memory pools for efficient data handling
@@ -84,7 +85,7 @@ The broader pattern here is moving vector search compute to the edge—the brows
 
 ## 📋 Prerequisites
 
-- [Bun](https://bun.sh) >= 1.13.0
+- [Bun](https://bun.sh) >= 1.3.0
 - Modern browser with IndexedDB support
 - Chrome/Edge recommended for optimal performance (SIMD, WebGPU)
 
@@ -194,6 +195,54 @@ const results = await products.search(query, 10);
 const namespaces = await db.listNamespaces();
 await db.deleteNamespace('old-collection');
 ```
+
+### Storage Adapters
+
+By default, `VectorDB` and `VectorFrankl` use IndexedDB. Pass a `StorageAdapter` or `StorageAdapterFactory` to swap in a different backend. `MemoryStorageAdapter` and `IndexedDatabaseStorageAdapter` are exported from the main entry point; server-side adapters are imported directly from their files.
+
+```typescript
+import { VectorDB, MemoryStorageAdapter } from 'vector-frankl';
+
+// In-memory (useful for tests)
+const memory = new MemoryStorageAdapter();
+const db = new VectorDB('test', 384, { storage: memory });
+await db.init();
+```
+
+```typescript
+// SQLite (Bun runtime only)
+import { SQLiteStorageAdapter } from 'vector-frankl/src/storage/adapters/sqlite-adapter';
+
+const sqlite = new SQLiteStorageAdapter({ filename: './vectors.db' });
+const db = new VectorDB('my-vectors', 384, { storage: sqlite });
+await db.init();
+```
+
+```typescript
+// Use a factory so each namespace gets its own storage
+import { VectorFrankl } from 'vector-frankl';
+import { SQLiteStorageAdapter } from 'vector-frankl/src/storage/adapters/sqlite-adapter';
+
+const frankl = new VectorFrankl({
+  storageFactory: (name) => new SQLiteStorageAdapter({ filename: `./${name}.db` }),
+});
+await frankl.init();
+```
+
+Available adapters:
+
+| Adapter                         | Backend                    | Environment       |
+| ------------------------------- | -------------------------- | ----------------- |
+| `IndexedDatabaseStorageAdapter` | IndexedDB                  | Browser           |
+| `MemoryStorageAdapter`          | In-memory `Map`            | Any               |
+| `OPFSStorageAdapter`            | Origin Private File System | Browser           |
+| `ChromeStorageAdapter`          | `chrome.storage`           | Chrome extensions |
+| `SQLiteStorageAdapter`          | `bun:sqlite`               | Bun               |
+| `FileSystemStorageAdapter`      | File system (JSON files)   | Bun / Node        |
+| `LevelStorageAdapter`           | LevelDB via `level`        | Bun / Node        |
+| `LmdbStorageAdapter`            | LMDB via `lmdb`            | Bun / Node        |
+| `RedisStorageAdapter`           | `Bun.RedisClient`          | Bun               |
+| `S3StorageAdapter`              | `Bun.s3`                   | Bun               |
 
 ## 🔧 Advanced Features
 
@@ -311,11 +360,15 @@ const searchWithProfiling = withProfiling('vector-search', (query, k) =>
          ┌───────────▼────────────┐
          │    Vector Storage      │
          │  ┌─────────────────┐   │
-         │  │   IndexedDB     │   │
+         │  │ StorageAdapter  │   │
          │  │  Compression    │   │
          │  │   Eviction      │   │
-         │  └─────────────────┘   │
-         └────────────────────────┘
+         │  └────────┬────────┘   │
+         └───────────┼────────────┘
+                     │
+    ┌────────┬───────┼───────┬────────┐
+    ▼        ▼       ▼       ▼        ▼
+ IndexedDB SQLite  Level   LMDB   Redis ...
 ```
 
 ### Performance Layers
@@ -330,7 +383,7 @@ const searchWithProfiling = withProfiling('vector-search', (query, k) =>
 ├─────────────────────────────────────────────────────────────┤
 │        Core: Search | Storage | Compression | Index        │
 ├─────────────────────────────────────────────────────────────┤
-│              Browser: IndexedDB | WebWorkers               │
+│  Storage: IndexedDB | SQLite | LevelDB | LMDB | Redis | S3 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -430,7 +483,7 @@ src/
 ├── performance/        # Performance monitoring utilities
 ├── search/             # Search algorithms and indexing
 ├── simd/               # SIMD optimizations
-├── storage/            # Storage management and eviction
+├── storage/            # Storage adapters, eviction, and quota management
 ├── types/              # Shared type definitions
 ├── utilities/          # Logging, file I/O, and helpers
 ├── vectors/            # Vector operations and formats
