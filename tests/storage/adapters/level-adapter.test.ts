@@ -12,7 +12,8 @@ runStorageAdapterTests(
     tempDirectory = await mkdtemp(join(tmpdir(), 'vf-level-test-'));
     return new LevelStorageAdapter({ directory: tempDirectory });
   },
-  async () => {
+  async (adapter) => {
+    await adapter.destroy();
     await rm(tempDirectory, { recursive: true, force: true });
   },
 );

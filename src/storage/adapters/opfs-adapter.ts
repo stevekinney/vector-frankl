@@ -1,14 +1,11 @@
-import {
-  BatchOperationError,
-  BrowserSupportError,
-  VectorNotFoundError,
-} from '@/core/errors.js';
+import { BrowserSupportError, VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import { calculateMagnitude } from './serialization.js';
 
 // OPFS types declared inline since they may not be in the TypeScript lib.
 
@@ -263,15 +260,7 @@ function idToFilename(id: string): string {
   return sanitizeId(id) + '.vec';
 }
 
-// Magnitude calculation
-
-function calculateMagnitude(vector: Float32Array): number {
-  let sum = 0;
-  for (let i = 0; i < vector.length; i++) {
-    sum += vector[i]! * vector[i]!;
-  }
-  return Math.sqrt(sum);
-}
+// Magnitude calculation is imported from shared serialization utilities.
 
 export class OPFSStorageAdapter implements StorageAdapter {
   private readonly directory: string;
@@ -410,10 +399,8 @@ export class OPFSStorageAdapter implements StorageAdapter {
       }
     }
 
-    if (results.length === 0 && ids.length > 0) {
-      throw new BatchOperationError(0, ids.length, errors);
-    }
-
+    // Return whatever was found (possibly empty). Other adapters return []
+    // when no requested IDs exist, so we follow the same convention.
     return results;
   }
 

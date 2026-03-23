@@ -5,18 +5,11 @@ import type {
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import { calculateMagnitude } from './serialization.js';
 
 interface MemoryStorageAdapterOptions {
   cloneOnRead?: boolean;
   cloneOnWrite?: boolean;
-}
-
-function calculateMagnitude(vector: Float32Array): number {
-  let sum = 0;
-  for (let i = 0; i < vector.length; i++) {
-    sum += vector[i]! * vector[i]!;
-  }
-  return Math.sqrt(sum);
 }
 
 export class MemoryStorageAdapter implements StorageAdapter {

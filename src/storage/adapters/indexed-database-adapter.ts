@@ -26,6 +26,11 @@ export class IndexedDatabaseStorageAdapter implements StorageAdapter {
   // ---------------------------------------------------------------------------
 
   async init(): Promise<void> {
+    // Make init idempotent: if already initialized, do nothing.
+    if (this.database !== null) {
+      return;
+    }
+
     const databaseConfiguration =
       this.options.version !== undefined
         ? { name: this.options.name, version: this.options.version }

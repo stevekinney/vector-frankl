@@ -12,7 +12,8 @@ runStorageAdapterTests(
     tempDirectory = await mkdtemp(join(tmpdir(), 'vf-lmdb-test-'));
     return new LmdbStorageAdapter({ directory: tempDirectory });
   },
-  async () => {
+  async (adapter) => {
+    await adapter.destroy();
     await rm(tempDirectory, { recursive: true, force: true });
   },
 );

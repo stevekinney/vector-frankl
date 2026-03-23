@@ -5,6 +5,11 @@ import type {
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import {
+  calculateMagnitude,
+  jsonToVectorData,
+  vectorDataToJson,
+} from './serialization.js';
 
 // ---------------------------------------------------------------------------
 // Bun S3 types (declared inline since @types/bun may not yet include the
@@ -44,96 +49,6 @@ interface S3StorageAdapterOptions {
   endpoint?: string;
   accessKeyId?: string;
   secretAccessKey?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function calculateMagnitude(vector: Float32Array): number {
-  let sum = 0;
-  for (let i = 0; i < vector.length; i++) {
-    sum += vector[i]! * vector[i]!;
-  }
-  return Math.sqrt(sum);
-}
-
-// ---------------------------------------------------------------------------
-// Serialization — JSON format
-// ---------------------------------------------------------------------------
-
-interface SerializedVectorData {
-  id: string;
-  vector: number[];
-  metadata?: Record<string, unknown>;
-  magnitude: number;
-  format?: string;
-  normalized?: boolean;
-  timestamp: number;
-  lastAccessed?: number;
-  accessCount?: number;
-  compression?: VectorData['compression'];
-}
-
-function vectorDataToJson(data: VectorData): string {
-  const serialized: SerializedVectorData = {
-    id: data.id,
-    vector: Array.from(data.vector),
-    magnitude: data.magnitude,
-    timestamp: data.timestamp,
-  };
-
-  if (data.metadata !== undefined) {
-    serialized.metadata = data.metadata;
-  }
-  if (data.format !== undefined) {
-    serialized.format = data.format;
-  }
-  if (data.normalized !== undefined) {
-    serialized.normalized = data.normalized;
-  }
-  if (data.lastAccessed !== undefined) {
-    serialized.lastAccessed = data.lastAccessed;
-  }
-  if (data.accessCount !== undefined) {
-    serialized.accessCount = data.accessCount;
-  }
-  if (data.compression !== undefined) {
-    serialized.compression = data.compression;
-  }
-
-  return JSON.stringify(serialized);
-}
-
-function jsonToVectorData(json: string): VectorData {
-  const parsed = JSON.parse(json) as SerializedVectorData;
-  const result: VectorData = {
-    id: parsed.id,
-    vector: new Float32Array(parsed.vector),
-    magnitude: parsed.magnitude,
-    timestamp: parsed.timestamp,
-  };
-
-  if (parsed.metadata !== undefined) {
-    result.metadata = parsed.metadata;
-  }
-  if (parsed.format !== undefined) {
-    result.format = parsed.format;
-  }
-  if (parsed.normalized !== undefined) {
-    result.normalized = parsed.normalized;
-  }
-  if (parsed.lastAccessed !== undefined) {
-    result.lastAccessed = parsed.lastAccessed;
-  }
-  if (parsed.accessCount !== undefined) {
-    result.accessCount = parsed.accessCount;
-  }
-  if (parsed.compression !== undefined) {
-    result.compression = parsed.compression;
-  }
-
-  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -376,7 +291,7 @@ export class S3StorageAdapter implements StorageAdapter {
     vector: Float32Array,
     options?: { updateMagnitude?: boolean; updateTimestamp?: boolean },
   ): Promise<void> {
-    const existing = await this.get(id);
+    const existing = await this.readExisting(id);
 
     existing.vector = vector;
 
@@ -396,7 +311,7 @@ export class S3StorageAdapter implements StorageAdapter {
     metadata: Record<string, unknown>,
     options?: { merge?: boolean; updateTimestamp?: boolean },
   ): Promise<void> {
-    const existing = await this.get(id);
+    const existing = await this.readExisting(id);
 
     if (options?.merge !== false && existing.metadata) {
       existing.metadata = { ...existing.metadata, ...metadata };
@@ -429,7 +344,7 @@ export class S3StorageAdapter implements StorageAdapter {
 
     for (const update of updates) {
       try {
-        const existing = await this.get(update.id);
+        const existing = await this.readExisting(update.id);
 
         if (update.vector) {
           existing.vector = update.vector;
@@ -458,6 +373,22 @@ export class S3StorageAdapter implements StorageAdapter {
   }
 
   // ── Internal helpers ────────────────────────────────────────────────────
+
+  /** Read a vector from S3 without updating access tracking. */
+  private async readExisting(id: string): Promise<VectorData> {
+    if (!this.index.has(id)) {
+      throw new VectorNotFoundError(id);
+    }
+
+    const body = await this.getObject(this.vectorKey(id));
+    if (body === null) {
+      this.index.delete(id);
+      await this.persistIndex();
+      throw new VectorNotFoundError(id);
+    }
+
+    return jsonToVectorData(body);
+  }
 
   private vectorKey(id: string): string {
     return `${this.prefix}vectors/${id}.json`;

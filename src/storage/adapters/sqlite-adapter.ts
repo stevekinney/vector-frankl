@@ -7,6 +7,7 @@ import type {
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import { calculateMagnitude } from './serialization.js';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -15,18 +16,6 @@ import type {
 interface SQLiteStorageAdapterOptions {
   /** Path to the SQLite database file, or ':memory:' for in-memory. */
   filename: string;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function calculateMagnitude(vector: Float32Array): number {
-  let sum = 0;
-  for (let i = 0; i < vector.length; i++) {
-    sum += vector[i]! * vector[i]!;
-  }
-  return Math.sqrt(sum);
 }
 
 function vectorToBlob(vector: Float32Array): Uint8Array {
@@ -125,6 +114,11 @@ export class SQLiteStorageAdapter implements StorageAdapter {
   // ── Lifecycle ───────────────────────────────────────────────────────────
 
   async init(): Promise<void> {
+    // Make init idempotent: if a database connection already exists, do nothing.
+    if (this.database !== null) {
+      return;
+    }
+
     const moduleName = 'bun:sqlite';
     const { Database } = (await import(/* webpackIgnore: true */ moduleName)) as {
       Database: new (filename: string) => BunSQLiteDatabase;

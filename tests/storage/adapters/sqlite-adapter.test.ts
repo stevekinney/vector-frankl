@@ -12,7 +12,8 @@ runStorageAdapterTests(
     tempDirectory = await mkdtemp(join(tmpdir(), 'vf-sqlite-test-'));
     return new SQLiteStorageAdapter({ filename: join(tempDirectory, 'test.db') });
   },
-  async () => {
+  async (adapter) => {
+    await adapter.destroy();
     await rm(tempDirectory, { recursive: true, force: true });
   },
 );

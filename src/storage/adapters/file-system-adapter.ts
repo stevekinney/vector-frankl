@@ -7,6 +7,11 @@ import type {
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import {
+  calculateMagnitude,
+  jsonToVectorData,
+  vectorDataToJson,
+} from './serialization.js';
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -22,99 +27,14 @@ interface FileSystemStorageAdapterOptions {
 // ---------------------------------------------------------------------------
 
 /** Characters that are unsafe for most file systems. */
-const UNSAFE_FILENAME_CHARACTERS = /[/\\:*?"<>|]/g;
+// eslint-disable-next-line no-control-regex
+const UNSAFE_FILENAME_CHARACTERS = /[%/\\:*?"<>|\x00-\x1F\x7F]/g;
 
 /** Percent-encode characters that are unsafe in filenames. */
 function encodeVectorId(id: string): string {
   return id.replace(UNSAFE_FILENAME_CHARACTERS, (character) => {
     return `%${character.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase()}`;
   });
-}
-
-function calculateMagnitude(vector: Float32Array): number {
-  let sum = 0;
-  for (let i = 0; i < vector.length; i++) {
-    sum += vector[i]! * vector[i]!;
-  }
-  return Math.sqrt(sum);
-}
-
-// ---------------------------------------------------------------------------
-// Serialization — JSON format
-// ---------------------------------------------------------------------------
-
-interface SerializedVectorData {
-  id: string;
-  vector: number[];
-  metadata?: Record<string, unknown>;
-  magnitude: number;
-  format?: string;
-  normalized?: boolean;
-  timestamp: number;
-  lastAccessed?: number;
-  accessCount?: number;
-  compression?: VectorData['compression'];
-}
-
-function vectorDataToJson(data: VectorData): string {
-  const serialized: SerializedVectorData = {
-    id: data.id,
-    vector: Array.from(data.vector),
-    magnitude: data.magnitude,
-    timestamp: data.timestamp,
-  };
-
-  if (data.metadata !== undefined) {
-    serialized.metadata = data.metadata;
-  }
-  if (data.format !== undefined) {
-    serialized.format = data.format;
-  }
-  if (data.normalized !== undefined) {
-    serialized.normalized = data.normalized;
-  }
-  if (data.lastAccessed !== undefined) {
-    serialized.lastAccessed = data.lastAccessed;
-  }
-  if (data.accessCount !== undefined) {
-    serialized.accessCount = data.accessCount;
-  }
-  if (data.compression !== undefined) {
-    serialized.compression = data.compression;
-  }
-
-  return JSON.stringify(serialized);
-}
-
-function jsonToVectorData(json: string): VectorData {
-  const parsed = JSON.parse(json) as SerializedVectorData;
-  const result: VectorData = {
-    id: parsed.id,
-    vector: new Float32Array(parsed.vector),
-    magnitude: parsed.magnitude,
-    timestamp: parsed.timestamp,
-  };
-
-  if (parsed.metadata !== undefined) {
-    result.metadata = parsed.metadata;
-  }
-  if (parsed.format !== undefined) {
-    result.format = parsed.format;
-  }
-  if (parsed.normalized !== undefined) {
-    result.normalized = parsed.normalized;
-  }
-  if (parsed.lastAccessed !== undefined) {
-    result.lastAccessed = parsed.lastAccessed;
-  }
-  if (parsed.accessCount !== undefined) {
-    result.accessCount = parsed.accessCount;
-  }
-  if (parsed.compression !== undefined) {
-    result.compression = parsed.compression;
-  }
-
-  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -392,7 +312,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
     vector: Float32Array,
     options?: { updateMagnitude?: boolean; updateTimestamp?: boolean },
   ): Promise<void> {
-    const existing = await this.get(id);
+    const existing = await this.readExisting(id);
 
     existing.vector = vector;
 
@@ -412,7 +332,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
     metadata: Record<string, unknown>,
     options?: { merge?: boolean; updateTimestamp?: boolean },
   ): Promise<void> {
-    const existing = await this.get(id);
+    const existing = await this.readExisting(id);
 
     if (options?.merge !== false && existing.metadata) {
       existing.metadata = { ...existing.metadata, ...metadata };
@@ -445,7 +365,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
 
     for (const update of updates) {
       try {
-        const existing = await this.get(update.id);
+        const existing = await this.readExisting(update.id);
 
         if (update.vector) {
           existing.vector = update.vector;
@@ -474,6 +394,18 @@ export class FileSystemStorageAdapter implements StorageAdapter {
   }
 
   // ── Internal helpers ────────────────────────────────────────────────────
+
+  /** Read a vector from disk without updating access tracking. */
+  private async readExisting(id: string): Promise<VectorData> {
+    const filePath = this.vectorFilePath(id);
+    const file = Bun.file(filePath);
+
+    if (!(await file.exists())) {
+      throw new VectorNotFoundError(id);
+    }
+
+    return this.readVectorFile(file);
+  }
 
   private vectorFilePath(id: string): string {
     return `${this.vectorsDirectory}/${encodeVectorId(id)}.vec`;

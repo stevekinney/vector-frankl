@@ -109,9 +109,6 @@ export class VectorDB {
       return;
     }
 
-    if (this.database) {
-      await this.database.init();
-    }
     await this.storage.init();
     this.initialized = true;
   }
