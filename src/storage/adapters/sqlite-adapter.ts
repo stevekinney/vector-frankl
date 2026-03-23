@@ -1,7 +1,5 @@
 import { rm } from 'node:fs/promises';
 
-import { Database as BunDatabase } from 'bun:sqlite';
-
 import { VectorNotFoundError } from '@/core/errors.js';
 import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from '@/core/types.js';
 
@@ -91,9 +89,24 @@ function rowToVectorData(row: VectorRow): VectorData {
 // SQLiteStorageAdapter
 // ---------------------------------------------------------------------------
 
+/** Minimal interface for the bun:sqlite Database instance used by this adapter. */
+interface BunSQLiteDatabase {
+  exec(sql: string): void;
+  run(sql: string, params?: unknown[]): { changes: number };
+  query(sql: string): {
+    get(...params: unknown[]): unknown;
+    all(...params: unknown[]): unknown[];
+  };
+  prepare(sql: string): {
+    run(...params: unknown[]): { changes: number };
+  };
+  transaction<T extends (...args: never[]) => void>(fn: T): T;
+  close(): void;
+}
+
 export class SQLiteStorageAdapter implements StorageAdapter {
   private readonly filename: string;
-  private database: InstanceType<typeof BunDatabase> | null = null;
+  private database: BunSQLiteDatabase | null = null;
 
   constructor(options: SQLiteStorageAdapterOptions) {
     if (typeof Bun === 'undefined') {
@@ -105,7 +118,12 @@ export class SQLiteStorageAdapter implements StorageAdapter {
   // ── Lifecycle ───────────────────────────────────────────────────────────
 
   async init(): Promise<void> {
-    this.database = new BunDatabase(this.filename);
+    const moduleName = 'bun:sqlite';
+    const { Database } = (await import(/* webpackIgnore: true */ moduleName)) as {
+      Database: new (filename: string) => BunSQLiteDatabase;
+    };
+
+    this.database = new Database(this.filename);
     this.database.exec('PRAGMA journal_mode=WAL');
 
     this.database.exec(`
@@ -471,7 +489,7 @@ export class SQLiteStorageAdapter implements StorageAdapter {
 
   // ── Internal helpers ────────────────────────────────────────────────────
 
-  private requireDatabase(): InstanceType<typeof BunDatabase> {
+  private requireDatabase(): BunSQLiteDatabase {
     if (!this.database) {
       throw new Error(
         'SQLiteStorageAdapter is not initialized. Call init() before using the adapter.',

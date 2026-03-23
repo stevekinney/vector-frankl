@@ -40,12 +40,10 @@
       "peerDependencies": {
         "level": ">=8.0.0",
         "lmdb": ">=3.0.0",
-        "sql.js": ">=1.8.0",
       },
       "optionalPeers": [
         "level",
         "lmdb",
-        "sql.js",
       ],
     },
   },

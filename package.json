@@ -66,12 +66,6 @@
       "import": "./dist/compression.js",
       "require": "./dist/cjs/compression.js",
       "default": "./dist/compression.js"
-    },
-    "./storage": {
-      "types": "./dist/storage.d.ts",
-      "import": "./dist/storage.js",
-      "require": "./dist/cjs/storage.js",
-      "default": "./dist/storage.js"
     }
   },
   "main": "./dist/index.js",
@@ -84,9 +78,9 @@
   ],
   "scripts": {
     "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:cjs",
-    "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts ./src/storage.ts",
+    "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
     "build:clean": "rm -rf dist",
-    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts ./src/storage.ts",
+    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "check:env": "bun run scripts/check-environment.ts",
     "clean": "bun run scripts/clean.ts",
@@ -99,9 +93,9 @@
     "prepare": "husky",
     "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
     "start": "bun run dist/index.js",
-    "test": "bun test src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test": "bun test src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts && bun test tests/storage",
     "test:all": "bun run test && bun run test:end-to-end",
-    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "test:end-to-end": "playwright test",
     "test:end-to-end:chromium": "playwright test --project=chromium",
     "test:end-to-end:firefox": "playwright test --project=firefox",
@@ -109,8 +103,8 @@
     "test:end-to-end:mobile": "playwright test --project=mobile-chrome --project=mobile-safari",
     "test:end-to-end:ui": "playwright test --ui",
     "test:end-to-end:webkit": "playwright test --project=webkit",
-    "test:parallel": "bun test --parallel src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
-    "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test:parallel": "bun test --parallel src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "lint-staged": {
