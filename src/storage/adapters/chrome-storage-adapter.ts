@@ -11,6 +11,7 @@ import type {
 } from '@/core/types.js';
 import {
   type SerializedVectorData,
+  calculateMagnitude,
   serializableToVectorData,
   vectorDataToSerializable,
 } from './serialization.js';
@@ -384,12 +385,7 @@ export class ChromeStorageAdapter implements StorageAdapter {
     data.vector = Array.from(vector);
 
     if (options?.updateMagnitude !== false) {
-      let magnitude = 0;
-      for (let i = 0; i < vector.length; i++) {
-        const value = vector[i]!;
-        magnitude += value * value;
-      }
-      data.magnitude = Math.sqrt(magnitude);
+      data.magnitude = calculateMagnitude(vector);
     }
 
     if (options?.updateTimestamp !== false) {
@@ -471,12 +467,7 @@ export class ChromeStorageAdapter implements StorageAdapter {
         try {
           if (update.vector) {
             data.vector = Array.from(update.vector);
-            let magnitude = 0;
-            for (let j = 0; j < update.vector.length; j++) {
-              const value = update.vector[j]!;
-              magnitude += value * value;
-            }
-            data.magnitude = Math.sqrt(magnitude);
+            data.magnitude = calculateMagnitude(update.vector);
           }
 
           if (update.metadata !== undefined) {
