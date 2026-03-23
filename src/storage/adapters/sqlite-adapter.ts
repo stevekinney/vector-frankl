@@ -23,8 +23,7 @@ function vectorToBlob(vector: Float32Array): Uint8Array {
 }
 
 function blobToVector(blob: Uint8Array): Float32Array {
-  const bytes = new Uint8Array(blob);
-  return new Float32Array(bytes.buffer);
+  return new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4);
 }
 
 // ---------------------------------------------------------------------------

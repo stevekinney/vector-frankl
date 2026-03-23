@@ -1,4 +1,8 @@
-import { NamespaceExistsError, NamespaceNotFoundError } from '@/core/errors.js';
+import {
+  NamespaceExistsError,
+  NamespaceNotFoundError,
+  VectorNotFoundError,
+} from '@/core/errors.js';
 import type {
   NamespaceConfig,
   NamespaceInfo,
@@ -69,8 +73,11 @@ export class AdapterNamespaceRegistry {
     try {
       const entry = await this.adapter.get(name);
       return this.deserializeInfo(entry.metadata as Record<string, unknown>);
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof VectorNotFoundError) {
+        return null;
+      }
+      throw error;
     }
   }
 
