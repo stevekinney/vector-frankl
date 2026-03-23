@@ -13,20 +13,26 @@ import { NamespaceManager } from '@/namespaces/manager.js';
 import { VectorNamespace } from '@/namespaces/namespace.js';
 import { VectorDB } from './database.js';
 
+export interface VectorFranklOptions {
+  defaultDimension?: number;
+  storageFactory?: StorageAdapterFactory;
+}
+
 /**
  * Main API for Vector Frankl - A browser-based vector database
  */
 export class VectorFrankl {
   private namespaceManager: NamespaceManager;
   private defaultNamespace?: VectorNamespace;
+  private defaultDimension: number | undefined;
   private initialized = false;
 
   constructor(
     private _rootDatabaseName = 'vector-frankl',
-    private defaultDimension?: number,
-    storageFactory?: StorageAdapterFactory,
+    options?: VectorFranklOptions,
   ) {
-    this.namespaceManager = new NamespaceManager(this._rootDatabaseName, storageFactory);
+    this.defaultDimension = options?.defaultDimension;
+    this.namespaceManager = new NamespaceManager(this._rootDatabaseName, options?.storageFactory);
   }
 
   /**

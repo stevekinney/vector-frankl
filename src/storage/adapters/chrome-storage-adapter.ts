@@ -288,8 +288,9 @@ export class ChromeStorageAdapter implements StorageAdapter {
     await this.withMutex(async () => {
       const ids = await this.readIdIndex();
       const keysToRemove = ids.map((id) => this.vectorKey(id));
-      keysToRemove.push(this.idIndexKey);
-      await this.storage.remove(keysToRemove);
+      if (keysToRemove.length > 0) {
+        await this.storage.remove(keysToRemove);
+      }
       await this.writeIdIndex([]);
     });
   }

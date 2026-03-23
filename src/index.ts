@@ -14,6 +14,7 @@
 
 // Main API (with namespace support)
 export { VectorFrankl } from './api/vector-frankl.js';
+export type { VectorFranklOptions } from './api/vector-frankl.js';
 
 // Simple API (without namespace support)
 export { VectorDB } from './api/database.js';

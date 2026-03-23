@@ -452,7 +452,7 @@ export class OPFSStorageAdapter implements StorageAdapter {
       if (options?.onProgress) {
         const progress: BatchProgress = {
           total: updates.length,
-          completed: start + (end - start),
+          completed: end,
           failed,
           percentage: Math.round((end / updates.length) * 100),
           currentBatch: batchIndex + 1,

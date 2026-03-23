@@ -296,8 +296,14 @@ The namespace API provides multi-collection support with isolated storage.
 ### Constructor
 
 ```typescript
-new VectorFrankl(rootName?: string)
+new VectorFrankl(rootName?: string, options?: VectorFranklOptions)
 ```
+
+| Parameter                  | Type                    | Default           | Description                                               |
+| -------------------------- | ----------------------- | ----------------- | --------------------------------------------------------- |
+| `rootName`                 | `string`                | `'vector-frankl'` | Root database name                                        |
+| `options.defaultDimension` | `number`                | —                 | Dimension for the default namespace                       |
+| `options.storageFactory`   | `StorageAdapterFactory` | —                 | Factory function to create storage adapters per namespace |
 
 ### Methods
 
