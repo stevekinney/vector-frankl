@@ -11,9 +11,8 @@ const result = await Bun.build({
   format: 'esm',
   target: 'browser',
   minify: false,
-  sourcemap: 'external',
+  sourcemap: 'none',
   splitting: false,
-  naming: '[dir]/[name].[ext]',
 });
 
 if (!result.success) {
@@ -32,7 +31,7 @@ const storageResult = await Bun.build({
   format: 'esm',
   target: 'browser',
   minify: false,
-  sourcemap: 'external',
+  sourcemap: 'none',
   splitting: false,
   naming: '[dir]/storage.[ext]',
 });
