@@ -122,18 +122,10 @@
                 assert(arraysEqual(ids, ['gm-a', 'gm-b']), `Expected ['gm-a','gm-b'], got ${JSON.stringify(ids)}`);
             });
 
-            // getMany: all missing — some adapters return [], others throw BatchOperationError
+            // getMany: all missing — adapters return an empty array for missing IDs
             await run('getMany returns empty when all missing', async () => {
-                try {
-                    const results = await adapter.getMany(['x', 'y', 'z']);
-                    assert(results.length === 0, `Expected 0 results, got ${results.length}`);
-                } catch (error) {
-                    // OPFS adapter throws BatchOperationError when all IDs are missing
-                    assert(
-                        error.message.toLowerCase().includes('batch') || error.message.toLowerCase().includes('failed'),
-                        `Unexpected error: ${error.message}`,
-                    );
-                }
+                const results = await adapter.getMany(['x', 'y', 'z']);
+                assert(results.length === 0, `Expected 0 results, got ${results.length}`);
             });
 
             // exists

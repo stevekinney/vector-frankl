@@ -179,6 +179,7 @@ export class S3StorageAdapter implements StorageAdapter {
   async getMany(ids: string[]): Promise<VectorData[]> {
     const results: VectorData[] = [];
     const now = Date.now();
+    let indexChanged = false;
 
     for (const id of ids) {
       if (!this.index.has(id)) {
@@ -188,6 +189,7 @@ export class S3StorageAdapter implements StorageAdapter {
       const body = await this.getObject(this.vectorKey(id));
       if (body === null) {
         this.index.delete(id);
+        indexChanged = true;
         continue;
       }
 
@@ -198,16 +200,31 @@ export class S3StorageAdapter implements StorageAdapter {
       results.push(data);
     }
 
+    if (indexChanged) {
+      await this.persistIndex();
+    }
+
     return results;
   }
 
   async getAll(): Promise<VectorData[]> {
     const results: VectorData[] = [];
+    const staleIds: string[] = [];
 
     for (const id of this.index) {
       const body = await this.getObject(this.vectorKey(id));
-      if (body === null) continue;
+      if (body === null) {
+        staleIds.push(id);
+        continue;
+      }
       results.push(jsonToVectorData(body));
+    }
+
+    if (staleIds.length > 0) {
+      for (const id of staleIds) {
+        this.index.delete(id);
+      }
+      await this.persistIndex();
     }
 
     return results;

@@ -843,8 +843,11 @@ describe('Error handling', () => {
       }
       // Bypass interceptor for the actual delete
       storage.deleteInterceptor = null;
-      await storage.delete(id);
-      storage.deleteInterceptor = interceptor;
+      try {
+        await storage.delete(id);
+      } finally {
+        storage.deleteInterceptor = interceptor;
+      }
     };
     const interceptor = storage.deleteInterceptor;
 
@@ -875,8 +878,11 @@ describe('Error handling', () => {
         throw new Error('I/O error');
       }
       storage.deleteInterceptor = null;
-      await storage.delete(id);
-      storage.deleteInterceptor = interceptor;
+      try {
+        await storage.delete(id);
+      } finally {
+        storage.deleteInterceptor = interceptor;
+      }
     };
     const interceptor = storage.deleteInterceptor;
 

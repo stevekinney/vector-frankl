@@ -140,7 +140,12 @@ export class ChromeStorageAdapter implements StorageAdapter {
   // ---------------------------------------------------------------------------
 
   async put(vector: VectorData): Promise<void> {
-    const serialized = this.serialize(vector);
+    const normalized: VectorData = {
+      ...vector,
+      timestamp: vector.timestamp || Date.now(),
+      lastAccessed: Date.now(),
+    };
+    const serialized = this.serialize(normalized);
     const key = this.vectorKey(vector.id);
 
     await this.withMutex(async () => {

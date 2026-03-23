@@ -491,6 +491,28 @@ export function runStorageAdapterTests(
         expect(second.accessCount).toBe(2);
         expect(second.lastAccessed).toBeGreaterThanOrEqual(firstAccessed);
       });
+
+      it('increments accessCount and updates lastAccessed on getMany()', async () => {
+        await adapter.put(makeVector('gm-at-1', [1, 2]));
+        await adapter.put(makeVector('gm-at-2', [3, 4]));
+
+        const results = await adapter.getMany(['gm-at-1', 'missing-id', 'gm-at-2']);
+        expect(results).toHaveLength(2);
+
+        for (const vector of results) {
+          expect(vector.accessCount).toBe(1);
+          expect(vector.lastAccessed).toBeDefined();
+        }
+
+        const firstAccessed = results[0]!.lastAccessed!;
+        const secondResults = await adapter.getMany(['gm-at-1', 'gm-at-2']);
+        expect(secondResults).toHaveLength(2);
+
+        for (const vector of secondResults) {
+          expect(vector.accessCount).toBe(2);
+          expect(vector.lastAccessed).toBeGreaterThanOrEqual(firstAccessed);
+        }
+      });
     });
   });
 }
