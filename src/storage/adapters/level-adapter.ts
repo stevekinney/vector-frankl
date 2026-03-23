@@ -19,7 +19,7 @@ import {
 
 interface LevelDatabase {
   put(key: string, value: string): Promise<void>;
-  get(key: string): Promise<string | undefined>;
+  get(key: string): Promise<string>;
   del(key: string): Promise<void>;
   batch(): LevelBatch;
   iterator(): AsyncIterable<[string, string]>;
@@ -63,6 +63,28 @@ export class LevelStorageAdapter implements StorageAdapter {
       throw new Error('LevelStorageAdapter has not been initialized. Call init() first.');
     }
     return this.database;
+  }
+
+  /**
+   * Wraps `database.get()` to return `undefined` for missing keys instead of
+   * throwing. The `level` library (v10, abstract-level) throws an error with
+   * `code === 'LEVEL_NOT_FOUND'` when a key does not exist rather than
+   * returning `undefined`, so all callers must go through this helper.
+   */
+  private async safeGet(database: LevelDatabase, key: string): Promise<string | undefined> {
+    try {
+      return await database.get(key);
+    } catch (error) {
+      if (
+        error !== null &&
+        typeof error === 'object' &&
+        'code' in error &&
+        (error as { code: string }).code === 'LEVEL_NOT_FOUND'
+      ) {
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -113,7 +135,7 @@ export class LevelStorageAdapter implements StorageAdapter {
   async get(id: string): Promise<VectorData> {
     const database = this.getDatabase();
 
-    const json = await database.get(id);
+    const json = await this.safeGet(database, id);
 
     if (json === undefined) {
       throw new VectorNotFoundError(id);
@@ -131,7 +153,7 @@ export class LevelStorageAdapter implements StorageAdapter {
 
   async exists(id: string): Promise<boolean> {
     const database = this.getDatabase();
-    const value = await database.get(id);
+    const value = await this.safeGet(database, id);
     return value !== undefined;
   }
 
@@ -148,7 +170,7 @@ export class LevelStorageAdapter implements StorageAdapter {
     const now = Date.now();
 
     for (const id of ids) {
-      const json = await database.get(id);
+      const json = await this.safeGet(database, id);
       if (json !== undefined) {
         const data = jsonToVectorData(json);
         data.lastAccessed = now;
@@ -190,7 +212,7 @@ export class LevelStorageAdapter implements StorageAdapter {
     let deleted = 0;
 
     for (const id of ids) {
-      const value = await database.get(id);
+      const value = await this.safeGet(database, id);
       if (value !== undefined) {
         await database.del(id);
         deleted++;
@@ -255,7 +277,7 @@ export class LevelStorageAdapter implements StorageAdapter {
   ): Promise<void> {
     const database = this.getDatabase();
 
-    const json = await database.get(id);
+    const json = await this.safeGet(database, id);
 
     if (json === undefined) {
       throw new VectorNotFoundError(id);
@@ -282,7 +304,7 @@ export class LevelStorageAdapter implements StorageAdapter {
   ): Promise<void> {
     const database = this.getDatabase();
 
-    const json = await database.get(id);
+    const json = await this.safeGet(database, id);
 
     if (json === undefined) {
       throw new VectorNotFoundError(id);
@@ -322,7 +344,7 @@ export class LevelStorageAdapter implements StorageAdapter {
 
     for (const update of updates) {
       try {
-        const json = await database.get(update.id);
+        const json = await this.safeGet(database, update.id);
 
         if (json === undefined) {
           throw new VectorNotFoundError(update.id);
