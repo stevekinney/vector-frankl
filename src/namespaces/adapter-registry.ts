@@ -3,6 +3,7 @@ import {
   NamespaceNotFoundError,
   VectorNotFoundError,
 } from '@/core/errors.js';
+import { validateNamespaceName } from './validate-namespace-name.js';
 import type {
   NamespaceConfig,
   NamespaceInfo,
@@ -40,7 +41,7 @@ export class AdapterNamespaceRegistry {
 
   async register(name: string, config: NamespaceConfig): Promise<NamespaceInfo> {
     await this.ensureInitialized();
-    this.validateNamespaceName(name);
+    validateNamespaceName(name);
 
     if (await this.adapter.exists(name)) {
       throw new NamespaceExistsError(name);
@@ -159,34 +160,6 @@ export class AdapterNamespaceRegistry {
   private async ensureInitialized(): Promise<void> {
     if (!this.initialized) {
       await this.init();
-    }
-  }
-
-  private validateNamespaceName(name: string): void {
-    if (!name || typeof name !== 'string') {
-      throw new Error('Namespace name must be a non-empty string');
-    }
-
-    const validPattern = /^[a-zA-Z0-9_-]+$/;
-    if (!validPattern.test(name)) {
-      throw new Error(
-        'Namespace name must contain only alphanumeric characters, dashes, and underscores',
-      );
-    }
-
-    const reserved = ['root', 'system', 'admin', 'registry'];
-    if (reserved.includes(name.toLowerCase())) {
-      throw new Error(`Namespace name '${name}' is reserved`);
-    }
-
-    if (name.includes('-ns-')) {
-      throw new Error(
-        "Namespace name must not contain '-ns-' (reserved as internal separator)",
-      );
-    }
-
-    if (name.length < 3 || name.length > 64) {
-      throw new Error('Namespace name must be between 3 and 64 characters');
     }
   }
 

@@ -3,8 +3,10 @@ import {
   NamespaceExistsError,
   NamespaceNotFoundError,
   TransactionError,
+
 } from '@/core/errors.js';
 import type { NamespaceConfig, NamespaceInfo, NamespaceStats } from '@/core/types.js';
+import { validateNamespaceName } from './validate-namespace-name.js';
 
 /**
  * Registry for managing namespace metadata
@@ -63,7 +65,7 @@ export class NamespaceRegistry {
     await this.ensureInitialized();
 
     // Validate namespace name
-    this.validateNamespaceName(name);
+    validateNamespaceName(name);
 
     const now = Date.now();
     const namespaceInfo: NamespaceInfo = {
@@ -303,41 +305,6 @@ export class NamespaceRegistry {
   private async ensureInitialized(): Promise<void> {
     if (!this.initialized) {
       await this.init();
-    }
-  }
-
-  /**
-   * Validate namespace name
-   */
-  private validateNamespaceName(name: string): void {
-    if (!name || typeof name !== 'string') {
-      throw new Error('Namespace name must be a non-empty string');
-    }
-
-    // Must be URL-safe: alphanumeric, dash, underscore
-    const validPattern = /^[a-zA-Z0-9_-]+$/;
-    if (!validPattern.test(name)) {
-      throw new Error(
-        'Namespace name must contain only alphanumeric characters, dashes, and underscores',
-      );
-    }
-
-    // Prevent reserved names
-    const reserved = ['root', 'system', 'admin', 'registry'];
-    if (reserved.includes(name.toLowerCase())) {
-      throw new Error(`Namespace name '${name}' is reserved`);
-    }
-
-    // Prevent namespace separator substring to avoid database name collisions
-    if (name.includes('-ns-')) {
-      throw new Error(
-        "Namespace name must not contain '-ns-' (reserved as internal separator)",
-      );
-    }
-
-    // Length limits
-    if (name.length < 3 || name.length > 64) {
-      throw new Error('Namespace name must be between 3 and 64 characters');
     }
   }
 

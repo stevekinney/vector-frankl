@@ -410,7 +410,7 @@ export class S3StorageAdapter implements StorageAdapter {
   }
 
   private vectorKey(id: string): string {
-    return `${this.prefix}vectors/${id}.json`;
+    return `${this.prefix}vectors/${encodeURIComponent(id)}.json`;
   }
 
   private indexKey(): string {
