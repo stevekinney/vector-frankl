@@ -71,7 +71,10 @@ export class LevelStorageAdapter implements StorageAdapter {
    * `code === 'LEVEL_NOT_FOUND'` when a key does not exist rather than
    * returning `undefined`, so all callers must go through this helper.
    */
-  private async safeGet(database: LevelDatabase, key: string): Promise<string | undefined> {
+  private async safeGet(
+    database: LevelDatabase,
+    key: string,
+  ): Promise<string | undefined> {
     try {
       return await database.get(key);
     } catch (error) {
