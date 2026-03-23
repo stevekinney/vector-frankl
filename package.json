@@ -93,7 +93,7 @@
     "prepare": "husky",
     "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
     "start": "bun run dist/index.js",
-    "test": "bun test src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage",
+    "test": "r=0; bun test src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test tests/gpu tests/integration tests/search || r=$?; bun test tests/vectors tests/wasm tests/workers || r=$?; bun test tests/storage || r=$?; exit $r",
     "test:all": "bun run test && bun run test:end-to-end",
     "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage",
     "test:end-to-end": "playwright test",
@@ -103,7 +103,7 @@
     "test:end-to-end:mobile": "playwright test --project=mobile-chrome --project=mobile-safari",
     "test:end-to-end:ui": "playwright test --ui",
     "test:end-to-end:webkit": "playwright test --project=webkit",
-    "test:parallel": "bun test --parallel src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage",
+    "test:parallel": "r=0; bun test --parallel src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test --parallel tests/gpu tests/integration tests/search || r=$?; bun test --parallel tests/vectors tests/wasm tests/workers || r=$?; bun test --parallel tests/storage || r=$?; exit $r",
     "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "typecheck": "tsc --noEmit"
   },
