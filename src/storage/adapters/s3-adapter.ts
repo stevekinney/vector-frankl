@@ -61,6 +61,9 @@ export class S3StorageAdapter implements StorageAdapter {
   private s3: BunS3Client | null = null;
   private index: Set<string> = new Set();
 
+  /** Promise-based mutex to serialize index mutations across concurrent writes. */
+  private mutexQueue: Promise<void> = Promise.resolve();
+
   constructor(options: S3StorageAdapterOptions) {
     const rawPrefix = options.prefix ?? '';
     this.prefix =
@@ -79,6 +82,28 @@ export class S3StorageAdapter implements StorageAdapter {
     if (options.endpoint !== undefined) {
       this.s3Options.endpoint = options.endpoint;
     }
+  }
+
+  // ── Mutex ───────────────────────────────────────────────────────────────
+
+  /**
+   * Acquire the mutex, execute `fn`, then release. All index mutations must go
+   * through this to prevent lost-update races on concurrent write operations.
+   */
+  private withMutex<T>(fn: () => Promise<T>): Promise<T> {
+    const previous = this.mutexQueue;
+    let release: () => void;
+    this.mutexQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    return previous.then(async () => {
+      try {
+        return await fn();
+      } finally {
+        release!();
+      }
+    });
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────────
@@ -109,22 +134,24 @@ export class S3StorageAdapter implements StorageAdapter {
 
   async close(): Promise<void> {
     if (this.s3) {
-      await this.persistIndex();
+      await this.withMutex(() => this.persistIndex());
       this.s3 = null;
     }
   }
 
   async destroy(): Promise<void> {
-    if (this.s3) {
-      // Delete all vector objects
-      for (const id of this.index) {
-        await this.deleteObject(this.vectorKey(id));
+    await this.withMutex(async () => {
+      if (this.s3) {
+        // Delete all vector objects
+        for (const id of this.index) {
+          await this.deleteObject(this.vectorKey(id));
+        }
+        // Delete the index manifest
+        await this.deleteObject(this.indexKey());
+        this.s3 = null;
       }
-      // Delete the index manifest
-      await this.deleteObject(this.indexKey());
-      this.s3 = null;
-    }
-    this.index = new Set();
+      this.index = new Set();
+    });
   }
 
   // ── Single-item CRUD ────────────────────────────────────────────────────
@@ -136,10 +163,11 @@ export class S3StorageAdapter implements StorageAdapter {
       lastAccessed: Date.now(),
     };
 
-    await this.putObject(this.vectorKey(data.id), vectorDataToJson(data));
-
-    this.index.add(data.id);
-    await this.persistIndex();
+    await this.withMutex(async () => {
+      await this.putObject(this.vectorKey(data.id), vectorDataToJson(data));
+      this.index.add(data.id);
+      await this.persistIndex();
+    });
   }
 
   async get(id: string): Promise<VectorData> {
@@ -149,8 +177,10 @@ export class S3StorageAdapter implements StorageAdapter {
 
     const body = await this.getObject(this.vectorKey(id));
     if (body === null) {
-      this.index.delete(id);
-      await this.persistIndex();
+      await this.withMutex(async () => {
+        this.index.delete(id);
+        await this.persistIndex();
+      });
       throw new VectorNotFoundError(id);
     }
 
@@ -169,9 +199,11 @@ export class S3StorageAdapter implements StorageAdapter {
   }
 
   async delete(id: string): Promise<void> {
-    await this.deleteObject(this.vectorKey(id));
-    this.index.delete(id);
-    await this.persistIndex();
+    await this.withMutex(async () => {
+      await this.deleteObject(this.vectorKey(id));
+      this.index.delete(id);
+      await this.persistIndex();
+    });
   }
 
   // ── Multi-item reads ────────────────────────────────────────────────────
@@ -179,7 +211,7 @@ export class S3StorageAdapter implements StorageAdapter {
   async getMany(ids: string[]): Promise<VectorData[]> {
     const results: VectorData[] = [];
     const now = Date.now();
-    let indexChanged = false;
+    const staleIds: string[] = [];
 
     for (const id of ids) {
       if (!this.index.has(id)) {
@@ -188,8 +220,7 @@ export class S3StorageAdapter implements StorageAdapter {
 
       const body = await this.getObject(this.vectorKey(id));
       if (body === null) {
-        this.index.delete(id);
-        indexChanged = true;
+        staleIds.push(id);
         continue;
       }
 
@@ -200,8 +231,13 @@ export class S3StorageAdapter implements StorageAdapter {
       results.push(data);
     }
 
-    if (indexChanged) {
-      await this.persistIndex();
+    if (staleIds.length > 0) {
+      await this.withMutex(async () => {
+        for (const id of staleIds) {
+          this.index.delete(id);
+        }
+        await this.persistIndex();
+      });
     }
 
     return results;
@@ -221,10 +257,12 @@ export class S3StorageAdapter implements StorageAdapter {
     }
 
     if (staleIds.length > 0) {
-      for (const id of staleIds) {
-        this.index.delete(id);
-      }
-      await this.persistIndex();
+      await this.withMutex(async () => {
+        for (const id of staleIds) {
+          this.index.delete(id);
+        }
+        await this.persistIndex();
+      });
     }
 
     return results;
@@ -239,28 +277,32 @@ export class S3StorageAdapter implements StorageAdapter {
   async deleteMany(ids: string[]): Promise<number> {
     let deleted = 0;
 
-    for (const id of ids) {
-      if (this.index.has(id)) {
-        await this.deleteObject(this.vectorKey(id));
-        this.index.delete(id);
-        deleted++;
+    await this.withMutex(async () => {
+      for (const id of ids) {
+        if (this.index.has(id)) {
+          await this.deleteObject(this.vectorKey(id));
+          this.index.delete(id);
+          deleted++;
+        }
       }
-    }
 
-    if (deleted > 0) {
-      await this.persistIndex();
-    }
+      if (deleted > 0) {
+        await this.persistIndex();
+      }
+    });
 
     return deleted;
   }
 
   async clear(): Promise<void> {
-    for (const id of this.index) {
-      await this.deleteObject(this.vectorKey(id));
-    }
+    await this.withMutex(async () => {
+      for (const id of this.index) {
+        await this.deleteObject(this.vectorKey(id));
+      }
 
-    await this.deleteObject(this.indexKey());
-    this.index = new Set();
+      await this.deleteObject(this.indexKey());
+      this.index = new Set();
+    });
   }
 
   async putBatch(vectors: VectorData[], options?: BatchOptions): Promise<void> {
@@ -275,19 +317,21 @@ export class S3StorageAdapter implements StorageAdapter {
       const start = batchIndex * batchSize;
       const end = Math.min(start + batchSize, vectors.length);
 
-      for (let i = start; i < end; i++) {
-        const vector = vectors[i]!;
-        const data: VectorData = {
-          ...vector,
-          timestamp: vector.timestamp || Date.now(),
-          lastAccessed: Date.now(),
-        };
+      await this.withMutex(async () => {
+        for (let i = start; i < end; i++) {
+          const vector = vectors[i]!;
+          const data: VectorData = {
+            ...vector,
+            timestamp: vector.timestamp || Date.now(),
+            lastAccessed: Date.now(),
+          };
 
-        await this.putObject(this.vectorKey(data.id), vectorDataToJson(data));
-        this.index.add(data.id);
-      }
+          await this.putObject(this.vectorKey(data.id), vectorDataToJson(data));
+          this.index.add(data.id);
+        }
 
-      await this.persistIndex();
+        await this.persistIndex();
+      });
 
       if (options?.onProgress) {
         const progress: BatchProgress = {
@@ -401,8 +445,10 @@ export class S3StorageAdapter implements StorageAdapter {
 
     const body = await this.getObject(this.vectorKey(id));
     if (body === null) {
-      this.index.delete(id);
-      await this.persistIndex();
+      await this.withMutex(async () => {
+        this.index.delete(id);
+        await this.persistIndex();
+      });
       throw new VectorNotFoundError(id);
     }
 
