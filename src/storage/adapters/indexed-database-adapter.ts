@@ -44,17 +44,28 @@ export class IndexedDatabaseStorageAdapter implements StorageAdapter {
   }
 
   async close(): Promise<void> {
-    const database = this.requireDatabase();
-    await database.close();
+    // No-op when uninitialized: callers may safely call close() in finally
+    // blocks or beforeEach teardown without needing to track init state.
+    if (this.database === null) {
+      return;
+    }
+    await this.database.close();
     this.database = null;
     this.storage = null;
   }
 
   async destroy(): Promise<void> {
-    const database = this.requireDatabase();
-    await database.delete();
-    this.database = null;
-    this.storage = null;
+    if (this.database !== null) {
+      // Already initialized — close and delete through the open handle.
+      await this.database.delete();
+      this.database = null;
+      this.storage = null;
+    } else {
+      // Never initialized — create a temporary VectorDatabase just to issue
+      // the deleteDatabase call by name, without requiring a prior init().
+      const temporary = new VectorDatabase({ name: this.options.name });
+      await temporary.delete();
+    }
   }
 
   // ---------------------------------------------------------------------------
