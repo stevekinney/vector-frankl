@@ -23,7 +23,11 @@ function vectorToBlob(vector: Float32Array): Uint8Array {
 }
 
 function blobToVector(blob: Uint8Array): Float32Array {
-  return new Float32Array(blob.buffer, blob.byteOffset, blob.byteLength / 4);
+  // Copy into an aligned buffer. bun:sqlite may return a Uint8Array whose
+  // byteOffset is not a multiple of 4, which would cause Float32Array to
+  // throw a RangeError if we tried to create a view directly.
+  const aligned = blob.buffer.slice(blob.byteOffset, blob.byteOffset + blob.byteLength);
+  return new Float32Array(aligned);
 }
 
 // ---------------------------------------------------------------------------
