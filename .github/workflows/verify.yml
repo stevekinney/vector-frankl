@@ -94,6 +94,9 @@ jobs:
       - name: Install Playwright browsers
         run: bunx playwright install chromium --with-deps
 
+      - name: Build for browser (e2e)
+        run: bun run tests/end-to-end/build-for-browser.ts
+
       - name: Run end-to-end tests (smoke test)
         run: bunx playwright test --project=chromium tests/end-to-end/basic-operations.e2e.ts
         env:
