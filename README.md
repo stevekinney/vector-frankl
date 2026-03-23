@@ -223,9 +223,11 @@ await db.init();
 import { VectorFrankl } from 'vector-frankl';
 import { SQLiteStorageAdapter } from 'vector-frankl/src/storage/adapters/sqlite-adapter';
 
-const frankl = new VectorFrankl({
-  storageFactory: (name) => new SQLiteStorageAdapter({ filename: `./${name}.db` }),
-});
+const frankl = new VectorFrankl(
+  'my-vectors',
+  384,
+  (name) => new SQLiteStorageAdapter({ filename: `./${name}.db` }),
+);
 await frankl.init();
 ```
 
