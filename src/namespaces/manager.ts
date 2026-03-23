@@ -6,14 +6,32 @@ import type {
   StorageAdapterFactory,
 } from '@/core/types.js';
 import { log } from '@/utilities/logger.js';
+import { AdapterNamespaceRegistry } from './adapter-registry.js';
 import { VectorNamespace } from './namespace.js';
 import { NamespaceRegistry } from './registry.js';
+
+/**
+ * Shared interface for both IndexedDB-backed and adapter-backed registries.
+ */
+interface RegistryBackend {
+  init(): Promise<void>;
+  register(name: string, config: NamespaceConfig): Promise<NamespaceInfo>;
+  unregister(name: string): Promise<void>;
+  get(name: string): Promise<NamespaceInfo | null>;
+  list(): Promise<NamespaceInfo[]>;
+  exists(name: string): Promise<boolean>;
+  findByPattern(pattern: string | RegExp): Promise<NamespaceInfo[]>;
+  updateStats(name: string, stats: Partial<NamespaceStats>): Promise<void>;
+  getTotalStorageUsage(): Promise<number>;
+  close(): Promise<void>;
+  delete(): Promise<void>;
+}
 
 /**
  * Manager for handling multiple vector namespaces
  */
 export class NamespaceManager {
-  private registry: NamespaceRegistry;
+  private registry: RegistryBackend;
   private namespaces: Map<string, VectorNamespace>;
   private initialized = false;
   private storageFactory: StorageAdapterFactory | undefined;
@@ -22,9 +40,18 @@ export class NamespaceManager {
     private rootDatabaseName = 'vector-frankl-root',
     storageFactory?: StorageAdapterFactory,
   ) {
-    this.registry = new NamespaceRegistry(rootDatabaseName);
-    this.namespaces = new Map();
     this.storageFactory = storageFactory;
+
+    if (storageFactory) {
+      // Use adapter-backed registry for non-browser environments
+      const registryAdapter = storageFactory(`${rootDatabaseName}-registry`);
+      this.registry = new AdapterNamespaceRegistry(registryAdapter);
+    } else {
+      // Default: IndexedDB-backed registry for browser environments
+      this.registry = new NamespaceRegistry(rootDatabaseName);
+    }
+
+    this.namespaces = new Map();
   }
 
   /**
@@ -124,17 +151,26 @@ export class NamespaceManager {
       this.namespaces.delete(name);
     }
 
-    // Delete the namespace database
-    const namespaceDatabaseName = this.getNamespaceDatabaseName(name);
-    const databaseToDelete = indexedDB.deleteDatabase(namespaceDatabaseName);
+    // Delete the namespace storage
+    if (this.storageFactory) {
+      // Adapter-backed: create a temporary adapter for the namespace and destroy it
+      const namespaceDatabaseName = this.getNamespaceDatabaseName(name);
+      const adapter = this.storageFactory(namespaceDatabaseName);
+      await adapter.init();
+      await adapter.destroy();
+    } else {
+      // IndexedDB-backed: use deleteDatabase directly
+      const namespaceDatabaseName = this.getNamespaceDatabaseName(name);
+      const databaseToDelete = indexedDB.deleteDatabase(namespaceDatabaseName);
 
-    await new Promise<void>((resolve, reject) => {
-      databaseToDelete.onsuccess = () => resolve();
-      databaseToDelete.onerror = () => reject(databaseToDelete.error);
-      databaseToDelete.onblocked = () => {
-        log.warn(`Delete blocked for namespace database: ${namespaceDatabaseName}`);
-      };
-    });
+      await new Promise<void>((resolve, reject) => {
+        databaseToDelete.onsuccess = () => resolve();
+        databaseToDelete.onerror = () => reject(databaseToDelete.error);
+        databaseToDelete.onblocked = () => {
+          log.warn(`Delete blocked for namespace database: ${namespaceDatabaseName}`);
+        };
+      });
+    }
 
     // Remove from registry
     await this.registry.unregister(name);

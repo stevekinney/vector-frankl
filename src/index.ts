@@ -19,6 +19,7 @@ export { VectorFrankl } from './api/vector-frankl.js';
 export { VectorDB } from './api/database.js';
 
 // Namespace management
+export { AdapterNamespaceRegistry } from './namespaces/adapter-registry.js';
 export { NamespaceManager } from './namespaces/manager.js';
 export { VectorNamespace } from './namespaces/namespace.js';
 export { NamespaceRegistry } from './namespaces/registry.js';
