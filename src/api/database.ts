@@ -72,13 +72,13 @@ export class VectorDB {
       this.storage = options.storage;
       this.database = null;
     } else if (options?.storageFactory) {
-      // Use the factory to create a storage adapter
-      this.storage = options.storageFactory(name);
+      // Use the factory to create a storage adapter; pass the validated name
+      this.storage = options.storageFactory(this.name);
       this.database = null;
     } else {
-      // Default: create IndexedDB-backed storage
+      // Default: create IndexedDB-backed storage; pass the validated name
       this.database = new VectorDatabase({
-        name,
+        name: this.name,
         version: options?.version ?? 1,
         ...(options?.persistence !== undefined && { persistence: options.persistence }),
       });

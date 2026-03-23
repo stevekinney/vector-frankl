@@ -100,11 +100,12 @@ export class RedisStorageAdapter implements StorageAdapter {
   }
 
   async destroy(): Promise<void> {
-    await this.clear();
-    if (this.client) {
-      this.client.close();
-      this.client = null;
+    if (!this.client) {
+      return;
     }
+    await this.clear();
+    this.client.close();
+    this.client = null;
   }
 
   // ── Single-item CRUD ────────────────────────────────────────────────────
