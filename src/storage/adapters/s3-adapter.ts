@@ -62,7 +62,9 @@ export class S3StorageAdapter implements StorageAdapter {
   private index: Set<string> = new Set();
 
   constructor(options: S3StorageAdapterOptions) {
-    this.prefix = options.prefix ?? '';
+    const rawPrefix = options.prefix ?? '';
+    this.prefix =
+      rawPrefix !== '' && !rawPrefix.endsWith('/') ? `${rawPrefix}/` : rawPrefix;
     this.s3Options = { bucket: options.bucket };
 
     if (options.accessKeyId !== undefined) {

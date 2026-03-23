@@ -65,16 +65,16 @@ jobs:
         run: bun run typecheck
 
       - name: Test (core)
-        run: bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts
+        run: bun test src tests/unit tests/compression tests/debug tests/debug-mock.test.ts
 
       - name: Test (search, gpu, integration)
-        run: bun test --coverage tests/gpu tests/integration tests/search
+        run: bun test tests/gpu tests/integration tests/search
 
       - name: Test (vectors, wasm, workers)
-        run: bun test --coverage tests/vectors tests/wasm tests/workers
+        run: bun test tests/vectors tests/wasm tests/workers
 
       - name: Test (storage)
-        run: bun test --coverage tests/storage
+        run: bun test tests/storage
 
       - name: Build
         run: bun run build

@@ -128,9 +128,11 @@ export class ChromeStorageAdapter implements StorageAdapter {
   }
 
   async destroy(): Promise<void> {
-    const ids = await this.readIdIndex();
-    const keysToRemove = [this.idIndexKey, ...ids.map((id) => this.vectorKey(id))];
-    await this.storage.remove(keysToRemove);
+    return this.withMutex(async () => {
+      const ids = await this.readIdIndex();
+      const keysToRemove = [this.idIndexKey, ...ids.map((id) => this.vectorKey(id))];
+      await this.storage.remove(keysToRemove);
+    });
   }
 
   // ---------------------------------------------------------------------------

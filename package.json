@@ -95,7 +95,7 @@
     "start": "bun run dist/index.js",
     "test": "bun test src tests/unit tests/compression tests/debug tests/debug-mock.test.ts && bun test tests/gpu tests/integration tests/search && bun test tests/vectors tests/wasm tests/workers && bun test tests/storage",
     "test:all": "bun run test && bun run test:end-to-end",
-    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts && bun test --coverage tests/gpu tests/integration tests/search && bun test --coverage tests/vectors tests/wasm tests/workers && bun test --coverage tests/storage",
+    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage",
     "test:end-to-end": "playwright test",
     "test:end-to-end:chromium": "playwright test --project=chromium",
     "test:end-to-end:firefox": "playwright test --project=firefox",
