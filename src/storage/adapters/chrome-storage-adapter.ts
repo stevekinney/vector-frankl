@@ -315,7 +315,12 @@ export class ChromeStorageAdapter implements StorageAdapter {
 
       for (const vector of batch) {
         try {
-          items[this.vectorKey(vector.id)] = this.serialize(vector);
+          const normalized: VectorData = {
+            ...vector,
+            timestamp: vector.timestamp || Date.now(),
+            lastAccessed: Date.now(),
+          };
+          items[this.vectorKey(vector.id)] = this.serialize(normalized);
           batchIds.push(vector.id);
         } catch (error) {
           failed++;
