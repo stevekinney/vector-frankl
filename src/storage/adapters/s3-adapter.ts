@@ -175,23 +175,24 @@ export class S3StorageAdapter implements StorageAdapter {
       throw new VectorNotFoundError(id);
     }
 
-    const body = await this.getObject(this.vectorKey(id));
-    if (body === null) {
-      await this.withMutex(async () => {
+    return this.withMutex(async () => {
+      const body = await this.getObject(this.vectorKey(id));
+      if (body === null) {
         this.index.delete(id);
         await this.persistIndex();
-      });
-      throw new VectorNotFoundError(id);
-    }
+        throw new VectorNotFoundError(id);
+      }
 
-    const data = jsonToVectorData(body);
+      const data = jsonToVectorData(body);
 
-    // Update access tracking
-    data.lastAccessed = Date.now();
-    data.accessCount = (data.accessCount ?? 0) + 1;
-    await this.putObject(this.vectorKey(id), vectorDataToJson(data));
+      // Update access tracking inside the mutex to prevent concurrent put()
+      // from being silently overwritten by a stale write-back.
+      data.lastAccessed = Date.now();
+      data.accessCount = (data.accessCount ?? 0) + 1;
+      await this.putObject(this.vectorKey(id), vectorDataToJson(data));
 
-    return data;
+      return data;
+    });
   }
 
   async exists(id: string): Promise<boolean> {
@@ -209,38 +210,40 @@ export class S3StorageAdapter implements StorageAdapter {
   // ── Multi-item reads ────────────────────────────────────────────────────
 
   async getMany(ids: string[]): Promise<VectorData[]> {
-    const results: VectorData[] = [];
-    const now = Date.now();
-    const staleIds: string[] = [];
+    return this.withMutex(async () => {
+      const results: VectorData[] = [];
+      const now = Date.now();
+      const staleIds: string[] = [];
 
-    for (const id of ids) {
-      if (!this.index.has(id)) {
-        continue;
-      }
-
-      const body = await this.getObject(this.vectorKey(id));
-      if (body === null) {
-        staleIds.push(id);
-        continue;
-      }
-
-      const data = jsonToVectorData(body);
-      data.lastAccessed = now;
-      data.accessCount = (data.accessCount ?? 0) + 1;
-      await this.putObject(this.vectorKey(id), vectorDataToJson(data));
-      results.push(data);
-    }
-
-    if (staleIds.length > 0) {
-      await this.withMutex(async () => {
-        for (const id of staleIds) {
-          this.index.delete(id);
+      for (const id of ids) {
+        if (!this.index.has(id)) {
+          continue;
         }
-        await this.persistIndex();
-      });
-    }
 
-    return results;
+        const body = await this.getObject(this.vectorKey(id));
+        if (body === null) {
+          staleIds.push(id);
+          continue;
+        }
+
+        const data = jsonToVectorData(body);
+        // Update access tracking inside the mutex to prevent concurrent put()
+        // from being silently overwritten by a stale write-back.
+        data.lastAccessed = now;
+        data.accessCount = (data.accessCount ?? 0) + 1;
+        await this.putObject(this.vectorKey(id), vectorDataToJson(data));
+        results.push(data);
+      }
+
+      for (const id of staleIds) {
+        this.index.delete(id);
+      }
+      if (staleIds.length > 0) {
+        await this.persistIndex();
+      }
+
+      return results;
+    });
   }
 
   async getAll(): Promise<VectorData[]> {
@@ -354,19 +357,21 @@ export class S3StorageAdapter implements StorageAdapter {
     vector: Float32Array,
     options?: { updateMagnitude?: boolean; updateTimestamp?: boolean },
   ): Promise<void> {
-    const existing = await this.readExisting(id);
+    await this.withMutex(async () => {
+      const existing = await this.readExistingUnlocked(id);
 
-    existing.vector = vector;
+      existing.vector = vector;
 
-    if (options?.updateMagnitude !== false) {
-      existing.magnitude = calculateMagnitude(vector);
-    }
+      if (options?.updateMagnitude !== false) {
+        existing.magnitude = calculateMagnitude(vector);
+      }
 
-    if (options?.updateTimestamp !== false) {
-      existing.timestamp = Date.now();
-    }
+      if (options?.updateTimestamp !== false) {
+        existing.timestamp = Date.now();
+      }
 
-    await this.putObject(this.vectorKey(id), vectorDataToJson(existing));
+      await this.putObject(this.vectorKey(id), vectorDataToJson(existing));
+    });
   }
 
   async updateMetadata(
@@ -374,19 +379,21 @@ export class S3StorageAdapter implements StorageAdapter {
     metadata: Record<string, unknown>,
     options?: { merge?: boolean; updateTimestamp?: boolean },
   ): Promise<void> {
-    const existing = await this.readExisting(id);
+    await this.withMutex(async () => {
+      const existing = await this.readExistingUnlocked(id);
 
-    if (options?.merge !== false && existing.metadata) {
-      existing.metadata = { ...existing.metadata, ...metadata };
-    } else {
-      existing.metadata = metadata;
-    }
+      if (options?.merge !== false && existing.metadata) {
+        existing.metadata = { ...existing.metadata, ...metadata };
+      } else {
+        existing.metadata = metadata;
+      }
 
-    if (options?.updateTimestamp !== false) {
-      existing.timestamp = Date.now();
-    }
+      if (options?.updateTimestamp !== false) {
+        existing.timestamp = Date.now();
+      }
 
-    await this.putObject(this.vectorKey(id), vectorDataToJson(existing));
+      await this.putObject(this.vectorKey(id), vectorDataToJson(existing));
+    });
   }
 
   async updateBatch(
@@ -401,54 +408,57 @@ export class S3StorageAdapter implements StorageAdapter {
     failed: number;
     errors: Array<{ id: string; error: Error }>;
   }> {
-    let succeeded = 0;
-    let failed = 0;
-    const errors: Array<{ id: string; error: Error }> = [];
+    return this.withMutex(async () => {
+      let succeeded = 0;
+      let failed = 0;
+      const errors: Array<{ id: string; error: Error }> = [];
 
-    for (const update of updates) {
-      try {
-        const existing = await this.readExisting(update.id);
+      for (const update of updates) {
+        try {
+          const existing = await this.readExistingUnlocked(update.id);
 
-        if (update.vector) {
-          existing.vector = update.vector;
-          existing.magnitude = calculateMagnitude(update.vector);
+          if (update.vector) {
+            existing.vector = update.vector;
+            existing.magnitude = calculateMagnitude(update.vector);
+          }
+
+          if (update.metadata) {
+            existing.metadata = existing.metadata
+              ? { ...existing.metadata, ...update.metadata }
+              : update.metadata;
+          }
+
+          existing.timestamp = Date.now();
+          await this.putObject(this.vectorKey(update.id), vectorDataToJson(existing));
+          succeeded++;
+        } catch (error) {
+          failed++;
+          errors.push({
+            id: update.id,
+            error: error instanceof Error ? error : new Error(String(error)),
+          });
         }
-
-        if (update.metadata) {
-          existing.metadata = existing.metadata
-            ? { ...existing.metadata, ...update.metadata }
-            : update.metadata;
-        }
-
-        existing.timestamp = Date.now();
-        await this.putObject(this.vectorKey(update.id), vectorDataToJson(existing));
-        succeeded++;
-      } catch (error) {
-        failed++;
-        errors.push({
-          id: update.id,
-          error: error instanceof Error ? error : new Error(String(error)),
-        });
       }
-    }
 
-    return { succeeded, failed, errors };
+      return { succeeded, failed, errors };
+    });
   }
 
   // ── Internal helpers ────────────────────────────────────────────────────
 
-  /** Read a vector from S3 without updating access tracking. */
-  private async readExisting(id: string): Promise<VectorData> {
+  /**
+   * Read a vector from S3 without updating access tracking.
+   * Must be called from within `withMutex` — does not acquire the mutex itself.
+   */
+  private async readExistingUnlocked(id: string): Promise<VectorData> {
     if (!this.index.has(id)) {
       throw new VectorNotFoundError(id);
     }
 
     const body = await this.getObject(this.vectorKey(id));
     if (body === null) {
-      await this.withMutex(async () => {
-        this.index.delete(id);
-        await this.persistIndex();
-      });
+      this.index.delete(id);
+      await this.persistIndex();
       throw new VectorNotFoundError(id);
     }
 
