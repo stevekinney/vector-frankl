@@ -1,4 +1,5 @@
 import { NamespaceNotFoundError } from '@/core/errors.js';
+import { InputValidator } from '@/core/input-validator.js';
 import type {
   NamespaceConfig,
   NamespaceInfo,
@@ -150,8 +151,12 @@ export class NamespaceManager {
       await namespace.delete();
       this.namespaces.delete(name);
     } else if (this.storageFactory) {
-      // Not loaded: create a temporary adapter to destroy persistent storage
-      const namespaceDatabaseName = this.getNamespaceDatabaseName(name);
+      // Not loaded: create a temporary adapter to destroy persistent storage.
+      // Validate the constructed name first, mirroring what VectorDB does on creation,
+      // so the factory always receives an identical validated name regardless of path.
+      const namespaceDatabaseName = InputValidator.validateDatabaseName(
+        this.getNamespaceDatabaseName(name),
+      );
       const adapter = this.storageFactory(namespaceDatabaseName);
       await adapter.init();
       await adapter.destroy();
