@@ -108,6 +108,7 @@ export { IndexPersistence, IndexCache } from './search/index-persistence.js';
 // Storage adapters (universally usable)
 export { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';
 export { IndexedDatabaseStorageAdapter } from './storage/adapters/indexed-database-adapter.js';
+export { OPFSStorageAdapter } from './storage/adapters/opfs-adapter.js';
 
 // Storage management utilities
 export {

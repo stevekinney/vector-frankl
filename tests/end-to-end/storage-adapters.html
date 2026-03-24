@@ -12,15 +12,13 @@
     <script type="module">
         // Import adapters from the built bundles.
         const mainModule = await import('/dist/index.js');
-        const storageModule = await import('/dist/storage.js');
 
         const {
             MemoryStorageAdapter,
             IndexedDatabaseStorageAdapter,
+            OPFSStorageAdapter,
             VectorNotFoundError,
         } = mainModule;
-
-        const { OPFSStorageAdapter } = storageModule;
 
         // ── Helpers ──────────────────────────────────────────────────────
 
