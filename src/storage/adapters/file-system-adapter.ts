@@ -194,8 +194,9 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       return;
     }
 
+    const extension = this.format === 'json' ? '.json' : '.vec';
     for (const entry of entries) {
-      if (entry.endsWith('.vec')) {
+      if (entry.endsWith(extension)) {
         await rm(`${this.vectorsDirectory}/${entry}`, { force: true });
       }
     }
