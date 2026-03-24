@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
-// Custom build script for browser compatibility
-import { file } from 'bun';
+// Custom build script for browser e2e tests (unminified to preserve export names)
+export {};
 
 console.log('Building for browser...');
 
@@ -10,10 +10,9 @@ const result = await Bun.build({
   outdir: './dist',
   format: 'esm',
   target: 'browser',
-  minify: true,
-  sourcemap: 'external',
+  minify: false,
+  sourcemap: 'none',
   splitting: false,
-  naming: '[dir]/[name].[ext]',
 });
 
 if (!result.success) {
@@ -24,42 +23,27 @@ if (!result.success) {
   process.exit(1);
 }
 
-// Read the built file and ensure it has proper exports
-const builtFile = await file('./dist/index.js').text();
+// Build browser-compatible storage adapters (OPFS only — SQLite/FileSystem
+// have non-browser dependencies and are excluded).
+const storageResult = await Bun.build({
+  entrypoints: ['./src/storage/adapters/opfs-adapter.ts'],
+  outdir: './dist',
+  format: 'esm',
+  target: 'browser',
+  minify: false,
+  sourcemap: 'none',
+  splitting: false,
+  naming: 'storage.[ext]',
+});
 
-// Check if exports are present
-const hasVectorDB = builtFile.includes('class c{') || builtFile.includes('VectorDB');
-const hasVectorFrankl =
-  builtFile.includes('class k1{') || builtFile.includes('VectorFrankl');
-
-if (!hasVectorDB || !hasVectorFrankl) {
-  console.warn('Main classes may not be properly exported, checking build...');
+if (!storageResult.success) {
+  console.error('Storage adapter build failed:');
+  for (const message of storageResult.logs) {
+    console.error(message);
+  }
+  process.exit(1);
 }
 
-// Check if main exports are present
-const hasMainExports =
-  builtFile.includes('VectorDB') && builtFile.includes('VectorFrankl');
-
-if (!hasMainExports) {
-  console.warn('Main exports not found in built file');
-  // Only add exports that aren't already present
-  let exportCode = '';
-
-  if (!builtFile.includes('export { c as VectorDB }')) {
-    exportCode += 'export { c as VectorDB };\n';
-  }
-  if (!builtFile.includes('export { k1 as VectorFrankl }')) {
-    exportCode += 'export { k1 as VectorFrankl };\n';
-  }
-
-  if (exportCode) {
-    const newContent = builtFile + '\n' + exportCode;
-    await Bun.write('./dist/index.js', newContent);
-    console.log('Added missing exports to built file');
-  }
-} else {
-  console.log('Exports already present in built file');
-}
-
+console.log('Storage adapter build completed');
 console.log('Build completed successfully');
 console.log(`Output: ${result.outputs.map((o) => o.path).join(', ')}`);

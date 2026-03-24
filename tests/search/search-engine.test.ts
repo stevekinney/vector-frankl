@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'bun:test';
 
 import { DimensionMismatchError } from '@/core/errors.js';
-import type { VectorData } from '@/core/types.js';
+import type { StorageAdapter, VectorData } from '@/core/types.js';
 import { SearchEngine } from '@/search/search-engine.js';
-import type { VectorStorage } from '@/core/storage.js';
+import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
 /**
  * Build a VectorData object from raw values.
@@ -23,40 +23,14 @@ function makeVector(
 }
 
 /**
- * Minimal mock that satisfies the VectorStorage interface used by SearchEngine.
- *
- * SearchEngine only calls `storage.getAll()` (for brute-force / range search)
- * and `storage.get(id)` (to retrieve vectors after an index search).  We store
- * vectors in an in-memory Map so no IndexedDB is needed.
+ * Create a MemoryStorageAdapter pre-populated with vectors.
  */
-function createMockStorage(vectors: VectorData[] = []): VectorStorage {
-  const store = new Map<string, VectorData>();
+async function createMockStorage(vectors: VectorData[] = []): Promise<StorageAdapter> {
+  const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
   for (const v of vectors) {
-    store.set(v.id, v);
+    await adapter.put(v);
   }
-
-  return {
-    getAll: async () => Array.from(store.values()),
-    get: async (id: string) => {
-      const v = store.get(id);
-      if (!v) {
-        throw new Error(`Vector not found: ${id}`);
-      }
-      return v;
-    },
-    // SearchEngine never calls these, but they exist on the real class.
-    put: async () => {},
-    delete: async () => {},
-    exists: async () => false,
-    count: async () => store.size,
-    clear: async () => {},
-    deleteMany: async () => 0,
-    getMany: async () => [],
-    putBatch: async () => {},
-    updateVector: async () => {},
-    updateMetadata: async () => {},
-    updateBatch: async () => ({ succeeded: 0, failed: 0, errors: [] }),
-  } as unknown as VectorStorage;
+  return adapter;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,23 +42,23 @@ describe('SearchEngine', () => {
   // Construction
   // -----------------------------------------------------------------------
   describe('constructor', () => {
-    it('should create an engine with default options', () => {
-      const engine = new SearchEngine(createMockStorage(), 4);
+    it('should create an engine with default options', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4);
       const stats = engine.getIndexStats();
 
       expect(stats.enabled).toBe(false);
       expect(stats.nodeCount).toBe(0);
     });
 
-    it('should accept a custom distance metric', () => {
-      const engine = new SearchEngine(createMockStorage(), 4, 'euclidean');
+    it('should accept a custom distance metric', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'euclidean');
       // Verify the engine was created without error; metric behavior is
       // verified through search results below.
       expect(engine).toBeDefined();
     });
 
-    it('should enable HNSW indexing when useIndex is true', () => {
-      const engine = new SearchEngine(createMockStorage(), 4, 'cosine', {
+    it('should enable HNSW indexing when useIndex is true', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
         useIndex: true,
       });
       const stats = engine.getIndexStats();
@@ -93,8 +67,8 @@ describe('SearchEngine', () => {
       expect(stats.nodeCount).toBe(0);
     });
 
-    it('should accept custom HNSW index configuration', () => {
-      const engine = new SearchEngine(createMockStorage(), 4, 'cosine', {
+    it('should accept custom HNSW index configuration', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
         useIndex: true,
         indexConfig: { m: 32, efConstruction: 200, maxLevel: 5 },
       });
@@ -102,16 +76,16 @@ describe('SearchEngine', () => {
       expect(stats.enabled).toBe(true);
     });
 
-    it('should set useWorkers flag from options', () => {
-      const engine = new SearchEngine(createMockStorage(), 4, 'cosine', {
+    it('should set useWorkers flag from options', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
         useWorkers: true,
       });
       const workerStats = engine.getWorkerStats();
       expect(workerStats.enabled).toBe(true);
     });
 
-    it('should not initialize GPU engine when navigator.gpu is unavailable', () => {
-      const engine = new SearchEngine(createMockStorage(), 4, 'cosine', {
+    it('should not initialize GPU engine when navigator.gpu is unavailable', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
         useGPU: true,
       });
       const gpuStats = engine.getGPUStats();
@@ -124,13 +98,13 @@ describe('SearchEngine', () => {
   // getIndexStats
   // -----------------------------------------------------------------------
   describe('getIndexStats', () => {
-    it('should report disabled when index is off', () => {
-      const engine = new SearchEngine(createMockStorage(), 3);
+    it('should report disabled when index is off', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3);
       expect(engine.getIndexStats()).toEqual({ enabled: false, nodeCount: 0 });
     });
 
-    it('should report enabled with zero nodes for a fresh index', () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+    it('should report enabled with zero nodes for a fresh index', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useIndex: true,
       });
       const stats = engine.getIndexStats();
@@ -139,7 +113,7 @@ describe('SearchEngine', () => {
     });
 
     it('should reflect added vectors', async () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useIndex: true,
       });
 
@@ -162,7 +136,7 @@ describe('SearchEngine', () => {
         makeVector('b', [0, 1, 0]),
         makeVector('c', [0.5, 0.5, 0]),
       ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -186,8 +160,8 @@ describe('SearchEngine', () => {
       expect(euclideanResults[0]!.score).toBeCloseTo(1, 5);
     });
 
-    it('should recreate the HNSW index when indexing is enabled', () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+    it('should recreate the HNSW index when indexing is enabled', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useIndex: true,
       });
 
@@ -204,8 +178,8 @@ describe('SearchEngine', () => {
   // setIndexing
   // -----------------------------------------------------------------------
   describe('setIndexing', () => {
-    it('should enable indexing on a previously non-indexed engine', () => {
-      const engine = new SearchEngine(createMockStorage(), 3);
+    it('should enable indexing on a previously non-indexed engine', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3);
       expect(engine.getIndexStats().enabled).toBe(false);
 
       engine.setIndexing(true);
@@ -213,7 +187,7 @@ describe('SearchEngine', () => {
     });
 
     it('should disable indexing and clear the index', async () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useIndex: true,
       });
 
@@ -225,8 +199,8 @@ describe('SearchEngine', () => {
       expect(engine.getIndexStats().nodeCount).toBe(0);
     });
 
-    it('should accept a distance metric when enabling', () => {
-      const engine = new SearchEngine(createMockStorage(), 3);
+    it('should accept a distance metric when enabling', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3);
 
       engine.setIndexing(true, 'manhattan');
       expect(engine.getIndexStats().enabled).toBe(true);
@@ -238,7 +212,7 @@ describe('SearchEngine', () => {
   // -----------------------------------------------------------------------
   describe('addVectorToIndex / removeVectorFromIndex', () => {
     it('should be no-ops when indexing is disabled', async () => {
-      const engine = new SearchEngine(createMockStorage(), 3);
+      const engine = new SearchEngine(await createMockStorage(), 3);
 
       // These should not throw.
       await engine.addVectorToIndex(makeVector('a', [1, 0, 0]));
@@ -248,7 +222,7 @@ describe('SearchEngine', () => {
     });
 
     it('should add and remove vectors from the index', async () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useIndex: true,
       });
 
@@ -266,19 +240,17 @@ describe('SearchEngine', () => {
   // -----------------------------------------------------------------------
   describe('dimension validation', () => {
     it('should throw DimensionMismatchError when query has wrong length', async () => {
-      const engine = new SearchEngine(createMockStorage(), 4, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
         useWorkers: false,
       });
 
       const wrongDimension = new Float32Array([1, 2, 3]); // 3 instead of 4
 
-      expect(engine.search(wrongDimension, 5)).rejects.toThrow(
-        DimensionMismatchError,
-      );
+      expect(engine.search(wrongDimension, 5)).rejects.toThrow(DimensionMismatchError);
     });
 
     it('should throw DimensionMismatchError on searchRange with wrong dimension', async () => {
-      const engine = new SearchEngine(createMockStorage(), 4, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
         useWorkers: false,
       });
 
@@ -290,7 +262,7 @@ describe('SearchEngine', () => {
     });
 
     it('should include expected and actual dimensions in the error', async () => {
-      const engine = new SearchEngine(createMockStorage(), 4, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
         useWorkers: false,
       });
 
@@ -311,7 +283,7 @@ describe('SearchEngine', () => {
   // -----------------------------------------------------------------------
   describe('search', () => {
     it('should return empty results when storage is empty', async () => {
-      const engine = new SearchEngine(createMockStorage([]), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage([]), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -325,7 +297,7 @@ describe('SearchEngine', () => {
         makeVector('medium', [0.7, 0.7, 0]),
         makeVector('far', [0, 0, 1]),
       ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -338,7 +310,7 @@ describe('SearchEngine', () => {
 
     it('should return results with score and distance', async () => {
       const vectors = [makeVector('only', [1, 0, 0])];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -354,7 +326,7 @@ describe('SearchEngine', () => {
       const vectors = [
         makeVector('tagged', [1, 0, 0], { category: 'science', rating: 5 }),
       ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -366,10 +338,8 @@ describe('SearchEngine', () => {
     });
 
     it('should not include metadata when includeMetadata is false or omitted', async () => {
-      const vectors = [
-        makeVector('tagged', [1, 0, 0], { category: 'science' }),
-      ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const vectors = [makeVector('tagged', [1, 0, 0], { category: 'science' })];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -379,7 +349,7 @@ describe('SearchEngine', () => {
 
     it('should include vectors when includeVector is true', async () => {
       const vectors = [makeVector('a', [1, 0, 0])];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -397,7 +367,7 @@ describe('SearchEngine', () => {
         values[i % 3] = 1;
         return makeVector(`v${i}`, values);
       });
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -406,11 +376,8 @@ describe('SearchEngine', () => {
     });
 
     it('should return all vectors when k exceeds collection size', async () => {
-      const vectors = [
-        makeVector('a', [1, 0, 0]),
-        makeVector('b', [0, 1, 0]),
-      ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const vectors = [makeVector('a', [1, 0, 0]), makeVector('b', [0, 1, 0])];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -425,7 +392,7 @@ describe('SearchEngine', () => {
   describe('distance-to-score conversion', () => {
     it('should produce score of 1 for an identical vector with cosine', async () => {
       const vectors = [makeVector('same', [1, 0, 0])];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -436,12 +403,9 @@ describe('SearchEngine', () => {
 
     it('should produce score of 1 for an identical vector with euclidean', async () => {
       const vectors = [makeVector('same', [1, 0, 0])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([1, 0, 0]), 1);
       // Euclidean distance 0 => score = exp(0) = 1
@@ -450,12 +414,9 @@ describe('SearchEngine', () => {
 
     it('should produce score of 1 for an identical vector with manhattan', async () => {
       const vectors = [makeVector('same', [1, 0, 0])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'manhattan',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'manhattan', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([1, 0, 0]), 1);
       // Manhattan distance 0 => score = exp(0) = 1
@@ -468,7 +429,7 @@ describe('SearchEngine', () => {
         makeVector('b', [0, 1, 0]),
         makeVector('c', [-1, 0, 0]),
       ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -485,12 +446,9 @@ describe('SearchEngine', () => {
         makeVector('mid', [3, 0, 0]),
         makeVector('far', [10, 0, 0]),
       ];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([0, 0, 0]), 3);
       // Results are sorted by distance (ascending), so scores should be descending.
@@ -500,12 +458,9 @@ describe('SearchEngine', () => {
 
     it('should produce score of 1 for identical binary vectors with hamming', async () => {
       const vectors = [makeVector('same', [1, 0, 1, 0])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        4,
-        'hamming',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 4, 'hamming', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([1, 0, 1, 0]), 1);
       // Hamming distance 0 => score = 1 - 0/dimension = 1
@@ -514,12 +469,9 @@ describe('SearchEngine', () => {
 
     it('should produce score of 1 for identical vectors with jaccard', async () => {
       const vectors = [makeVector('same', [1, 0, 1, 0])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        4,
-        'jaccard',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 4, 'jaccard', {
+        useWorkers: false,
+      });
 
       const results = await engine.search(new Float32Array([1, 0, 1, 0]), 1);
       // Jaccard distance 0 => score = 1 - 0 = 1
@@ -528,7 +480,7 @@ describe('SearchEngine', () => {
 
     it('should produce positive dot-product score for aligned vectors', async () => {
       const vectors = [makeVector('aligned', [2, 3, 0])];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'dot', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'dot', {
         useWorkers: false,
       });
 
@@ -543,16 +495,10 @@ describe('SearchEngine', () => {
   // -----------------------------------------------------------------------
   describe('searchRange', () => {
     it('should return vectors within the distance threshold', async () => {
-      const vectors = [
-        makeVector('near', [1, 0, 0]),
-        makeVector('far', [0, 0, 1]),
-      ];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const vectors = [makeVector('near', [1, 0, 0]), makeVector('far', [0, 0, 1])];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       // Distance from [1,0,0] to [1,0,0] is 0, to [0,0,1] is sqrt(2) ~= 1.414
       const results = await engine.searchRange(new Float32Array([1, 0, 0]), 0.5);
@@ -562,17 +508,11 @@ describe('SearchEngine', () => {
 
     it('should return empty array when nothing is within threshold', async () => {
       const vectors = [makeVector('far', [10, 10, 10])];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
-      const results = await engine.searchRange(
-        new Float32Array([0, 0, 0]),
-        0.01,
-      );
+      const results = await engine.searchRange(new Float32Array([0, 0, 0]), 0.01);
       expect(results).toHaveLength(0);
     });
 
@@ -580,19 +520,14 @@ describe('SearchEngine', () => {
       const vectors = Array.from({ length: 20 }, (_, i) =>
         makeVector(`v${i}`, [1, 0, 0]),
       );
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       // All vectors are identical => distance 0 for all.
-      const results = await engine.searchRange(
-        new Float32Array([1, 0, 0]),
-        1.0,
-        { maxResults: 5 },
-      );
+      const results = await engine.searchRange(new Float32Array([1, 0, 0]), 1.0, {
+        maxResults: 5,
+      });
       expect(results.length).toBeLessThanOrEqual(5);
     });
 
@@ -602,21 +537,13 @@ describe('SearchEngine', () => {
         makeVector('b', [5, 0, 0]),
         makeVector('c', [1, 0, 0]),
       ];
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
-      const results = await engine.searchRange(
-        new Float32Array([0, 0, 0]),
-        100,
-      );
+      const results = await engine.searchRange(new Float32Array([0, 0, 0]), 100);
       for (let i = 1; i < results.length; i++) {
-        expect(results[i]!.distance!).toBeGreaterThanOrEqual(
-          results[i - 1]!.distance!,
-        );
+        expect(results[i]!.distance!).toBeGreaterThanOrEqual(results[i - 1]!.distance!);
       }
     });
   });
@@ -629,18 +556,15 @@ describe('SearchEngine', () => {
       const vectors = Array.from({ length: 15 }, (_, i) =>
         makeVector(`v${i}`, [i + 1, 0, 0]),
       );
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       const batches: number[] = [];
-      for await (const batch of engine.searchStream(
-        new Float32Array([0, 0, 0]),
-        { batchSize: 5, maxResults: 15 },
-      )) {
+      for await (const batch of engine.searchStream(new Float32Array([0, 0, 0]), {
+        batchSize: 5,
+        maxResults: 15,
+      })) {
         batches.push(batch.length);
       }
 
@@ -652,18 +576,15 @@ describe('SearchEngine', () => {
       const vectors = Array.from({ length: 10 }, (_, i) =>
         makeVector(`v${i}`, [i + 1, 0, 0]),
       );
-      const engine = new SearchEngine(
-        createMockStorage(vectors),
-        3,
-        'euclidean',
-        { useWorkers: false },
-      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
 
       let totalYielded = 0;
-      for await (const batch of engine.searchStream(
-        new Float32Array([0, 0, 0]),
-        { batchSize: 3, maxResults: 7 },
-      )) {
+      for await (const batch of engine.searchStream(new Float32Array([0, 0, 0]), {
+        batchSize: 3,
+        maxResults: 7,
+      })) {
         totalYielded += batch.length;
       }
       expect(totalYielded).toBe(7);
@@ -674,8 +595,8 @@ describe('SearchEngine', () => {
   // Worker and GPU stats
   // -----------------------------------------------------------------------
   describe('getWorkerStats', () => {
-    it('should report disabled when workers are off', () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+    it('should report disabled when workers are off', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useWorkers: false,
       });
       const stats = engine.getWorkerStats();
@@ -685,8 +606,8 @@ describe('SearchEngine', () => {
   });
 
   describe('getGPUStats', () => {
-    it('should report disabled and unavailable when GPU is off', () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+    it('should report disabled and unavailable when GPU is off', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useGPU: false,
       });
       const stats = engine.getGPUStats();
@@ -699,8 +620,8 @@ describe('SearchEngine', () => {
   // setWorkerPoolEnabled / setGPUAcceleration
   // -----------------------------------------------------------------------
   describe('setWorkerPoolEnabled', () => {
-    it('should update the enabled flag', () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+    it('should update the enabled flag', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useWorkers: false,
       });
       expect(engine.getWorkerStats().enabled).toBe(false);
@@ -711,8 +632,8 @@ describe('SearchEngine', () => {
   });
 
   describe('setGPUAcceleration', () => {
-    it('should update the enabled flag', () => {
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+    it('should update the enabled flag', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useGPU: false,
       });
       expect(engine.getGPUStats().enabled).toBe(false);
@@ -727,7 +648,7 @@ describe('SearchEngine', () => {
   // -----------------------------------------------------------------------
   describe('cleanup', () => {
     it('should complete without error', async () => {
-      const engine = new SearchEngine(createMockStorage(), 3);
+      const engine = new SearchEngine(await createMockStorage(), 3);
       await engine.cleanup();
     });
   });
@@ -737,13 +658,10 @@ describe('SearchEngine', () => {
   // -----------------------------------------------------------------------
   describe('batchSimilarity', () => {
     it('should compute pairwise similarity scores', async () => {
-      const vectors = [
-        makeVector('a', [1, 0, 0]),
-        makeVector('b', [0, 1, 0]),
-      ];
+      const vectors = [makeVector('a', [1, 0, 0]), makeVector('b', [0, 1, 0])];
       const queries = [new Float32Array([1, 0, 0])];
 
-      const engine = new SearchEngine(createMockStorage(), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -770,7 +688,7 @@ describe('SearchEngine', () => {
         makeVector('dog', [0.9, 0.1, 0], { animal: 'dog' }),
         makeVector('bird', [0, 0, 1], { animal: 'bird' }),
       ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useWorkers: false,
       });
 
@@ -793,7 +711,7 @@ describe('SearchEngine', () => {
         makeVector('b', [0, 1, 0]),
         makeVector('c', [0, 0, 1]),
       ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useIndex: true,
         useWorkers: false,
       });
@@ -813,7 +731,7 @@ describe('SearchEngine', () => {
         makeVector('a', [1, 0, 0], { type: 'x' }),
         makeVector('b', [0, 1, 0], { type: 'y' }),
       ];
-      const engine = new SearchEngine(createMockStorage(vectors), 3, 'cosine', {
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
         useIndex: true,
         useWorkers: false,
       });

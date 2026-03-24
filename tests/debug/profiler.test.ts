@@ -111,7 +111,7 @@ describe('Profiler', () => {
 
     it('should profile asynchronous functions', async () => {
       const result = await profiler.profile('async-operation', async () => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        await new Promise((resolve) => setTimeout(resolve, 20));
         return 'async-result';
       });
 

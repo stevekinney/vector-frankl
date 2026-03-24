@@ -14,11 +14,13 @@
 
 // Main API (with namespace support)
 export { VectorFrankl } from './api/vector-frankl.js';
+export type { VectorFranklOptions } from './api/vector-frankl.js';
 
 // Simple API (without namespace support)
 export { VectorDB } from './api/database.js';
 
 // Namespace management
+export { AdapterNamespaceRegistry } from './namespaces/adapter-registry.js';
 export { NamespaceManager } from './namespaces/manager.js';
 export { VectorNamespace } from './namespaces/namespace.js';
 export { NamespaceRegistry } from './namespaces/registry.js';
@@ -52,6 +54,8 @@ export type {
   BatchProgress,
 
   // Storage types
+  StorageAdapter,
+  StorageAdapterFactory,
   StorageEstimate,
 
   // Index types
@@ -100,6 +104,11 @@ export {
 } from './search/metadata-filter.js';
 export { HNSWIndex } from './search/hnsw-index.js';
 export { IndexPersistence, IndexCache } from './search/index-persistence.js';
+
+// Storage adapters (universally usable)
+export { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';
+export { IndexedDatabaseStorageAdapter } from './storage/adapters/indexed-database-adapter.js';
+export { OPFSStorageAdapter } from './storage/adapters/opfs-adapter.js';
 
 // Storage management utilities
 export {

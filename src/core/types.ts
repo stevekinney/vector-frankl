@@ -250,3 +250,62 @@ export interface TransactionOptions {
   timeout?: number;
   retries?: number;
 }
+
+/**
+ * Storage adapter interface for pluggable storage backends.
+ *
+ * Each adapter manages vector persistence for a single logical database.
+ * Access tracking (lastAccessed / accessCount) is the adapter's responsibility
+ * — update on get/getMany so callers don't need a wrapper layer.
+ */
+export interface StorageAdapter {
+  // Lifecycle
+  init(): Promise<void>;
+  close(): Promise<void>;
+  destroy(): Promise<void>;
+
+  // Single-item CRUD
+  put(vector: VectorData): Promise<void>;
+  get(id: string): Promise<VectorData>;
+  exists(id: string): Promise<boolean>;
+  delete(id: string): Promise<void>;
+
+  // Multi-item reads
+  getMany(ids: string[]): Promise<VectorData[]>;
+  getAll(): Promise<VectorData[]>;
+  count(): Promise<number>;
+
+  // Multi-item writes
+  deleteMany(ids: string[]): Promise<number>;
+  clear(): Promise<void>;
+  putBatch(vectors: VectorData[], options?: BatchOptions): Promise<void>;
+
+  // Partial updates (read-modify-write)
+  updateVector(
+    id: string,
+    vector: Float32Array,
+    options?: { updateMagnitude?: boolean; updateTimestamp?: boolean },
+  ): Promise<void>;
+  updateMetadata(
+    id: string,
+    metadata: Record<string, unknown>,
+    options?: { merge?: boolean; updateTimestamp?: boolean },
+  ): Promise<void>;
+  updateBatch(
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
+    options?: BatchOptions,
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }>;
+}
+
+/**
+ * Factory function that creates a StorageAdapter for a given database name.
+ */
+export type StorageAdapterFactory = (databaseName: string) => StorageAdapter;

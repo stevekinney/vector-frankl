@@ -1,7 +1,7 @@
 import { log } from '@/utilities/logger.js';
 import { VectorDatabase } from './database.js';
 import { BatchOperationError, TransactionError, VectorNotFoundError } from './errors.js';
-import type { BatchOptions, BatchProgress, VectorData } from './types.js';
+import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from './types.js';
 
 // Default batch size constant
 const DEFAULT_BATCH_SIZE = 1000;
@@ -9,8 +9,29 @@ const DEFAULT_BATCH_SIZE = 1000;
 /**
  * Storage operations for vectors
  */
-export class VectorStorage {
+export class VectorStorage implements StorageAdapter {
   constructor(private database: VectorDatabase) {}
+
+  /**
+   * Initialize the underlying database connection
+   */
+  async init(): Promise<void> {
+    await this.database.init();
+  }
+
+  /**
+   * Close the underlying database connection
+   */
+  async close(): Promise<void> {
+    await this.database.close();
+  }
+
+  /**
+   * Permanently delete the underlying database
+   */
+  async destroy(): Promise<void> {
+    await this.database.delete();
+  }
 
   /**
    * Store a single vector

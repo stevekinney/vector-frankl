@@ -358,7 +358,9 @@ export class HNSWIndex {
 
     // Select best connections to keep
     const candidates = Array.from(connections);
-    const selectedSet = new Set(this.selectConnections(node.vector, candidates, maxConnections));
+    const selectedSet = new Set(
+      this.selectConnections(node.vector, candidates, maxConnections),
+    );
 
     // Collect IDs to remove, then process after iteration to avoid mutating Set during iteration
     const toRemove: string[] = [];

@@ -209,7 +209,10 @@ export class WASMManager {
 
         if (this.config.enableProfiling) {
           log.debug('WebAssembly module initialized successfully (demo mode)');
-          log.debug('WASM capabilities', this.capabilities as unknown as Record<string, unknown>);
+          log.debug(
+            'WASM capabilities',
+            this.capabilities as unknown as Record<string, unknown>,
+          );
         }
       }
     } catch (error) {

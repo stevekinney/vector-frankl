@@ -5,6 +5,7 @@ import type {
   NamespaceInfo,
   SearchOptions,
   SearchResult,
+  StorageAdapterFactory,
   VectorData,
   VectorFormat,
 } from '@/core/types.js';
@@ -12,19 +13,33 @@ import { NamespaceManager } from '@/namespaces/manager.js';
 import { VectorNamespace } from '@/namespaces/namespace.js';
 import { VectorDB } from './database.js';
 
+export interface VectorFranklOptions {
+  defaultDimension?: number;
+  storageFactory?: StorageAdapterFactory;
+}
+
 /**
  * Main API for Vector Frankl - A browser-based vector database
  */
 export class VectorFrankl {
   private namespaceManager: NamespaceManager;
   private defaultNamespace?: VectorNamespace;
+  private defaultDimension: number | undefined;
   private initialized = false;
 
   constructor(
     private _rootDatabaseName = 'vector-frankl',
-    private defaultDimension?: number,
+    optionsOrDimension?: VectorFranklOptions | number,
   ) {
-    this.namespaceManager = new NamespaceManager(this._rootDatabaseName);
+    const options =
+      typeof optionsOrDimension === 'number'
+        ? { defaultDimension: optionsOrDimension }
+        : optionsOrDimension;
+    this.defaultDimension = options?.defaultDimension;
+    this.namespaceManager = new NamespaceManager(
+      this._rootDatabaseName,
+      options?.storageFactory,
+    );
   }
 
   /**

@@ -8,6 +8,8 @@ import type {
   DistanceMetric,
   SearchOptions,
   SearchResult,
+  StorageAdapter,
+  StorageAdapterFactory,
   VectorData,
   VectorFormat,
 } from '@/core/types.js';
@@ -27,8 +29,8 @@ import { VectorOperations } from '@/vectors/operations.js';
  * Main API class for the vector database
  */
 export class VectorDB {
-  private database: VectorDatabase;
-  private storage: VectorStorage;
+  private database: VectorDatabase | null;
+  private storage: StorageAdapter;
   private searchEngine: SearchEngine;
   private quotaMonitor: StorageQuotaMonitor;
   private evictionManager: EvictionManager;
@@ -55,6 +57,8 @@ export class VectorDB {
         safetyMargin?: number;
         checkInterval?: number;
       };
+      storage?: StorageAdapter;
+      storageFactory?: StorageAdapterFactory;
     },
   ) {
     // Validate inputs with comprehensive checks
@@ -63,13 +67,24 @@ export class VectorDB {
     this.distanceMetric = options?.distanceMetric || 'cosine';
     this.autoEviction = options?.autoEviction ?? true;
 
-    this.database = new VectorDatabase({
-      name,
-      version: options?.version ?? 1,
-      ...(options?.persistence !== undefined && { persistence: options.persistence }),
-    });
+    if (options?.storage) {
+      // Use the provided storage adapter directly
+      this.storage = options.storage;
+      this.database = null;
+    } else if (options?.storageFactory) {
+      // Use the factory to create a storage adapter; pass the validated name
+      this.storage = options.storageFactory(this.name);
+      this.database = null;
+    } else {
+      // Default: create IndexedDB-backed storage; pass the validated name
+      this.database = new VectorDatabase({
+        name: this.name,
+        version: options?.version ?? 1,
+        ...(options?.persistence !== undefined && { persistence: options.persistence }),
+      });
+      this.storage = new VectorStorage(this.database);
+    }
 
-    this.storage = new VectorStorage(this.database);
     this.evictionManager = new EvictionManager(this.storage);
     this.quotaMonitor = StorageQuotaMonitor.getInstance(options?.quotaConfig);
 
@@ -77,7 +92,7 @@ export class VectorDB {
       ...(options?.useIndex !== undefined && { useIndex: options.useIndex }),
       ...(options?.indexConfig !== undefined && { indexConfig: options.indexConfig }),
       ...(options?.useWorkers !== undefined && { useWorkers: options.useWorkers }),
-      database: this.database,
+      ...(this.database && { database: this.database }),
       indexId: `${this.name}-main`,
     });
 
@@ -94,7 +109,7 @@ export class VectorDB {
       return;
     }
 
-    await this.database.init();
+    await this.storage.init();
     this.initialized = true;
   }
 
@@ -588,7 +603,7 @@ export class VectorDB {
       this.quotaWarningListener = null;
     }
     await this.searchEngine.cleanup();
-    await this.database.close();
+    await this.storage.close();
     this.initialized = false;
   }
 
@@ -601,7 +616,7 @@ export class VectorDB {
       this.quotaWarningListener = null;
     }
     await this.searchEngine.cleanup();
-    await this.database.delete();
+    await this.storage.destroy();
     this.initialized = false;
   }
 

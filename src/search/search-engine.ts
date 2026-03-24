@@ -1,11 +1,11 @@
 import { VectorDatabase } from '@/core/database.js';
 import { DimensionMismatchError } from '@/core/errors.js';
-import { VectorStorage } from '@/core/storage.js';
 import type {
   DistanceMetric as DistanceMetricType,
   MetadataFilter,
   SearchOptions,
   SearchResult,
+  StorageAdapter,
   VectorData,
 } from '@/core/types.js';
 import { GPUSearchEngine, type GPUSearchConfig } from '@/gpu/gpu-search-engine.js';
@@ -35,7 +35,7 @@ export class SearchEngine {
   private gpuThreshold = 5000; // Use GPU for datasets larger than this
 
   constructor(
-    private storage: VectorStorage,
+    private storage: StorageAdapter,
     dimension: number,
     distanceMetric: DistanceMetricType = 'cosine',
     options?: {

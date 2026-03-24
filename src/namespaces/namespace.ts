@@ -4,6 +4,7 @@ import type {
   NamespaceConfig,
   SearchOptions,
   SearchResult,
+  StorageAdapterFactory,
   VectorData,
   VectorFormat,
 } from '@/core/types.js';
@@ -19,6 +20,7 @@ export class VectorNamespace {
     public readonly name: string,
     public readonly config: NamespaceConfig,
     rootDatabaseName: string,
+    storageFactory?: StorageAdapterFactory,
   ) {
     // Create a unique database name for this namespace
     this.databaseName = `${rootDatabaseName}-ns-${name}`;
@@ -27,6 +29,8 @@ export class VectorNamespace {
     this.vectorDatabase = new VectorDB(this.databaseName, config.dimension, {
       name: this.databaseName,
       version: 1,
+      ...(config.distanceMetric && { distanceMetric: config.distanceMetric }),
+      ...(storageFactory && { storageFactory }),
     });
   }
 
