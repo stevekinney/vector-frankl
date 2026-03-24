@@ -144,8 +144,9 @@ export class FileSystemStorageAdapter implements StorageAdapter {
 
     const results: VectorData[] = [];
 
+    const extension = this.format === 'json' ? '.json' : '.vec';
     for (const entry of entries) {
-      if (!entry.endsWith('.vec')) continue;
+      if (!entry.endsWith(extension)) continue;
       const file = Bun.file(`${this.vectorsDirectory}/${entry}`);
       const data = await this.readVectorFile(file);
       results.push(data);
@@ -162,7 +163,8 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       return 0;
     }
 
-    return entries.filter((entry) => entry.endsWith('.vec')).length;
+    const extension = this.format === 'json' ? '.json' : '.vec';
+    return entries.filter((entry) => entry.endsWith(extension)).length;
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────
@@ -333,7 +335,8 @@ export class FileSystemStorageAdapter implements StorageAdapter {
   }
 
   private vectorFilePath(id: string): string {
-    return `${this.vectorsDirectory}/${encodeVectorId(id)}.vec`;
+    const extension = this.format === 'json' ? '.json' : '.vec';
+    return `${this.vectorsDirectory}/${encodeVectorId(id)}${extension}`;
   }
 
   private async writeVector(data: VectorData): Promise<void> {

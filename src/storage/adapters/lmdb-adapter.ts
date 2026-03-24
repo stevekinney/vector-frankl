@@ -212,14 +212,10 @@ export class LmdbStorageAdapter implements StorageAdapter {
 
   async clear(): Promise<void> {
     const database = this.requireDatabase();
-    await database.drop();
-
-    // Close the old handle and null it out so init() creates a fresh one.
-    await database.close();
-    this.database = null;
-
-    // Reinitialize after drop since the database handle is now stale.
-    await this.init();
+    const keys = Array.from(database.getRange()).map((entry) => entry.key);
+    for (const key of keys) {
+      await database.remove(key);
+    }
   }
 
   async putBatch(vectors: VectorData[], options?: BatchOptions): Promise<void> {

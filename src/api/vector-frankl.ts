@@ -29,8 +29,12 @@ export class VectorFrankl {
 
   constructor(
     private _rootDatabaseName = 'vector-frankl',
-    options?: VectorFranklOptions,
+    optionsOrDimension?: VectorFranklOptions | number,
   ) {
+    const options =
+      typeof optionsOrDimension === 'number'
+        ? { defaultDimension: optionsOrDimension }
+        : optionsOrDimension;
     this.defaultDimension = options?.defaultDimension;
     this.namespaceManager = new NamespaceManager(
       this._rootDatabaseName,
