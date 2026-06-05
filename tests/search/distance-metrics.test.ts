@@ -2,11 +2,11 @@ import { describe, expect, it } from 'bun:test';
 
 import { InvalidFormatError } from '@/core/errors.js';
 import {
+  createDistanceCalculator,
   DistanceCalculator,
   DistanceMetrics,
-  OptimizedDistanceMetrics,
-  createDistanceCalculator,
   listAvailableMetrics,
+  OptimizedDistanceMetrics,
   registerCustomMetric,
 } from '@/search/distance-metrics.js';
 

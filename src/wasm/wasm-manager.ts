@@ -273,6 +273,7 @@ export class WASMManager {
   /**
    * Check for suspicious patterns in WASM bytecode
    */
+
   private async checkForSuspiciousPatterns(wasmCode: Uint8Array): Promise<void> {
     // Check for excessive import sections (could indicate malicious behavior)
     let importSectionCount = 0;
@@ -354,7 +355,10 @@ export class WASMManager {
       try {
         this.memory.grow(requiredPages - currentPages);
       } catch (error) {
-        throw new Error(`Failed to allocate WASM memory: ${error}`, { cause: error });
+        throw new Error(
+          `Failed to allocate WASM memory: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        );
       }
     }
 
@@ -391,6 +395,7 @@ export class WASMManager {
   /**
    * Compute dot product using WebAssembly
    */
+
   async dotProduct(vectorA: Float32Array, vectorB: Float32Array): Promise<number> {
     if (!this.isAvailable() || !this.wasmInstance) {
       throw new Error('WebAssembly not available');
@@ -428,13 +433,17 @@ export class WASMManager {
 
       return result;
     } catch (error) {
-      throw new Error(`WASM dot product failed: ${error}`, { cause: error });
+      throw new Error(
+        `WASM dot product failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
   }
 
   /**
    * Compute vector magnitude using WebAssembly
    */
+
   async magnitude(vector: Float32Array): Promise<number> {
     if (!this.isAvailable() || !this.wasmInstance) {
       throw new Error('WebAssembly not available');
@@ -470,13 +479,17 @@ export class WASMManager {
 
       return result;
     } catch (error) {
-      throw new Error(`WASM magnitude failed: ${error}`, { cause: error });
+      throw new Error(
+        `WASM magnitude failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
   }
 
   /**
    * Vector addition using WebAssembly
    */
+
   async vectorAdd(vectorA: Float32Array, vectorB: Float32Array): Promise<Float32Array> {
     if (!this.isAvailable() || !this.wasmInstance) {
       throw new Error('WebAssembly not available');
@@ -510,7 +523,10 @@ export class WASMManager {
 
       return result;
     } catch (error) {
-      throw new Error(`WASM vector add failed: ${error}`, { cause: error });
+      throw new Error(
+        `WASM vector add failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
   }
 
@@ -546,14 +562,20 @@ export class WASMManager {
 
     // Benchmark JavaScript
     const jsStart = performance.now();
+    let javascriptChecksum = 0;
     for (let i = 0; i < iterations; i++) {
-      let _sum = 0;
+      let sum = 0;
       for (let j = 0; j < vectorA.length; j++) {
-        _sum += (vectorA[j] ?? 0) * (vectorB[j] ?? 0);
+        sum += (vectorA[j] ?? 0) * (vectorB[j] ?? 0);
       }
+      javascriptChecksum += sum;
     }
     const jsEnd = performance.now();
     const jsTime = jsEnd - jsStart;
+
+    if (Number.isNaN(javascriptChecksum)) {
+      throw new Error('JavaScript benchmark produced an invalid checksum');
+    }
 
     const dataSize = vectorLength * 4 * 2; // 2 vectors * 4 bytes per float
     const totalData = (dataSize * iterations) / (1024 * 1024); // MB
@@ -580,6 +602,7 @@ export class WASMManager {
   /**
    * Cleanup WebAssembly resources
    */
+
   async cleanup(): Promise<void> {
     this.wasmModule = null;
     this.wasmInstance = null;

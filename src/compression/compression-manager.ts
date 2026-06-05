@@ -2,8 +2,9 @@
  * Compression strategy management and automatic selection
  */
 
-import type { CompressionStrategy } from '@/core/types.js';
-import { log } from '@/utilities/logger.js';
+import type { CompressionStrategy } from '../core/types.js';
+import { log } from '../utilities/logger.js';
+
 import {
   BaseCompressor,
   type CompressedVector,

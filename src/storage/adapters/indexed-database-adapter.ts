@@ -1,7 +1,7 @@
-import { VectorDatabase } from '@/core/database.js';
-import { BatchOperationError, VectorNotFoundError } from '@/core/errors.js';
-import { VectorStorage } from '@/core/storage.js';
-import type { BatchOptions, StorageAdapter, VectorData } from '@/core/types.js';
+import { VectorDatabase } from '../../core/database.js';
+import { BatchOperationError, VectorNotFoundError } from '../../core/errors.js';
+import { VectorStorage } from '../../core/storage.js';
+import type { BatchOptions, StorageAdapter, VectorData } from '../../core/types.js';
 
 interface IndexedDatabaseAdapterOptions {
   name: string;
@@ -16,6 +16,10 @@ export class IndexedDatabaseStorageAdapter implements StorageAdapter {
   private readonly options: IndexedDatabaseAdapterOptions;
   private database: VectorDatabase | null = null;
   private storage: VectorStorage | null = null;
+
+  static isAvailable(): boolean {
+    return typeof globalThis.indexedDB !== 'undefined';
+  }
 
   constructor(options: IndexedDatabaseAdapterOptions) {
     this.options = options;

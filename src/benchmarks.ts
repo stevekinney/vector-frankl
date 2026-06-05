@@ -2,12 +2,13 @@
  * Performance benchmarking utilities
  * Import via: vector-frankl/benchmarks
  */
-export {
-  BenchmarkSuite,
-  BenchmarkRunner,
-  QuickBenchmark,
-  type BenchmarkConfig,
-  type BenchmarkResult,
-  type BenchmarkSummary,
-  type BenchmarkRunnerOptions,
-} from './benchmarks/index.js';
+import { BenchmarkSuite } from './benchmarks/benchmark-suite.js';
+import { BenchmarkRunner, QuickBenchmark } from './benchmarks/runner.js';
+
+export type {
+  BenchmarkConfig,
+  BenchmarkResult,
+  BenchmarkSummary,
+} from './benchmarks/benchmark-suite.js';
+export type { BenchmarkRunnerOptions } from './benchmarks/runner.js';
+export { BenchmarkRunner, BenchmarkSuite, QuickBenchmark };

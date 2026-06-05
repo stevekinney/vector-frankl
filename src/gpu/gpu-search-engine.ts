@@ -386,6 +386,7 @@ export class GPUSearchEngine {
   /**
    * Fallback CPU search implementation
    */
+
   private async searchWithCPU(
     vectors: VectorData[],
     queryVector: Float32Array,
@@ -441,7 +442,7 @@ export class GPUSearchEngine {
         // For unsupported CPU fallback metrics, return a default distance
         return 1.0;
       default:
-        throw new Error(`Unsupported metric: ${metric}`);
+        throw new Error(`Unsupported metric: ${String(metric)}`);
     }
   }
 

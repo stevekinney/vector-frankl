@@ -1,4 +1,4 @@
-import { VectorDB } from '@/api/database.js';
+import { VectorDB } from '../api/database.js';
 import type {
   BatchOptions,
   NamespaceConfig,
@@ -7,7 +7,7 @@ import type {
   StorageAdapterFactory,
   VectorData,
   VectorFormat,
-} from '@/core/types.js';
+} from '../core/types.js';
 
 /**
  * A namespace-scoped vector database

@@ -1,12 +1,11 @@
-import { rm } from 'node:fs/promises';
-
-import { VectorNotFoundError } from '@/core/errors.js';
+import { VectorNotFoundError } from '../../core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
   StorageAdapter,
   VectorData,
-} from '@/core/types.js';
+} from '../../core/types.js';
+
 import { calculateMagnitude } from './serialization.js';
 
 // ---------------------------------------------------------------------------
@@ -107,6 +106,10 @@ export class SQLiteStorageAdapter implements StorageAdapter {
   private readonly filename: string;
   private database: BunSQLiteDatabase | null = null;
 
+  static isAvailable(): boolean {
+    return typeof globalThis.Bun !== 'undefined';
+  }
+
   constructor(options: SQLiteStorageAdapterOptions) {
     if (typeof Bun === 'undefined') {
       throw new Error('SQLiteStorageAdapter requires the Bun runtime');
@@ -161,6 +164,7 @@ export class SQLiteStorageAdapter implements StorageAdapter {
 
     // For file-based databases, remove the file and any WAL/SHM companions.
     if (this.filename !== ':memory:') {
+      const { rm } = await import('node:fs/promises');
       await rm(this.filename, { force: true });
       await rm(`${this.filename}-wal`, { force: true });
       await rm(`${this.filename}-shm`, { force: true });

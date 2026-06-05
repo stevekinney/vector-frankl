@@ -3,13 +3,14 @@ import { describe, expect, it } from 'bun:test';
 import type { StorageAdapter, VectorData } from '@/core/types.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 import {
-  LRUEvictionPolicy,
-  LFUEvictionPolicy,
-  TTLEvictionPolicy,
-  ScoreBasedEvictionPolicy,
-  HybridEvictionPolicy,
   EvictionManager,
+  HybridEvictionPolicy,
+  LFUEvictionPolicy,
+  LRUEvictionPolicy,
+  ScoreBasedEvictionPolicy,
+  TTLEvictionPolicy,
 } from '@/storage/eviction-policy.js';
+import { DeterministicClock } from '@/test/helpers/deterministic-clock.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -74,8 +75,8 @@ class TestStorage {
 function createTestVector(overrides: Partial<VectorData> & { id: string }): VectorData {
   return {
     vector: new Float32Array([1, 2, 3]),
-    timestamp: Date.now(),
-    lastAccessed: Date.now(),
+    timestamp: referenceTime,
+    lastAccessed: referenceTime,
     accessCount: 0,
     magnitude: Math.sqrt(14),
     ...overrides,
@@ -85,6 +86,11 @@ function createTestVector(overrides: Partial<VectorData> & { id: string }): Vect
 const ONE_HOUR = 60 * 60 * 1000;
 const ONE_DAY = 24 * ONE_HOUR;
 const ONE_WEEK = 7 * ONE_DAY;
+const referenceTime = 1_700_000_000_000;
+
+function createClock(): DeterministicClock {
+  return new DeterministicClock(referenceTime);
+}
 
 // ---------------------------------------------------------------------------
 // LRUEvictionPolicy
@@ -93,7 +99,7 @@ const ONE_WEEK = 7 * ONE_DAY;
 describe('LRUEvictionPolicy', () => {
   it('evicts oldest-accessed vectors first', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({ id: 'old', lastAccessed: now - 3 * ONE_DAY }),
@@ -103,7 +109,9 @@ describe('LRUEvictionPolicy', () => {
     );
     storage.addTestVector(createTestVector({ id: 'new', lastAccessed: now }));
 
-    const policy = new LRUEvictionPolicy(storage.asAdapter());
+    const policy = new LRUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'lru',
       maxVectors: 2,
@@ -123,14 +131,16 @@ describe('LRUEvictionPolicy', () => {
 
   it('respects targetBytes and stops once the target is reached', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     // Each vector with Float32Array([1,2,3]) is 12 bytes for the array alone.
     storage.addTestVector(createTestVector({ id: 'a', lastAccessed: now - 3 * ONE_DAY }));
     storage.addTestVector(createTestVector({ id: 'b', lastAccessed: now - 2 * ONE_DAY }));
     storage.addTestVector(createTestVector({ id: 'c', lastAccessed: now - ONE_DAY }));
 
-    const policy = new LRUEvictionPolicy(storage.asAdapter());
+    const policy = new LRUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
 
     // Set a very small target so only one vector is needed.
     const result = await policy.evict({
@@ -145,7 +155,7 @@ describe('LRUEvictionPolicy', () => {
 
   it('preserves permanent vectors when preservePermanent is true', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({
@@ -158,7 +168,9 @@ describe('LRUEvictionPolicy', () => {
       createTestVector({ id: 'normal', lastAccessed: now - 5 * ONE_DAY }),
     );
 
-    const policy = new LRUEvictionPolicy(storage.asAdapter());
+    const policy = new LRUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'lru',
       maxVectors: 10,
@@ -174,7 +186,7 @@ describe('LRUEvictionPolicy', () => {
 
   it('evicts permanent vectors when preservePermanent is false', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({
@@ -187,7 +199,9 @@ describe('LRUEvictionPolicy', () => {
       createTestVector({ id: 'normal', lastAccessed: now - 5 * ONE_DAY }),
     );
 
-    const policy = new LRUEvictionPolicy(storage.asAdapter());
+    const policy = new LRUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'lru',
       maxVectors: 10,
@@ -201,14 +215,16 @@ describe('LRUEvictionPolicy', () => {
 
   it('uses timestamp as fallback when lastAccessed is undefined', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({ id: 'old-ts', timestamp: now - 5 * ONE_DAY }),
     );
     storage.addTestVector(createTestVector({ id: 'new-ts', timestamp: now }));
 
-    const policy = new LRUEvictionPolicy(storage.asAdapter());
+    const policy = new LRUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'lru', maxVectors: 1 });
 
     expect(result.evictedCount).toBe(1);
@@ -218,7 +234,9 @@ describe('LRUEvictionPolicy', () => {
 
   it('returns an empty result when there are no vectors', async () => {
     const storage = new TestStorage();
-    const policy = new LRUEvictionPolicy(storage.asAdapter());
+    const policy = new LRUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'lru', maxVectors: 5 });
 
     expect(result.evictedCount).toBe(0);
@@ -234,7 +252,7 @@ describe('LRUEvictionPolicy', () => {
 describe('LFUEvictionPolicy', () => {
   it('evicts least-frequently-accessed vectors first', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({ id: 'rare', accessCount: 1, lastAccessed: now }),
@@ -246,7 +264,9 @@ describe('LFUEvictionPolicy', () => {
       createTestVector({ id: 'medium', accessCount: 10, lastAccessed: now }),
     );
 
-    const policy = new LFUEvictionPolicy(storage.asAdapter());
+    const policy = new LFUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'lfu', maxVectors: 1 });
 
     expect(result.strategy).toBe('lfu');
@@ -259,7 +279,7 @@ describe('LFUEvictionPolicy', () => {
 
   it('breaks ties by access time (older access evicted first)', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({
@@ -272,7 +292,9 @@ describe('LFUEvictionPolicy', () => {
       createTestVector({ id: 'new-access', accessCount: 5, lastAccessed: now }),
     );
 
-    const policy = new LFUEvictionPolicy(storage.asAdapter());
+    const policy = new LFUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'lfu', maxVectors: 1 });
 
     expect(result.evictedCount).toBe(1);
@@ -292,7 +314,9 @@ describe('LFUEvictionPolicy', () => {
     );
     storage.addTestVector(createTestVector({ id: 'normal', accessCount: 0 }));
 
-    const policy = new LFUEvictionPolicy(storage.asAdapter());
+    const policy = new LFUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'lfu',
       maxVectors: 10,
@@ -312,7 +336,7 @@ describe('LFUEvictionPolicy', () => {
 describe('TTLEvictionPolicy', () => {
   it('only evicts vectors older than the TTL cutoff', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({
@@ -325,7 +349,9 @@ describe('TTLEvictionPolicy', () => {
       createTestVector({ id: 'fresh', lastAccessed: now, timestamp: now }),
     );
 
-    const policy = new TTLEvictionPolicy(storage.asAdapter());
+    const policy = new TTLEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'ttl',
       ttlHours: 24,
@@ -340,7 +366,7 @@ describe('TTLEvictionPolicy', () => {
 
   it('defaults to 24 hours when ttlHours is not specified', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     // 25 hours ago -- should be evicted with default 24h TTL
     storage.addTestVector(
@@ -351,7 +377,9 @@ describe('TTLEvictionPolicy', () => {
       createTestVector({ id: 'recent', lastAccessed: now - 23 * ONE_HOUR }),
     );
 
-    const policy = new TTLEvictionPolicy(storage.asAdapter());
+    const policy = new TTLEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'ttl' });
 
     expect(result.evictedCount).toBe(1);
@@ -361,7 +389,7 @@ describe('TTLEvictionPolicy', () => {
 
   it('preserves permanent vectors when configured', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({
@@ -374,7 +402,9 @@ describe('TTLEvictionPolicy', () => {
       createTestVector({ id: 'normal-old', lastAccessed: now - 10 * ONE_DAY }),
     );
 
-    const policy = new TTLEvictionPolicy(storage.asAdapter());
+    const policy = new TTLEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'ttl',
       ttlHours: 24,
@@ -388,12 +418,14 @@ describe('TTLEvictionPolicy', () => {
 
   it('evicts nothing when all vectors are within TTL', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(createTestVector({ id: 'a', lastAccessed: now }));
     storage.addTestVector(createTestVector({ id: 'b', lastAccessed: now - ONE_HOUR }));
 
-    const policy = new TTLEvictionPolicy(storage.asAdapter());
+    const policy = new TTLEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'ttl', ttlHours: 24 });
 
     expect(result.evictedCount).toBe(0);
@@ -409,7 +441,7 @@ describe('TTLEvictionPolicy', () => {
 describe('ScoreBasedEvictionPolicy', () => {
   it('evicts lowest-scored vectors first', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     // Low score: old, never accessed, low priority
     storage.addTestVector(
@@ -433,7 +465,9 @@ describe('ScoreBasedEvictionPolicy', () => {
       }),
     );
 
-    const policy = new ScoreBasedEvictionPolicy(storage.asAdapter());
+    const policy = new ScoreBasedEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'score', maxVectors: 1 });
 
     expect(result.strategy).toBe('score');
@@ -445,7 +479,7 @@ describe('ScoreBasedEvictionPolicy', () => {
 
   it('respects maxVectors limit', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     for (let i = 0; i < 5; i++) {
       storage.addTestVector(
@@ -458,7 +492,9 @@ describe('ScoreBasedEvictionPolicy', () => {
       );
     }
 
-    const policy = new ScoreBasedEvictionPolicy(storage.asAdapter());
+    const policy = new ScoreBasedEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'score', maxVectors: 2 });
 
     expect(result.evictedCount).toBe(2);
@@ -467,7 +503,7 @@ describe('ScoreBasedEvictionPolicy', () => {
 
   it('preserves permanent vectors when configured', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({
@@ -488,7 +524,9 @@ describe('ScoreBasedEvictionPolicy', () => {
       }),
     );
 
-    const policy = new ScoreBasedEvictionPolicy(storage.asAdapter());
+    const policy = new ScoreBasedEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'score',
       maxVectors: 10,
@@ -502,7 +540,7 @@ describe('ScoreBasedEvictionPolicy', () => {
 
   it('uses default priority of 0.5 when metadata has no priority', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     // A vector without metadata gets default priority 0.5
     storage.addTestVector(
@@ -524,7 +562,9 @@ describe('ScoreBasedEvictionPolicy', () => {
       }),
     );
 
-    const policy = new ScoreBasedEvictionPolicy(storage.asAdapter());
+    const policy = new ScoreBasedEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'score', maxVectors: 1 });
 
     expect(result.evictedCount).toBe(1);
@@ -541,7 +581,7 @@ describe('ScoreBasedEvictionPolicy', () => {
 describe('HybridEvictionPolicy', () => {
   it('runs TTL first, then score-based if more space is needed', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     // Expired vector (should be caught by TTL phase)
     storage.addTestVector(
@@ -575,7 +615,9 @@ describe('HybridEvictionPolicy', () => {
       }),
     );
 
-    const policy = new HybridEvictionPolicy(storage.asAdapter());
+    const policy = new HybridEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'hybrid',
       maxVectors: 2,
@@ -593,7 +635,7 @@ describe('HybridEvictionPolicy', () => {
 
   it('returns hybrid-ttl-only strategy when TTL frees enough bytes', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({
@@ -606,7 +648,9 @@ describe('HybridEvictionPolicy', () => {
       createTestVector({ id: 'fresh', timestamp: now, lastAccessed: now }),
     );
 
-    const policy = new HybridEvictionPolicy(storage.asAdapter());
+    const policy = new HybridEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     // Request only a tiny amount of bytes -- TTL alone should suffice.
     const result = await policy.evict({
       strategy: 'hybrid',
@@ -621,7 +665,7 @@ describe('HybridEvictionPolicy', () => {
 
   it('defaults to 168-hour (1 week) TTL when ttlHours is not specified', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     // Just over one week old
     storage.addTestVector(
@@ -640,7 +684,9 @@ describe('HybridEvictionPolicy', () => {
       }),
     );
 
-    const policy = new HybridEvictionPolicy(storage.asAdapter());
+    const policy = new HybridEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({
       strategy: 'hybrid',
       targetBytes: 1,
@@ -661,12 +707,14 @@ describe('HybridEvictionPolicy', () => {
 describe('EvictionManager', () => {
   it('delegates to the correct policy based on strategy', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(createTestVector({ id: 'a', lastAccessed: now - 5 * ONE_DAY }));
     storage.addTestVector(createTestVector({ id: 'b', lastAccessed: now }));
 
-    const manager = new EvictionManager(storage.asAdapter());
+    const manager = new EvictionManager(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await manager.evict({ strategy: 'lru', maxVectors: 1 });
 
     expect(result.evictedCount).toBe(1);
@@ -678,7 +726,9 @@ describe('EvictionManager', () => {
 
   it('throws on an unknown strategy', async () => {
     const storage = new TestStorage();
-    const manager = new EvictionManager(storage.asAdapter());
+    const manager = new EvictionManager(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
 
     expect(manager.evict({ strategy: 'unknown' as 'lru' })).rejects.toThrow(
       'Unknown eviction strategy: unknown',
@@ -688,7 +738,7 @@ describe('EvictionManager', () => {
   describe('getEvictionStats', () => {
     it('computes correct totals for a populated store', async () => {
       const storage = new TestStorage();
-      const now = Date.now();
+      const now = referenceTime;
 
       storage.addTestVector(
         createTestVector({
@@ -716,7 +766,9 @@ describe('EvictionManager', () => {
         }),
       );
 
-      const manager = new EvictionManager(storage.asAdapter());
+      const manager = new EvictionManager(storage.asAdapter(), {
+        timeSource: createClock(),
+      });
       const stats = await manager.getEvictionStats();
 
       expect(stats.totalVectors).toBe(3);
@@ -729,7 +781,9 @@ describe('EvictionManager', () => {
 
     it('returns zeroed stats for an empty store', async () => {
       const storage = new TestStorage();
-      const manager = new EvictionManager(storage.asAdapter());
+      const manager = new EvictionManager(storage.asAdapter(), {
+        timeSource: createClock(),
+      });
       const stats = await manager.getEvictionStats();
 
       expect(stats.totalVectors).toBe(0);
@@ -743,7 +797,7 @@ describe('EvictionManager', () => {
   describe('suggestStrategy', () => {
     it('returns TTL when many vectors have expired (> 30%)', async () => {
       const storage = new TestStorage();
-      const now = Date.now();
+      const now = referenceTime;
 
       // 4 out of 5 expired (80%) -- well above 30% threshold
       for (let i = 0; i < 4; i++) {
@@ -765,7 +819,9 @@ describe('EvictionManager', () => {
         }),
       );
 
-      const manager = new EvictionManager(storage.asAdapter());
+      const manager = new EvictionManager(storage.asAdapter(), {
+        timeSource: createClock(),
+      });
       const suggestion = await manager.suggestStrategy(1024);
 
       expect(suggestion.strategy).toBe('ttl');
@@ -776,7 +832,7 @@ describe('EvictionManager', () => {
 
     it('returns hybrid when access patterns are varied (average > 2)', async () => {
       const storage = new TestStorage();
-      const now = Date.now();
+      const now = referenceTime;
 
       // All fresh, high average access count
       storage.addTestVector(
@@ -786,7 +842,9 @@ describe('EvictionManager', () => {
         createTestVector({ id: 'b', lastAccessed: now, accessCount: 10 }),
       );
 
-      const manager = new EvictionManager(storage.asAdapter());
+      const manager = new EvictionManager(storage.asAdapter(), {
+        timeSource: createClock(),
+      });
       const suggestion = await manager.suggestStrategy(1024);
 
       expect(suggestion.strategy).toBe('hybrid');
@@ -796,7 +854,7 @@ describe('EvictionManager', () => {
 
     it('returns LRU for simple cases (few expired, low access)', async () => {
       const storage = new TestStorage();
-      const now = Date.now();
+      const now = referenceTime;
 
       storage.addTestVector(
         createTestVector({ id: 'a', lastAccessed: now, accessCount: 0 }),
@@ -808,7 +866,9 @@ describe('EvictionManager', () => {
         createTestVector({ id: 'c', lastAccessed: now, accessCount: 0 }),
       );
 
-      const manager = new EvictionManager(storage.asAdapter());
+      const manager = new EvictionManager(storage.asAdapter(), {
+        timeSource: createClock(),
+      });
       const suggestion = await manager.suggestStrategy(1024);
 
       expect(suggestion.strategy).toBe('lru');
@@ -826,7 +886,7 @@ describe('EvictionManager', () => {
 describe('Error handling', () => {
   it('captures individual delete failures in the errors array', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({ id: 'good', lastAccessed: now - 2 * ONE_DAY }),
@@ -851,7 +911,9 @@ describe('Error handling', () => {
     };
     const interceptor = storage.deleteInterceptor;
 
-    const policy = new LRUEvictionPolicy(storage.asAdapter());
+    const policy = new LRUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'lru', maxVectors: 2 });
 
     // LRU subtracts error count from evictedCount.
@@ -863,7 +925,7 @@ describe('Error handling', () => {
 
   it('captures errors in LFU policy without stopping eviction', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({ id: 'fail-me', accessCount: 0, lastAccessed: now - ONE_DAY }),
@@ -886,7 +948,9 @@ describe('Error handling', () => {
     };
     const interceptor = storage.deleteInterceptor;
 
-    const policy = new LFUEvictionPolicy(storage.asAdapter());
+    const policy = new LFUEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'lfu', maxVectors: 2 });
 
     // LFU does not subtract errors from evictedCount (different from LRU).
@@ -899,7 +963,7 @@ describe('Error handling', () => {
 
   it('captures errors in TTL policy', async () => {
     const storage = new TestStorage();
-    const now = Date.now();
+    const now = referenceTime;
 
     storage.addTestVector(
       createTestVector({ id: 'fail-ttl', lastAccessed: now - 2 * ONE_DAY }),
@@ -909,7 +973,9 @@ describe('Error handling', () => {
       throw new Error('storage full');
     };
 
-    const policy = new TTLEvictionPolicy(storage.asAdapter());
+    const policy = new TTLEvictionPolicy(storage.asAdapter(), {
+      timeSource: createClock(),
+    });
     const result = await policy.evict({ strategy: 'ttl', ttlHours: 24 });
 
     expect(result.errors).toHaveLength(1);

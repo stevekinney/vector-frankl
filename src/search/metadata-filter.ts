@@ -1,5 +1,5 @@
-import type { MetadataFilter } from '@/core/types.js';
-import { log } from '@/utilities/logger.js';
+import type { MetadataFilter } from '../core/types.js';
+import { log } from '../utilities/logger.js';
 
 /**
  * Check for potentially dangerous regex patterns that could cause ReDoS.

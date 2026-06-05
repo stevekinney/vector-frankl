@@ -1,12 +1,13 @@
 import { mkdir, readdir, rm, stat } from 'node:fs/promises';
 
-import { VectorNotFoundError } from '@/core/errors.js';
+import { VectorNotFoundError } from '../../core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
   StorageAdapter,
   VectorData,
-} from '@/core/types.js';
+} from '../../core/types.js';
+
 import {
   binaryToVectorData,
   calculateMagnitude,

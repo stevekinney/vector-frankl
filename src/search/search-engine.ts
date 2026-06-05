@@ -1,5 +1,5 @@
-import { VectorDatabase } from '@/core/database.js';
-import { DimensionMismatchError } from '@/core/errors.js';
+import { VectorDatabase } from '../core/database.js';
+import { DimensionMismatchError } from '../core/errors.js';
 import type {
   DistanceMetric as DistanceMetricType,
   MetadataFilter,
@@ -7,11 +7,12 @@ import type {
   SearchResult,
   StorageAdapter,
   VectorData,
-} from '@/core/types.js';
-import { GPUSearchEngine, type GPUSearchConfig } from '@/gpu/gpu-search-engine.js';
-import { log } from '@/utilities/logger.js';
-import { VectorOperations } from '@/vectors/operations.js';
-import { WorkerPool } from '@/workers/worker-pool.js';
+} from '../core/types.js';
+import { type GPUSearchConfig, GPUSearchEngine } from '../gpu/gpu-search-engine.js';
+import { log } from '../utilities/logger.js';
+import { VectorOperations } from '../vectors/operations.js';
+import { WorkerPool } from '../workers/worker-pool.js';
+
 import { createDistanceCalculator, DistanceCalculator } from './distance-metrics.js';
 import { HNSWIndex } from './hnsw-index.js';
 import { IndexCache } from './index-persistence.js';
@@ -502,7 +503,7 @@ export class SearchEngine {
       const sample = candidates.slice(0, sampleSize);
 
       // Search within sample
-      const results = await this.searchInCandidates(
+      const results = this.searchInCandidates(
         queryVector,
         sample,
         Math.min(batchSize * 2, maxResults - yielded),
@@ -568,12 +569,12 @@ export class SearchEngine {
   /**
    * Search within a specific set of candidates
    */
-  private async searchInCandidates(
+  private searchInCandidates(
     queryVector: Float32Array,
     candidates: VectorData[],
     k: number,
     options?: SearchOptions,
-  ): Promise<SearchResult[]> {
+  ): SearchResult[] {
     const metric = this.distanceCalculator.getMetricInfo();
     const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
@@ -928,7 +929,10 @@ export class SearchEngine {
       await this.workerPool.init();
       return await this.workerPool.sharedMemorySearch(vectors, queryVector, k, metric);
     } catch (error) {
-      throw new Error(`Shared memory search failed: ${error}`, { cause: error });
+      throw new Error(
+        `Shared memory search failed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
     }
   }
 
@@ -949,7 +953,7 @@ export class SearchEngine {
         this.gpuThreshold = config.gpuThreshold;
       }
     } else if (!enabled && this.gpuSearchEngine) {
-      void this.gpuSearchEngine.cleanup();
+      void this.gpuSearchEngine.cleanup(); // fire-and-forget intentional: setGPUAcceleration is sync
       this.gpuSearchEngine = null;
     }
   }

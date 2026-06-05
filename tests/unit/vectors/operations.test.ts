@@ -243,7 +243,9 @@ describe('VectorOperations', () => {
         'test-id',
         vector,
         undefined,
-        { normalize: true },
+        {
+          normalize: true,
+        },
       );
 
       expect(prepared.normalized).toBe(true);

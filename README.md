@@ -10,7 +10,7 @@ A high-performance vector database built on IndexedDB for browser-based storage,
 ## ✨ Why Vector Frankl is Awesome
 
 - **Unparalleled Performance:** Leveraging SIMD, WebAssembly, and WebGPU, Vector Frankl delivers near-native speed for vector operations, ensuring your AI features are responsive and efficient, even with large datasets.
-- **Runs Anywhere:** Defaults to IndexedDB in the browser for zero-config client-side AI, but pluggable storage adapters let you run the same API on top of SQLite, LevelDB, LMDB, Redis, S3, or the file system in Bun and Node.
+- **Runs Anywhere:** Defaults to IndexedDB in the browser for zero-config client-side AI, but pluggable storage adapters let you run the same API on top of SQLite, LMDB, Redis, S3, or the file system in Bun and Node.
 - **Rich Feature Set:** From advanced vector compression and multiple distance metrics to robust namespace management and comprehensive debugging tools, Vector Frankl provides everything you need to build sophisticated vector-based applications.
 - **Developer-Friendly:** With 100% TypeScript support, a clear API, and built-in performance monitoring, integrating and optimizing your AI workflows has never been easier.
 
@@ -40,7 +40,7 @@ The broader pattern here is moving vector search compute to the edge—the brows
 
 **Vector Storage & Management**
 
-- 🗄️ **Pluggable Storage**: IndexedDB (browser default), SQLite, LevelDB, LMDB, Redis, S3, OPFS, Chrome Storage, file system, or in-memory
+- 🗄️ **Pluggable Storage**: IndexedDB (browser default), SQLite, LMDB, Redis, S3, OPFS, Chrome Storage, file system, or in-memory
 - 📊 **Multiple Vector Formats**: Support for Float32Array, Float64Array, Int8Array, Uint8Array, and regular arrays
 - 🔍 **Similarity Search**: Fast brute-force and optimized search algorithms
 - 📝 **Rich Metadata**: Attach and filter by custom metadata with advanced query support
@@ -66,7 +66,7 @@ The broader pattern here is moving vector search compute to the edge—the brows
 
 **Storage Management**
 
-- 🔌 **Pluggable Adapters**: 10 storage backends behind a single `StorageAdapter` interface
+- 🔌 **Pluggable Adapters**: 9 storage backends behind a single `StorageAdapter` interface
 - 📊 **Quota Monitoring**: Track storage usage with automatic cleanup policies
 - 🗑️ **Eviction Strategies**: LRU, LFU, TTL, score-based, and hybrid policies
 - 💾 **Memory Management**: Shared memory pools for efficient data handling
@@ -240,7 +240,6 @@ Available adapters:
 | `ChromeStorageAdapter`          | `chrome.storage`           | Chrome extensions |
 | `SQLiteStorageAdapter`          | `bun:sqlite`               | Bun               |
 | `FileSystemStorageAdapter`      | File system (JSON files)   | Bun / Node        |
-| `LevelStorageAdapter`           | LevelDB via `level`        | Bun / Node        |
 | `LmdbStorageAdapter`            | LMDB via `lmdb`            | Bun / Node        |
 | `RedisStorageAdapter`           | `Bun.RedisClient`          | Bun               |
 | `S3StorageAdapter`              | `Bun.s3`                   | Bun               |
@@ -384,7 +383,7 @@ const searchWithProfiling = withProfiling('vector-search', (query, k) =>
 ├─────────────────────────────────────────────────────────────┤
 │        Core: Search | Storage | Compression | Index        │
 ├─────────────────────────────────────────────────────────────┤
-│  Storage: IndexedDB | SQLite | LevelDB | LMDB | Redis | S3 │
+│     Storage: IndexedDB | SQLite | LMDB | Redis | S3      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -458,7 +457,7 @@ bun run format
 bun run build
 
 # Benchmarks
-bun run scripts/benchmark.ts
+bun run test:benchmark
 ```
 
 ### Quality Assurance

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { Logger } from './logger';
+import { Logger } from './logger.js';
 
 describe('Logger', () => {
   it('should create logger instance', () => {

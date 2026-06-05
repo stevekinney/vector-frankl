@@ -162,18 +162,8 @@ Each benchmark test measures:
 Run benchmarks from command line:
 
 ```bash
-# Quick benchmark
-bun run scripts/benchmark.ts
-
-# Full benchmark suite
-bun run scripts/benchmark.ts --full
-
-# Category-specific benchmarks
-bun run scripts/benchmark.ts --category search
-bun run scripts/benchmark.ts --category indexing
-
-# Export results
-bun run scripts/benchmark.ts --export results.json --format json
+# Run benchmark test suites
+bun run test:benchmark
 ```
 
 ## Interpreting Results

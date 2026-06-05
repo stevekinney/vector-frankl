@@ -1,4 +1,4 @@
-import type { VectorData } from '@/core/types.js';
+import type { VectorData } from '../../core/types.js';
 
 // ---------------------------------------------------------------------------
 // Shared serialization utilities used by multiple storage adapters

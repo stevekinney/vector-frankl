@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import { WorkerPool } from '@/workers/worker-pool.js';
+
 import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
 
 describe('Worker Pool', () => {

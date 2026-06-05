@@ -2,10 +2,11 @@
  * Benchmark runner and CLI interface
  */
 
-import type { DistanceMetric } from '@/core/types.js';
+import type { DistanceMetric } from '../core/types.js';
+
 import {
-  BenchmarkSuite,
   type BenchmarkConfig,
+  BenchmarkSuite,
   type BenchmarkSummary,
 } from './benchmark-suite.js';
 
@@ -168,6 +169,7 @@ export class BenchmarkRunner {
   /**
    * Output results as JSON
    */
+
   private async outputJSON(summary: BenchmarkSummary, totalTime: number): Promise<void> {
     const output = {
       timestamp: new Date().toISOString(),
@@ -193,6 +195,7 @@ export class BenchmarkRunner {
   /**
    * Output results as CSV
    */
+
   private async outputCSV(summary: BenchmarkSummary, _totalTime: number): Promise<void> {
     const headers = [
       'testName',

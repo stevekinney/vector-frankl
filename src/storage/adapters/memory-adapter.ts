@@ -1,10 +1,11 @@
-import { VectorNotFoundError } from '@/core/errors.js';
+import { VectorNotFoundError } from '../../core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
   StorageAdapter,
   VectorData,
-} from '@/core/types.js';
+} from '../../core/types.js';
+
 import { calculateMagnitude } from './serialization.js';
 
 interface MemoryStorageAdapterOptions {
@@ -16,6 +17,10 @@ export class MemoryStorageAdapter implements StorageAdapter {
   private readonly store = new Map<string, VectorData>();
   private readonly cloneOnRead: boolean;
   private readonly cloneOnWrite: boolean;
+
+  static isAvailable(): boolean {
+    return true;
+  }
 
   constructor(options: MemoryStorageAdapterOptions = {}) {
     this.cloneOnRead = options.cloneOnRead ?? true;

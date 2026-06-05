@@ -2,17 +2,18 @@ import {
   BatchOperationError,
   BrowserSupportError,
   VectorNotFoundError,
-} from '@/core/errors.js';
+} from '../../core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
   StorageAdapter,
   VectorData,
-} from '@/core/types.js';
+} from '../../core/types.js';
+
 import {
-  type SerializedVectorData,
   calculateMagnitude,
   serializableToVectorData,
+  type SerializedVectorData,
   vectorDataToSerializable,
 } from './serialization.js';
 
@@ -42,6 +43,10 @@ export class ChromeStorageAdapter implements StorageAdapter {
 
   /** Promise-based mutex to serialize ID index mutations. */
   private mutexQueue: Promise<void> = Promise.resolve();
+
+  static isAvailable(): boolean {
+    return typeof chrome !== 'undefined' && typeof chrome?.storage !== 'undefined';
+  }
 
   constructor(options: ChromeStorageAdapterOptions) {
     this.prefix = options.prefix;

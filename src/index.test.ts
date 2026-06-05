@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'bun:test';
+
 import packageJson from '../package.json';
 import {
   BatchOperationError,
@@ -7,19 +8,19 @@ import {
   DimensionMismatchError,
   IndexError,
   InvalidFormatError,
+  isVectorDatabaseError,
   NamespaceExistsError,
   NamespaceNotFoundError,
   QuotaExceededError,
   SearchEngine,
   TransactionError,
-  VectorDB,
   VectorDatabaseError,
+  VectorDB,
   VectorFormatHandler,
   VectorFrankl,
   VectorNotFoundError,
   VectorOperations,
   VERSION,
-  isVectorDatabaseError,
 } from './index.js';
 
 describe('Public API exports', () => {

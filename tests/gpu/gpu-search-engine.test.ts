@@ -91,6 +91,21 @@ const mockWebGPU = () => {
   return { mockAdapter, mockDevice };
 };
 
+// Capture pre-mock globals so the suite can restore them and not leak a fake
+// `navigator.gpu` (and the GPU* constants) into other concurrently-running test
+// files. Without this, `search-engine.test.ts`'s "should not initialize GPU
+// engine when navigator.gpu is unavailable" sees the leaked `navigator.gpu` and
+// fails non-deterministically depending on file execution order.
+const originalNavigator = (global as any).navigator;
+const originalGPUBufferUsage = (global as any).GPUBufferUsage;
+const originalGPUMapMode = (global as any).GPUMapMode;
+
+const restoreWebGPUGlobals = () => {
+  (global as any).navigator = originalNavigator;
+  (global as any).GPUBufferUsage = originalGPUBufferUsage;
+  (global as any).GPUMapMode = originalGPUMapMode;
+};
+
 describe('GPUSearchEngine', () => {
   beforeAll(() => {
     setupIndexedDBMocks();
@@ -98,6 +113,7 @@ describe('GPUSearchEngine', () => {
 
   afterAll(() => {
     cleanupIndexedDBMocks();
+    restoreWebGPUGlobals();
   });
 
   describe('Initialization', () => {

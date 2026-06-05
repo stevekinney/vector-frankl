@@ -33,6 +33,24 @@ async function createMockStorage(vectors: VectorData[] = []): Promise<StorageAda
   return adapter;
 }
 
+function replaceNavigatorForTest(navigatorValue: Partial<Navigator>): () => void {
+  const previousDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: navigatorValue,
+    writable: true,
+  });
+
+  return () => {
+    if (previousDescriptor) {
+      Object.defineProperty(globalThis, 'navigator', previousDescriptor);
+    } else {
+      delete (globalThis as { navigator?: Navigator }).navigator;
+    }
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -85,12 +103,18 @@ describe('SearchEngine', () => {
     });
 
     it('should not initialize GPU engine when navigator.gpu is unavailable', async () => {
-      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
-        useGPU: true,
-      });
-      const gpuStats = engine.getGPUStats();
-      expect(gpuStats.enabled).toBe(true);
-      expect(gpuStats.initialized).toBe(false);
+      const restoreNavigator = replaceNavigatorForTest({});
+
+      try {
+        const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+          useGPU: true,
+        });
+        const gpuStats = engine.getGPUStats();
+        expect(gpuStats.enabled).toBe(true);
+        expect(gpuStats.initialized).toBe(false);
+      } finally {
+        restoreNavigator();
+      }
     });
   });
 

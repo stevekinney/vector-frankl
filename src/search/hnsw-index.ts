@@ -1,4 +1,5 @@
-import type { DistanceMetric, VectorData } from '@/core/types.js';
+import type { DistanceMetric, VectorData } from '../core/types.js';
+
 import { createDistanceCalculator, DistanceCalculator } from './distance-metrics.js';
 
 /**
@@ -54,6 +55,7 @@ export class HNSWIndex {
   /**
    * Add a vector to the index
    */
+
   async addVector(vectorData: VectorData): Promise<void> {
     const level = this.getRandomLevel();
     const node: HNSWNode = {
@@ -141,6 +143,7 @@ export class HNSWIndex {
   /**
    * Search for k nearest neighbors
    */
+
   async search(
     queryVector: Float32Array,
     k: number,
@@ -178,6 +181,7 @@ export class HNSWIndex {
   /**
    * Remove a vector from the index
    */
+
   async removeVector(id: string): Promise<void> {
     const node = this.nodes.get(id);
     if (!node) return;

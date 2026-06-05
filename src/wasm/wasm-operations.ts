@@ -327,6 +327,7 @@ export class WASMOperations {
   /**
    * High-performance scalar multiplication
    */
+
   async scalarMultiply(vector: Float32Array, scalar: number): Promise<Float32Array> {
     const implementation = this.getBestImplementation(vector.length);
 
@@ -373,8 +374,7 @@ export class WASMOperations {
     // Use parallel processing for large batches
     if (vectors.length > 10 && this.wasmManager.isAvailable()) {
       const promises = vectors.map(async (vector, index) => {
-        const result = await this.dotProduct(vector, query);
-        results[index] = result;
+        results[index] = await this.dotProduct(vector, query);
       });
 
       await Promise.all(promises);

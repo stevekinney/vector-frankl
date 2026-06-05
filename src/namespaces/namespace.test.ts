@@ -8,13 +8,14 @@ import {
   it,
 } from 'bun:test';
 
+import { DimensionMismatchError } from '../core/errors.js';
+import type { NamespaceConfig } from '../core/types.js';
+import { VectorOperations } from '../vectors/operations.js';
+
 import {
   cleanupIndexedDBMocks,
   setupIndexedDBMocks,
 } from '../../tests/mocks/indexeddb-mock.js';
-import { DimensionMismatchError } from '@/core/errors.js';
-import type { NamespaceConfig } from '@/core/types.js';
-import { VectorOperations } from '@/vectors/operations.js';
 import { VectorNamespace } from './namespace.js';
 
 describe('VectorNamespace', () => {

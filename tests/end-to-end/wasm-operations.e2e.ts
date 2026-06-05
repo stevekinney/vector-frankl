@@ -157,7 +157,7 @@ test.describe('WASM Operations Tests', () => {
           memory.grow(1);
           const newSize = memory.buffer.byteLength;
           window.log(`WASM memory grown from ${initialSize} to ${newSize} bytes`);
-        } catch (_growError) {
+        } catch {
           window.log('WASM memory growth not supported or failed');
         }
 
@@ -288,7 +288,7 @@ test.describe('WASM Operations Tests', () => {
         try {
           const invalidBytes = new Uint8Array([1, 2, 3, 4, 5]); // Not valid WASM
           await WebAssembly.instantiate(invalidBytes);
-        } catch (_error) {
+        } catch {
           window.log('Correctly caught invalid WASM bytes error');
           errorsHandled++;
         }
@@ -297,7 +297,7 @@ test.describe('WASM Operations Tests', () => {
         try {
           const badMagic = new Uint8Array([0xff, 0x61, 0x73, 0x6d]); // Wrong magic number
           await WebAssembly.instantiate(badMagic);
-        } catch (_error) {
+        } catch {
           window.log('Correctly caught bad magic number error');
           errorsHandled++;
         }
@@ -306,7 +306,7 @@ test.describe('WASM Operations Tests', () => {
         try {
           const emptyBytes = new Uint8Array([]);
           await WebAssembly.instantiate(emptyBytes);
-        } catch (_error) {
+        } catch {
           window.log('Correctly caught empty bytes error');
           errorsHandled++;
         }
@@ -314,7 +314,7 @@ test.describe('WASM Operations Tests', () => {
         // Test WebAssembly.Memory with invalid parameters
         try {
           new WebAssembly.Memory({ initial: -1 }); // Invalid size
-        } catch (_error) {
+        } catch {
           window.log('Correctly caught invalid memory size error');
           errorsHandled++;
         }
@@ -322,7 +322,7 @@ test.describe('WASM Operations Tests', () => {
         // Test memory with maximum smaller than initial
         try {
           new WebAssembly.Memory({ initial: 10, maximum: 5 }); // max < initial
-        } catch (_error) {
+        } catch {
           window.log('Correctly caught invalid memory range error');
           errorsHandled++;
         }

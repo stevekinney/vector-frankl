@@ -92,7 +92,7 @@ export abstract class BaseCompressor {
   /**
    * Validate compression quality
    */
-  protected async validateCompressionQuality(
+  protected validateCompressionQuality(
     original: Float32Array,
     decompressed: Float32Array,
   ): Promise<CompressionQuality> {
@@ -107,13 +107,13 @@ export abstract class BaseCompressor {
       0.3 * Math.max(0, Math.min(1, snr / 20)) +
       0.4 * cosineSimilarity;
 
-    return {
+    return Promise.resolve({
       snr,
       mse,
       cosineSimilarity,
       euclideanError,
       qualityScore,
-    };
+    });
   }
 
   /**

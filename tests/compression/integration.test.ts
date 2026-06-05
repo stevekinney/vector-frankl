@@ -142,18 +142,15 @@ describe('Compression Integration', () => {
   });
 
   describe('Batch Operations', () => {
-    it('should handle batch compression efficiently', async () => {
+    it('should handle batch compression', async () => {
       const vectors = Array.from(
         { length: 10 },
         () => new Float32Array(Array.from({ length: 64 }, () => Math.random())),
       );
 
-      const start = performance.now();
       const compressed = await compressionManager.compressBatch(vectors);
-      const elapsed = performance.now() - start;
 
       expect(compressed).toHaveLength(10);
-      expect(elapsed).toBeLessThan(1000); // Should be reasonably fast
 
       // Verify all compressions
       for (let i = 0; i < vectors.length; i++) {
@@ -339,49 +336,17 @@ describe('Compression Integration', () => {
     });
   });
 
-  describe('Performance Characteristics', () => {
-    it('should compress large vectors in reasonable time', async () => {
+  describe('Large Vector Compression', () => {
+    it('should compress large vectors', async () => {
       const largeVector = new Float32Array(
         Array.from({ length: 10000 }, () => Math.random()),
       );
 
-      const start = performance.now();
       const compressed = await compressionManager.compress(largeVector);
-      const compressionTime = performance.now() - start;
-
-      const decompressStart = performance.now();
       const decompressed = await compressionManager.decompress(compressed);
-      const decompressionTime = performance.now() - decompressStart;
 
-      expect(compressionTime).toBeLessThan(1000); // Should be fast
-      expect(decompressionTime).toBeLessThan(500); // Decompression should be faster
       expect(decompressed.length).toBe(largeVector.length);
-    });
-
-    it('should show performance scaling', async () => {
-      const sizes = [100, 500, 1000, 2000];
-      const times: number[] = [];
-
-      for (const size of sizes) {
-        const vector = new Float32Array(
-          Array.from({ length: size }, () => Math.random()),
-        );
-
-        const start = performance.now();
-        await compressionManager.compress(vector);
-        const elapsed = performance.now() - start;
-
-        times.push(elapsed);
-      }
-
-      // Performance should scale reasonably (not exponentially)
-      for (let i = 1; i < times.length; i++) {
-        const ratio = times[i]! / times[i - 1]!;
-        const sizeRatio = sizes[i]! / sizes[i - 1]!;
-
-        // Time growth should be roughly linear with size
-        expect(ratio).toBeLessThan(sizeRatio * 2);
-      }
+      expect(compressed.metadata.compressionRatio).toBeGreaterThan(1);
     });
   });
 });

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
-import type { StorageAdapter, VectorData } from '@/core/types.js';
+
 import { VectorNotFoundError } from '@/core/errors.js';
+import type { StorageAdapter, VectorData } from '@/core/types.js';
 
 function makeVector(
   id: string,

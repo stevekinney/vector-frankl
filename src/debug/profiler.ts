@@ -2,6 +2,10 @@
  * Performance profiler for vector operations
  */
 
+import { log } from '../utilities/logger.js';
+import type { TimeSource } from '../utilities/time-source.js';
+import { systemTimeSource } from '../utilities/time-source.js';
+
 import { DebugContext } from './debug-context.js';
 import { debugManager } from './debug-manager.js';
 import type { MemoryUsage, PerformanceStats, ProfileEntry } from './types.js';
@@ -19,6 +23,7 @@ export class Profiler {
   private completedProfiles: ProfileEntry[] = [];
   private performanceStats = new Map<string, number[]>();
   private context: DebugContext;
+  private timeSource: TimeSource = systemTimeSource;
 
   private constructor() {
     this.context = DebugContext.getInstance();
@@ -31,6 +36,10 @@ export class Profiler {
     return Profiler.instance;
   }
 
+  setTimeSource(timeSource: TimeSource = systemTimeSource): void {
+    this.timeSource = timeSource;
+  }
+
   /**
    * Start profiling an operation
    */
@@ -39,11 +48,11 @@ export class Profiler {
       return operation;
     }
 
-    const profileId = `${operation}-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    const profileId = `${operation}-${this.timeSource.nowMilliseconds()}-${Math.random().toString(36).slice(2, 11)}`;
 
     const entry: ProfileEntry = {
       operation,
-      startTime: performance.now(),
+      startTime: this.timeSource.highResolutionNowMilliseconds(),
       metadata: {
         ...metadata,
         context: this.context.getContextSummary(),
@@ -76,11 +85,11 @@ export class Profiler {
 
     const entry = this.activeProfiles.get(profileId);
     if (!entry) {
-      console.warn(`Profile ${profileId} not found`);
+      log.warn(`Profile ${profileId} not found`);
       return null;
     }
 
-    entry.endTime = performance.now();
+    entry.endTime = this.timeSource.highResolutionNowMilliseconds();
     entry.duration = entry.endTime - entry.startTime;
 
     // Capture final memory if tracking is enabled
@@ -136,7 +145,10 @@ export class Profiler {
     const entry = this.activeProfiles.get(profileId);
     if (!entry) return;
 
-    entry.marks.set(markName, performance.now() - entry.startTime);
+    entry.marks.set(
+      markName,
+      this.timeSource.highResolutionNowMilliseconds() - entry.startTime,
+    );
   }
 
   /**

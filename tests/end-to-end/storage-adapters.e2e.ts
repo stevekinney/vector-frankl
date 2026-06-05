@@ -70,7 +70,9 @@ test.describe('Storage Adapters E2E', () => {
       await page.waitForFunction(
         () => (window as any).__STORAGE_ADAPTERS_READY__ === true,
         null,
-        { timeout: 10_000 },
+        {
+          timeout: 10_000,
+        },
       );
 
       // Verify data survived the reload

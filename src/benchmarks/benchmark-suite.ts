@@ -2,10 +2,10 @@
  * Comprehensive benchmark suite for Vector Frankl database
  */
 
-import { VectorDB } from '@/api/database.js';
-import type { DistanceMetric, VectorFormat } from '@/core/types.js';
-import { debugMethod } from '@/debug/hooks.js';
-import { VectorFormatHandler } from '@/vectors/formats.js';
+import { VectorDB } from '../api/database.js';
+import type { DistanceMetric, VectorFormat } from '../core/types.js';
+import { debugMethod } from '../debug/hooks.js';
+import { VectorFormatHandler } from '../vectors/formats.js';
 
 export interface BenchmarkConfig {
   /** Test database name prefix */

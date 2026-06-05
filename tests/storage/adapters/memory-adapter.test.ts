@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'bun:test';
+
 import type { VectorData } from '@/core/types.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
+
 import { runStorageAdapterTests } from './adapter-test-suite.js';
 
 // Run the shared behavioral test suite with default options (clone on)

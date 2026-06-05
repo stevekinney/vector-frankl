@@ -7,35 +7,35 @@
 // Core debug system
 import { createDebugConsole } from './console.js';
 import { DebugContext } from './debug-context.js';
-import { debugManager, DebugManager } from './debug-manager.js';
-import { NestedProfiler, profiler, Profiler } from './profiler.js';
+import { DebugManager, debugManager } from './debug-manager.js';
+import { NestedProfiler, Profiler, profiler } from './profiler.js';
 
-export { debugManager, DebugManager };
-export { profiler, Profiler, NestedProfiler };
+export { DebugManager, debugManager };
+export { NestedProfiler, Profiler, profiler };
 export { DebugContext };
 export { createDebugConsole };
 export type {
-  DebugConsole,
-  ProfilerConsole,
-  TracerConsole,
-  MemoryConsole,
-  StatsConsole,
   ContextConsole,
+  DebugConsole,
+  MemoryConsole,
+  ProfilerConsole,
+  StatsConsole,
+  TracerConsole,
 } from './console.js';
 
 // Debug hooks and utilities
 export {
-  debugMethod,
-  withProfiling,
-  withContext,
-  trace,
-  logMetrics,
-  logMemoryUsage,
-  DebugTimer,
+  createBatch,
   createTimer,
   debugAssert,
   DebugBatch,
-  createBatch,
+  debugMethod,
+  DebugTimer,
+  logMemoryUsage,
+  logMetrics,
+  trace,
+  withContext,
+  withProfiling,
 } from './hooks.js';
 
 // Types
@@ -43,12 +43,12 @@ export type {
   DebugConfig,
   DebugEntry,
   DebugLevel,
+  DebugReport,
   ExportFormat,
   MemoryUsage,
+  PerformanceStats,
   ProfileEntry,
   TraceEntry,
-  PerformanceStats,
-  DebugReport,
 } from './types.js';
 
 // Lazy debug accessor — avoids import-time side effects

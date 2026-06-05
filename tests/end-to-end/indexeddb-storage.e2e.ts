@@ -320,7 +320,7 @@ test.describe('IndexedDB Storage Tests', () => {
         // Test adding vector with invalid ID
         try {
           await window.db.addVector('', new Array(384).fill(0));
-        } catch (_error) {
+        } catch {
           window.log('Correctly caught empty ID error');
           errorCount++;
         }
@@ -328,7 +328,7 @@ test.describe('IndexedDB Storage Tests', () => {
         // Test adding vector with wrong dimensions
         try {
           await window.db.addVector('wrong_dim', new Array(100).fill(0)); // Wrong dimension
-        } catch (_error) {
+        } catch {
           window.log('Correctly caught dimension mismatch error');
           errorCount++;
         }
@@ -343,7 +343,7 @@ test.describe('IndexedDB Storage Tests', () => {
         // Test search with invalid vector
         try {
           await window.db.search(new Array(100).fill(0), 5); // Wrong dimension
-        } catch (_error) {
+        } catch {
           window.log('Correctly caught search dimension error');
           errorCount++;
         }

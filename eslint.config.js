@@ -90,6 +90,7 @@ export default [
     ignores: [
       '**/{dist,build,coverage,.bun}/**',
       '**/node_modules/**',
+      '**/tmp/**',
       '**/*.lock',
       '**/README.md',
       '**/package.json',

@@ -17,6 +17,21 @@ export interface ContextInfo {
   metadata: Map<string, unknown>;
 }
 
+/**
+ * Build a Map from either a Map or a plain-object Record (or undefined). Callers reach
+ * `createContext`/`updateContext` through `withContext`, whose public signature accepts plain
+ * `Record<string, V>` objects, while `ContextInfo` stores Maps — so both shapes arrive at runtime.
+ * `new Map(record)` throws and `new Map(Object.entries(map))` silently yields an empty Map, so
+ * neither single form is correct; this normalizes both.
+ */
+function toEntryMap<V>(
+  value: Map<string, V> | Record<string, V> | undefined,
+): Map<string, V> {
+  if (!value) return new Map<string, V>();
+  if (value instanceof Map) return new Map(value);
+  return new Map(Object.entries(value));
+}
+
 export class DebugContext {
   private static instance: DebugContext;
   private contexts = new Map<string, ContextInfo>();
@@ -37,8 +52,8 @@ export class DebugContext {
    */
   createContext(id: string, info: Partial<ContextInfo> = {}): string {
     const context: ContextInfo = {
-      tags: new Map(Object.entries(info.tags || {})),
-      metadata: new Map(Object.entries(info.metadata || {})),
+      tags: toEntryMap(info.tags),
+      metadata: toEntryMap(info.metadata),
       ...(info.namespace && { namespace: info.namespace }),
       ...(info.operationType && { operationType: info.operationType }),
       ...(info.vectorDimensions !== undefined && {
@@ -99,13 +114,13 @@ export class DebugContext {
     if (updates.vectorCount !== undefined) context.vectorCount = updates.vectorCount;
 
     if (updates.tags) {
-      Object.entries(updates.tags).forEach(([key, value]) => {
+      toEntryMap(updates.tags).forEach((value, key) => {
         context.tags.set(key, value);
       });
     }
 
     if (updates.metadata) {
-      Object.entries(updates.metadata).forEach(([key, value]) => {
+      toEntryMap(updates.metadata).forEach((value, key) => {
         context.metadata.set(key, value);
       });
     }

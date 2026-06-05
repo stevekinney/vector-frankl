@@ -2,14 +2,17 @@ import {
   NamespaceExistsError,
   NamespaceNotFoundError,
   VectorNotFoundError,
-} from '@/core/errors.js';
-import { validateNamespaceName } from './validate-namespace-name.js';
+} from '../core/errors.js';
 import type {
   NamespaceConfig,
   NamespaceInfo,
   NamespaceStats,
   StorageAdapter,
-} from '@/core/types.js';
+} from '../core/types.js';
+import type { TimeSource } from '../utilities/time-source.js';
+import { systemTimeSource } from '../utilities/time-source.js';
+
+import { validateNamespaceName } from './validate-namespace-name.js';
 
 /**
  * Namespace registry backed by a StorageAdapter.
@@ -20,14 +23,16 @@ import type {
  * - `vector` is a placeholder (required by the StorageAdapter contract)
  *
  * This allows NamespaceManager to work in non-browser environments where
- * IndexedDB is unavailable (e.g. Node/Bun with SQLite, LevelDB, Redis, etc.).
+ * IndexedDB is unavailable (e.g. Node/Bun with SQLite, LMDB, Redis, etc.).
  */
 export class AdapterNamespaceRegistry {
   private adapter: StorageAdapter;
   private initialized = false;
+  private timeSource: TimeSource;
 
-  constructor(adapter: StorageAdapter) {
+  constructor(adapter: StorageAdapter, options: { timeSource?: TimeSource } = {}) {
     this.adapter = adapter;
+    this.timeSource = options.timeSource ?? systemTimeSource;
   }
 
   async init(): Promise<void> {
@@ -47,7 +52,7 @@ export class AdapterNamespaceRegistry {
       throw new NamespaceExistsError(name);
     }
 
-    const now = Date.now();
+    const now = this.timeSource.nowMilliseconds();
     const info: NamespaceInfo = {
       name,
       config,
@@ -100,7 +105,7 @@ export class AdapterNamespaceRegistry {
     }
 
     info.stats = { ...info.stats, ...stats };
-    info.modified = Date.now();
+    info.modified = this.timeSource.nowMilliseconds();
 
     await this.adapter.put({
       id: name,

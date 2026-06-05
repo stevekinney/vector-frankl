@@ -236,8 +236,8 @@ describe('VectorOperations WebAssembly Integration', () => {
     });
   });
 
-  describe('Performance Characteristics', () => {
-    it('should handle various vector sizes efficiently', async () => {
+  describe('Large Vector Behavior', () => {
+    it('should handle various vector sizes', async () => {
       const sizes = [10, 50, 100, 500];
 
       for (const size of sizes) {
@@ -245,32 +245,25 @@ describe('VectorOperations WebAssembly Integration', () => {
           Array.from({ length: size }, () => Math.random()),
         );
 
-        const start = performance.now();
-        await VectorOperations.magnitude(vector);
-        const elapsed = performance.now() - start;
+        const magnitude = await VectorOperations.magnitude(vector);
 
-        // Should complete in reasonable time regardless of size
-        expect(elapsed).toBeLessThan(100);
+        expect(magnitude).toBeGreaterThan(0);
+        expect(isFinite(magnitude)).toBe(true);
       }
     });
 
-    it('should handle batch operations efficiently', async () => {
+    it('should handle batch operations', async () => {
       const vectors = Array.from(
         { length: 20 },
         () => new Float32Array(Array.from({ length: 100 }, () => Math.random())),
       );
-
-      const start = performance.now();
 
       // Process multiple vectors
       const magnitudes = await Promise.all(
         vectors.map((v) => VectorOperations.magnitude(v)),
       );
 
-      const elapsed = performance.now() - start;
-
       expect(magnitudes).toHaveLength(20);
-      expect(elapsed).toBeLessThan(1000);
 
       magnitudes.forEach((mag) => {
         expect(mag).toBeGreaterThan(0);

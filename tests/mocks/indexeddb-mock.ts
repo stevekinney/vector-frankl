@@ -19,7 +19,8 @@ interface IDBDatabaseEvent extends IDBEventTarget {
   target: MockIDBDatabase;
 }
 
-interface IDBVersionChangeEvent extends IDBDatabaseEvent {
+interface IDBVersionChangeEvent extends IDBEventTarget {
+  target: MockIDBOpenDBRequest | MockIDBDatabase;
   oldVersion: number;
   newVersion: number;
 }
@@ -48,6 +49,7 @@ export class MockIDBRequest<T = unknown> {
   result: T | null = null;
   error: Error | null = null;
   readyState: 'pending' | 'done' = 'pending';
+  private completeCallbacks: Array<() => void> = [];
 
   onsuccess: ((event: IDBRequestEvent) => void) | null = null;
   onerror: ((event: IDBRequestEvent) => void) | null = null;
@@ -58,13 +60,30 @@ export class MockIDBRequest<T = unknown> {
       queueMicrotask(() => {
         this.readyState = 'done';
         this.onerror?.({ target: this });
+        this.notifyComplete();
       });
     } else {
       this.result = result ?? null;
       queueMicrotask(() => {
         this.readyState = 'done';
         this.onsuccess?.({ target: this });
+        this.notifyComplete();
       });
+    }
+  }
+
+  onComplete(callback: () => void): void {
+    if (this.readyState === 'done') {
+      queueMicrotask(callback);
+      return;
+    }
+    this.completeCallbacks.push(callback);
+  }
+
+  private notifyComplete(): void {
+    const callbacks = this.completeCallbacks.splice(0);
+    for (const callback of callbacks) {
+      callback();
     }
   }
 }
@@ -75,14 +94,14 @@ export class MockIDBCursor<T = unknown> {
   primaryKey: IDBValidKey | null = null;
   private data: T[];
   private index = 0;
-  private parentRequest: MockIDBRequest | null = null;
+  private parentRequest: MockIDBRequest<MockIDBCursor<T> | null> | null = null;
 
   constructor(data: T[]) {
     this.data = data;
     this.update();
   }
 
-  setParentRequest(request: MockIDBRequest): void {
+  setParentRequest(request: MockIDBRequest<MockIDBCursor<T> | null>): void {
     this.parentRequest = request;
   }
 
@@ -103,13 +122,12 @@ export class MockIDBCursor<T = unknown> {
     this.index++;
     this.update();
     // Re-trigger the parent request's onsuccess, like real IndexedDB.
-    // Use queueMicrotask so cursor iteration completes within the same
-    // macrotask cycle, well before the transaction's oncomplete timer.
+    // Use queueMicrotask so cursor iteration stays ordered ahead of
+    // transaction completion checks.
     if (this.parentRequest) {
       this.parentRequest.result = this.index < this.data.length ? this : null;
       queueMicrotask(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        this.parentRequest!.onsuccess?.({ target: this.parentRequest! } as any);
+        this.parentRequest!.onsuccess?.({ target: this.parentRequest! });
       });
     }
   }
@@ -194,8 +212,8 @@ export class MockIDBObjectStore {
     }
     const cursor = new MockIDBCursor(values);
     const request = new MockIDBRequest<MockIDBCursor | null>(cursor);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cursor.setParentRequest(request as any);
+
+    cursor.setParentRequest(request);
     return request;
   }
 
@@ -258,8 +276,8 @@ export class MockIDBIndex {
     }
     const cursor = new MockIDBCursor(values);
     const request = new MockIDBRequest<MockIDBCursor | null>(cursor);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    cursor.setParentRequest(request as any);
+
+    cursor.setParentRequest(request);
     return request;
   }
 
@@ -292,6 +310,10 @@ export class MockIDBTransaction {
   objectStoreNames: string[];
   private stores = new Map<string, MockIDBObjectStore>();
   private _complete = Promise.resolve();
+  private aborted = false;
+  private completed = false;
+  private completionScheduled = false;
+  private pendingRequests = 0;
 
   oncomplete: ((event: IDBTransactionEvent) => void) | null = null;
   onerror: ((event: IDBTransactionEvent) => void) | null = null;
@@ -312,13 +334,6 @@ export class MockIDBTransaction {
         this.stores.set(name, store);
       }
     }
-
-    // Auto-complete transaction after pending request callbacks settle.
-    // Use 10ms delay to ensure all setTimeout(0) request callbacks and their
-    // resulting microtask (Promise) chains complete before oncomplete fires.
-    setTimeout(() => {
-      this.oncomplete?.({ target: this });
-    }, 10);
   }
 
   get complete(): Promise<void> {
@@ -330,13 +345,88 @@ export class MockIDBTransaction {
     if (!store) {
       throw new Error(`Object store '${name}' not found`);
     }
-    return store;
+    return this.trackObjectStore(store);
   }
 
   abort() {
-    setTimeout(() => {
+    this.aborted = true;
+    queueMicrotask(() => {
       this.onabort?.({ target: this });
-    }, 0);
+    });
+  }
+
+  private trackObjectStore(store: MockIDBObjectStore): MockIDBObjectStore {
+    const requestMethods = new Set([
+      'add',
+      'clear',
+      'count',
+      'delete',
+      'get',
+      'getAll',
+      'openCursor',
+      'put',
+    ]);
+
+    return new Proxy(store, {
+      get: (target, property, receiver) => {
+        const value = Reflect.get(target, property, receiver);
+        if (property === 'index' && typeof value === 'function') {
+          return (...args: unknown[]) => this.trackIndex(value.apply(target, args));
+        }
+        if (requestMethods.has(String(property)) && typeof value === 'function') {
+          return (...args: unknown[]) => this.trackRequest(value.apply(target, args));
+        }
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }) as MockIDBObjectStore;
+  }
+
+  private trackIndex(index: MockIDBIndex): MockIDBIndex {
+    const requestMethods = new Set(['count', 'get', 'getAll', 'openCursor']);
+
+    return new Proxy(index, {
+      get: (target, property, receiver) => {
+        const value = Reflect.get(target, property, receiver);
+        if (requestMethods.has(String(property)) && typeof value === 'function') {
+          return (...args: unknown[]) => this.trackRequest(value.apply(target, args));
+        }
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    }) as MockIDBIndex;
+  }
+
+  private trackRequest<T>(request: MockIDBRequest<T>): MockIDBRequest<T> {
+    this.pendingRequests++;
+    request.onComplete(() => {
+      this.pendingRequests--;
+      this.scheduleCompletionCheck();
+    });
+    return request;
+  }
+
+  private scheduleCompletionCheck(): void {
+    if (this.aborted || this.completed || this.completionScheduled) {
+      return;
+    }
+
+    this.completionScheduled = true;
+    this.queueAfterTransactionPromiseResolution(() => {
+      this.completionScheduled = false;
+      if (this.aborted || this.completed || this.pendingRequests > 0) {
+        return;
+      }
+
+      this.completed = true;
+      this.oncomplete?.({ target: this });
+    });
+  }
+
+  private queueAfterTransactionPromiseResolution(callback: () => void): void {
+    queueMicrotask(() => {
+      queueMicrotask(() => {
+        queueMicrotask(callback);
+      });
+    });
   }
 }
 
@@ -396,9 +486,9 @@ export class MockIDBDatabase {
   }
 
   close(): void {
-    setTimeout(() => {
+    queueMicrotask(() => {
       this.onclose?.({ target: this });
-    }, 0);
+    });
   }
 
   /**
@@ -468,7 +558,7 @@ export class MockIDBOpenDBRequest {
   onblocked: ((event: IDBRequestEvent) => void) | null = null;
 
   constructor(name: string, version?: number) {
-    setTimeout(() => {
+    queueMicrotask(() => {
       // Simulate database opening
       const db = new MockIDBDatabase(name, version || 1);
 
@@ -479,9 +569,8 @@ export class MockIDBOpenDBRequest {
       this.result = db;
 
       // Always trigger upgrade for new databases (simulate schema creation)
-      const upgradeEvent = {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        target: this as any,
+      const upgradeEvent: IDBVersionChangeEvent = {
+        target: this,
         oldVersion: 0,
         newVersion: version || 1,
       };
@@ -490,12 +579,12 @@ export class MockIDBOpenDBRequest {
         this.onupgradeneeded(upgradeEvent);
       }
 
-      // Wait a tick to ensure upgrade is processed, then trigger success
-      setTimeout(() => {
+      // Wait a microtask to ensure upgrade is processed, then trigger success
+      queueMicrotask(() => {
         this.readyState = 'done';
         this.onsuccess?.({ target: this });
-      }, 0);
-    }, 0);
+      });
+    });
   }
 }
 
@@ -546,25 +635,43 @@ export const mockNavigator = {
   storage: mockStorage,
 };
 
+const mockedGlobalValues = new Map<string, PropertyDescriptor | undefined>();
+
+function setMockedGlobalValue(name: string, value: unknown): void {
+  if (!mockedGlobalValues.has(name)) {
+    mockedGlobalValues.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+  }
+
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    value,
+    writable: true,
+  });
+}
+
+function restoreMockedGlobalValues(): void {
+  for (const [name, descriptor] of mockedGlobalValues) {
+    if (descriptor) {
+      Object.defineProperty(globalThis, name, descriptor);
+    } else {
+      delete (globalThis as Record<string, unknown>)[name];
+    }
+  }
+  mockedGlobalValues.clear();
+}
+
 /**
  * Setup IndexedDB mocks for testing
  */
 export function setupIndexedDBMocks(): void {
-  // @ts-expect-error - Monkey patching for tests
-  global.indexedDB = mockIndexedDB;
-  // @ts-expect-error - Monkey patching for tests
-  global.IDBRequest = MockIDBRequest;
-  // @ts-expect-error - Monkey patching for tests
-  global.IDBTransaction = MockIDBTransaction;
-  // @ts-expect-error - Monkey patching for tests
-  global.IDBDatabase = MockIDBDatabase;
-  // @ts-expect-error - Monkey patching for tests
-  global.IDBObjectStore = MockIDBObjectStore;
-  // @ts-expect-error - Monkey patching for tests
-  global.IDBIndex = MockIDBIndex;
-  // @ts-expect-error - Monkey patching for tests
-  global.IDBCursor = MockIDBCursor;
-  global.navigator = mockNavigator as Navigator;
+  setMockedGlobalValue('indexedDB', mockIndexedDB);
+  setMockedGlobalValue('IDBRequest', MockIDBRequest);
+  setMockedGlobalValue('IDBTransaction', MockIDBTransaction);
+  setMockedGlobalValue('IDBDatabase', MockIDBDatabase);
+  setMockedGlobalValue('IDBObjectStore', MockIDBObjectStore);
+  setMockedGlobalValue('IDBIndex', MockIDBIndex);
+  setMockedGlobalValue('IDBCursor', MockIDBCursor);
+  setMockedGlobalValue('navigator', mockNavigator);
 }
 
 /**
@@ -572,4 +679,5 @@ export function setupIndexedDBMocks(): void {
  */
 export function cleanupIndexedDBMocks(): void {
   mockDatabases.clear();
+  restoreMockedGlobalValues();
 }

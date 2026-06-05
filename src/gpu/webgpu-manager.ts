@@ -116,8 +116,9 @@ export class WebGPUManager {
 
       // Set up error handling
       this.uncapturedErrorHandler = (event: Event) => {
+        const gpuError = (event as GPUUncapturedErrorEvent).error;
         log.error('WebGPU uncaptured error', {
-          error: String((event as GPUUncapturedErrorEvent).error),
+          error: gpuError.message,
         });
       };
       this.device.addEventListener('uncapturederror', this.uncapturedErrorHandler);
@@ -261,6 +262,7 @@ export class WebGPUManager {
   /**
    * Cleanup GPU resources
    */
+
   async cleanup(): Promise<void> {
     // Destroy cached pipelines
     this.shaderCache.clear();
@@ -312,6 +314,7 @@ export class WebGPUManager {
   /**
    * Get or create compute pipeline for a specific metric
    */
+
   private async getComputePipeline(
     metric: DistanceMetric,
     workgroupSize: number,

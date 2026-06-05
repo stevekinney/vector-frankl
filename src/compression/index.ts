@@ -12,43 +12,43 @@ import type { CompressionRecommendation } from './compression-manager.js';
 // Base compression interfaces and utilities
 export {
   BaseCompressor,
-  type CompressionMetadata,
-  type CompressionConfig,
-  type CompressionQuality,
   type CompressedVector,
+  type CompressionConfig,
+  type CompressionMetadata,
+  type CompressionQuality,
 } from './base-compressor.js';
 
 // Compression utilities
 export {
-  calculateVectorStatistics,
   calculateBatchStatistics,
-  calculateQuantizationBounds,
-  quantizeValue,
-  dequantizeValue,
   calculateOptimalBits,
-  estimateMemoryUsage,
+  calculateQuantizationBounds,
+  calculateVectorStatistics,
   createQuantizedArray,
+  dequantizeValue,
+  type DimensionStatistics,
+  estimateMemoryUsage,
   packQuantizedValues,
+  type QuantizationBounds,
+  quantizeValue,
   unpackQuantizedValues,
   type VectorStatistics,
-  type DimensionStatistics,
-  type QuantizationBounds,
 } from './compression-utils.js';
 
 // Scalar quantization
 export {
-  ScalarQuantizer,
-  type ScalarQuantizationConfig,
   type QuantizationStrategy,
+  type ScalarQuantizationConfig,
+  ScalarQuantizer,
 } from './scalar-quantizer.js';
 
 // Product quantization
 export {
-  ProductQuantizer,
-  type PQConfig,
   type PQCodebook,
-  type PQMetadata,
+  type PQConfig,
   type PQInitMethod,
+  type PQMetadata,
+  ProductQuantizer,
 } from './product-quantizer.js';
 
 // Compression management

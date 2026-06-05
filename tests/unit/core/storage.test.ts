@@ -11,7 +11,9 @@ import {
 import { VectorDatabase } from '@/core/database.js';
 import { VectorNotFoundError } from '@/core/errors.js';
 import { VectorStorage } from '@/core/storage.js';
+import { DeterministicClock } from '@/test/helpers/deterministic-clock.js';
 import { VectorOperations } from '@/vectors/operations.js';
+
 import {
   cleanupIndexedDBMocks,
   setupIndexedDBMocks,
@@ -20,7 +22,9 @@ import {
 describe('VectorStorage', () => {
   let database: VectorDatabase;
   let storage: VectorStorage;
-  const testDbName = 'test-vector-storage-db';
+  let clock: DeterministicClock;
+  let testDbName: string;
+  let databaseCounter = 0;
 
   beforeAll(() => {
     setupIndexedDBMocks();
@@ -31,23 +35,26 @@ describe('VectorStorage', () => {
   });
 
   beforeEach(async () => {
+    clock = new DeterministicClock();
+    testDbName = `test-vector-storage-db-${databaseCounter++}`;
+
     // Clean up any existing test database
     try {
       indexedDB.deleteDatabase(testDbName);
-    } catch (_error) {
+    } catch {
       // Ignore errors during cleanup
     }
 
     database = new VectorDatabase({ name: testDbName });
     await database.init();
-    storage = new VectorStorage(database);
+    storage = new VectorStorage(database, clock);
   });
 
   afterEach(async () => {
     await database.close();
     try {
       indexedDB.deleteDatabase(testDbName);
-    } catch (_error) {
+    } catch {
       // Ignore cleanup errors
     }
   });
@@ -110,6 +117,7 @@ describe('VectorStorage', () => {
       expect(retrieved1.accessCount).toBe(1);
 
       // Second access
+      clock.advanceBy(1);
       const retrieved2 = await storage.get('test-vector-1');
       expect(retrieved2.accessCount).toBe(2);
       expect(retrieved2.lastAccessed).toBeGreaterThan(retrieved1.lastAccessed!);
@@ -284,7 +292,9 @@ describe('VectorStorage', () => {
           VectorOperations.prepareForStorage(
             `all-vec-${i}`,
             new Float32Array([i * 0.1, i * 0.2]),
-            { index: i },
+            {
+              index: i,
+            },
           ),
         ),
       );

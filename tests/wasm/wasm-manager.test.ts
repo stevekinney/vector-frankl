@@ -8,7 +8,7 @@ describe('WASMManager', () => {
   beforeAll(async () => {
     wasmManager = new WASMManager({
       enableWASM: true,
-      enableProfiling: true,
+      enableProfiling: false,
     });
   });
 
@@ -31,8 +31,6 @@ describe('WASMManager', () => {
       if (wasmManager.getCapabilities().supported) {
         await wasmManager.init();
         expect(wasmManager.isAvailable()).toBe(true);
-      } else {
-        console.log('WebAssembly not supported in this environment, skipping');
       }
     });
   });
@@ -40,7 +38,6 @@ describe('WASMManager', () => {
   describe('Memory Management', () => {
     it('should allocate memory for vectors', async () => {
       if (!wasmManager.isAvailable()) {
-        console.log('WASM not available, skipping memory tests');
         return;
       }
 
@@ -74,7 +71,6 @@ describe('WASMManager', () => {
 
     it('should compute dot product with WebAssembly', async () => {
       if (!wasmManager.isAvailable()) {
-        console.log('WASM not available, skipping operation tests');
         return;
       }
 
@@ -124,28 +120,8 @@ describe('WASMManager', () => {
     });
   });
 
-  describe('Performance', () => {
-    it('should provide benchmark functionality', async () => {
-      if (!wasmManager.isAvailable()) {
-        console.log('WASM not available, skipping benchmark tests');
-        return;
-      }
-
-      const benchmark = await wasmManager.benchmark(100, 10);
-
-      expect(benchmark.wasm).toBeDefined();
-      expect(benchmark.javascript).toBeDefined();
-      expect(benchmark.speedup).toBeDefined();
-
-      expect(benchmark.wasm.processingTime).toBeGreaterThan(0);
-      expect(benchmark.javascript.processingTime).toBeGreaterThan(0);
-      expect(benchmark.speedup).toBeGreaterThan(0);
-
-      expect(benchmark.wasm.operationsPerSecond).toBeGreaterThan(0);
-      expect(benchmark.javascript.operationsPerSecond).toBeGreaterThan(0);
-    });
-
-    it('should handle large vector operations efficiently', async () => {
+  describe('Large Vector Behavior', () => {
+    it('should handle large vector operations', async () => {
       if (!wasmManager.isAvailable()) {
         return;
       }
@@ -155,12 +131,10 @@ describe('WASMManager', () => {
         Array.from({ length: 1000 }, (_, i) => i + 1),
       );
 
-      const start = performance.now();
-      await wasmManager.dotProduct(largeVectorA, largeVectorB);
-      const elapsed = performance.now() - start;
+      const result = await wasmManager.dotProduct(largeVectorA, largeVectorB);
 
-      // Should complete in reasonable time
-      expect(elapsed).toBeLessThan(1000);
+      expect(typeof result).toBe('number');
+      expect(isFinite(result)).toBe(true);
     });
   });
 

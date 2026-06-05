@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { DistanceMetric } from '@/core/types.js';
+import type { DistanceMetric } from '../core/types.js';
+
 import { BenchmarkRunner, BenchmarkSuite, QuickBenchmark } from './index.js';
 
 describe('Benchmark Infrastructure', () => {

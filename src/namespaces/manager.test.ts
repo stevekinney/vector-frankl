@@ -8,17 +8,20 @@ import {
   it,
 } from 'bun:test';
 
-import { NamespaceExistsError, NamespaceNotFoundError } from '@/core/errors.js';
-import { VectorOperations } from '@/vectors/operations.js';
+import { NamespaceExistsError, NamespaceNotFoundError } from '../core/errors.js';
+import { VectorOperations } from '../vectors/operations.js';
+
 import {
   cleanupIndexedDBMocks,
   setupIndexedDBMocks,
 } from '../../tests/mocks/indexeddb-mock.js';
+import { DeterministicClock } from '../test/helpers/deterministic-clock.js';
 import { NamespaceManager } from './manager.js';
 
 describe('NamespaceManager', () => {
   let manager: NamespaceManager;
-  const testDbName = 'test-manager-' + Date.now();
+  let clock: DeterministicClock;
+  const testDbName = `vf-${crypto.randomUUID().slice(0, 8)}`;
 
   beforeAll(() => {
     setupIndexedDBMocks();
@@ -29,7 +32,8 @@ describe('NamespaceManager', () => {
   });
 
   beforeEach(async () => {
-    manager = new NamespaceManager(testDbName);
+    clock = new DeterministicClock();
+    manager = new NamespaceManager(testDbName, undefined, { timeSource: clock });
     await manager.init();
   });
 
@@ -39,7 +43,9 @@ describe('NamespaceManager', () => {
 
   describe('initialization', () => {
     it('should initialize successfully', async () => {
-      const newManager = new NamespaceManager('test-init');
+      const newManager = new NamespaceManager('test-init', undefined, {
+        timeSource: clock,
+      });
       expect(newManager.init()).resolves.toBeUndefined();
       await newManager.deleteAll();
     });
@@ -147,8 +153,7 @@ describe('NamespaceManager', () => {
       const infoBefore = await manager.getNamespaceInfo('access-test');
       const beforeAccess = infoBefore?.stats.lastAccessed;
 
-      // Wait a bit and access
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      clock.advanceBy(10);
       manager.evictFromCache('access-test'); // Force reload
       await manager.getNamespace('access-test');
 
@@ -256,11 +261,12 @@ describe('NamespaceManager', () => {
       // Create namespaces with delays to ensure different access times
       for (let i = 1; i <= 3; i++) {
         await manager.createNamespace(`lru-${i}`, { dimension: 100 });
-        await new Promise((resolve) => setTimeout(resolve, 10));
+        clock.advanceBy(10);
       }
 
       // Access lru-2 to make it more recent
       manager.evictFromCache('lru-2');
+      clock.advanceBy(10);
       await manager.getNamespace('lru-2');
 
       // Set limit to 2, should evict lru-1 (oldest that wasn't re-accessed)
@@ -304,7 +310,9 @@ describe('NamespaceManager', () => {
       await manager.deleteAll();
 
       // Create new manager with same root name
-      const newManager = new NamespaceManager(testDbName);
+      const newManager = new NamespaceManager(testDbName, undefined, {
+        timeSource: clock,
+      });
       await newManager.init();
 
       const list = await newManager.listNamespaces();

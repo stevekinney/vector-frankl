@@ -8,7 +8,9 @@ import {
   it,
 } from 'bun:test';
 
-import { NamespaceExistsError, NamespaceNotFoundError } from '@/core/errors.js';
+import { NamespaceExistsError, NamespaceNotFoundError } from '../core/errors.js';
+import { DeterministicClock } from '../test/helpers/deterministic-clock.js';
+
 import {
   cleanupIndexedDBMocks,
   setupIndexedDBMocks,
@@ -17,7 +19,8 @@ import { NamespaceRegistry } from './registry.js';
 
 describe('NamespaceRegistry', () => {
   let registry: NamespaceRegistry;
-  const testDbName = 'test-registry-' + Date.now();
+  let clock: DeterministicClock;
+  let databaseCounter = 0;
 
   beforeAll(() => {
     setupIndexedDBMocks();
@@ -28,7 +31,10 @@ describe('NamespaceRegistry', () => {
   });
 
   beforeEach(async () => {
-    registry = new NamespaceRegistry(testDbName);
+    clock = new DeterministicClock();
+    registry = new NamespaceRegistry(`test-registry-${databaseCounter++}`, {
+      timeSource: clock,
+    });
     await registry.init();
   });
 
@@ -161,18 +167,21 @@ describe('NamespaceRegistry', () => {
   describe('updateStats', () => {
     it('should update namespace statistics', async () => {
       await registry.register('stats-test', { dimension: 100 });
+      const createdAt = clock.nowMilliseconds();
+      clock.advanceBy(1);
 
       await registry.updateStats('stats-test', {
         vectorCount: 1000,
         storageSize: 4096000,
-        lastAccessed: Date.now(),
+        lastAccessed: clock.nowMilliseconds(),
       });
 
       const info = await registry.get('stats-test');
       expect(info?.stats.vectorCount).toBe(1000);
       expect(info?.stats.storageSize).toBe(4096000);
-      expect(info?.stats.lastAccessed).toBeGreaterThan(0);
-      expect(info?.modified).toBeGreaterThan(info?.created || 0);
+      expect(info?.stats.lastAccessed).toBe(createdAt + 1);
+      expect(info?.modified).toBe(createdAt + 1);
+      expect(info?.created).toBe(createdAt);
     });
 
     it('should throw for non-existent namespace', async () => {

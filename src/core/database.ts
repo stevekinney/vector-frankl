@@ -1,4 +1,5 @@
-import { log } from '@/utilities/logger.js';
+import { log } from '../utilities/logger.js';
+
 import {
   BrowserSupportError,
   DatabaseInitializationError,
@@ -135,7 +136,9 @@ export class VectorDatabase {
       vectorStore.createIndex(
         VectorDatabase.VECTOR_INDICES.LAST_ACCESSED,
         'lastAccessed',
-        { unique: false },
+        {
+          unique: false,
+        },
       );
     }
 
@@ -210,7 +213,7 @@ export class VectorDatabase {
     } catch (error) {
       throw new TransactionError(
         'create transaction',
-        `Failed to create transaction for stores: ${storeNames}`,
+        `Failed to create transaction for stores: ${Array.isArray(storeNames) ? storeNames.join(', ') : storeNames}`,
         error instanceof Error ? error : undefined,
       );
     }
@@ -227,10 +230,20 @@ export class VectorDatabase {
     const transaction = await this.transaction(storeNames, mode);
 
     return new Promise((resolve, reject) => {
-      let result: T;
+      let operationPromise: Promise<T> | null = null;
 
       transaction.oncomplete = () => {
-        resolve(result);
+        if (!operationPromise) {
+          reject(
+            new TransactionError(
+              'execute',
+              'Transaction completed before operation started',
+            ),
+          );
+          return;
+        }
+
+        return operationPromise.then(resolve, reject);
       };
 
       transaction.onerror = () => {
@@ -257,24 +270,22 @@ export class VectorDatabase {
       // Execute the operation.
       // IMPORTANT: The callback must not await non-IDB operations (e.g., fetch, setTimeout)
       // between IDB requests, as IDB transactions auto-commit when the event loop is yielded.
-      operation(transaction)
-        .then((res) => {
-          result = res;
-        })
-        .catch((error) => {
-          try {
-            transaction.abort();
-          } catch {
-            // Transaction may already be inactive/committed; safe to ignore
-          }
-          reject(error);
-        });
+      operationPromise = operation(transaction);
+      operationPromise.catch((error) => {
+        try {
+          transaction.abort();
+        } catch {
+          // Transaction may already be inactive/committed; safe to ignore
+        }
+        reject(error instanceof Error ? error : new Error(String(error)));
+      });
     });
   }
 
   /**
    * Close the database connection
    */
+
   async close(): Promise<void> {
     if (this.database) {
       this.database.close();

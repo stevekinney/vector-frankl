@@ -1,5 +1,6 @@
-import { DimensionMismatchError } from '@/core/errors.js';
-import type { VectorData, VectorFormat } from '@/core/types.js';
+import { DimensionMismatchError } from '../core/errors.js';
+import type { VectorData, VectorFormat } from '../core/types.js';
+
 import { SIMDOperations } from '../simd/simd-operations.js';
 import { WASMOperations } from '../wasm/wasm-operations.js';
 import { VectorFormatHandler } from './formats.js';
@@ -315,7 +316,7 @@ export class VectorOperations {
     // Three-tier optimization: WASM → SIMD → Scalar
     if (vector.length >= this.wasmThreshold && this.isWasmInitialized) {
       try {
-        return await this.wasmOps.scalarMultiply(vector, scalar);
+        return this.wasmOps.scalarMultiply(vector, scalar);
       } catch {
         // Fall through to SIMD
       }

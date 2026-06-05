@@ -1,2 +1,2 @@
-export * from './common';
-export * from './utilities';
+export * from './common.js';
+export * from './utilities.js';

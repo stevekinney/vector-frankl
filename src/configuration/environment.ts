@@ -4,24 +4,24 @@ const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z
     .string()
+    .default('3000')
     .transform((val) => parseInt(val, 10))
-    .pipe(z.number().positive().max(65535))
-    .default('3000'),
+    .pipe(z.number().positive().max(65535)),
   API_TIMEOUT: z
     .string()
+    .default('30000')
     .transform((val) => parseInt(val, 10))
-    .pipe(z.number().positive())
-    .default('30000'),
+    .pipe(z.number().positive()),
   API_RETRY_ATTEMPTS: z
     .string()
+    .default('3')
     .transform((val) => parseInt(val, 10))
-    .pipe(z.number().positive().max(10))
-    .default('3'),
+    .pipe(z.number().positive().max(10)),
   ENABLE_DEBUG_LOGGING: z
     .string()
+    .default('false')
     .transform((val) => val === 'true')
-    .pipe(z.boolean())
-    .default('false'),
+    .pipe(z.boolean()),
 });
 
 export type Environment = z.infer<typeof environmentSchema>;
@@ -45,8 +45,8 @@ function validateEnvironment(env?: Record<string, string | undefined>): Environm
     return environmentSchema.parse(finalEnv);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errorMessage = error.errors
-        .map((err) => `${err.path.join('.')}: ${err.message}`)
+      const errorMessage = error.issues
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
         .join('\n');
       throw new Error(`Environment validation failed:\n${errorMessage}`, {
         cause: error,
@@ -58,15 +58,6 @@ function validateEnvironment(env?: Record<string, string | undefined>): Environm
 
 // Safely get environment variables, handling browser context
 function getEnvironmentVariables(): Record<string, string | undefined> {
-  try {
-    // Try import.meta.env first (Vite/modern bundlers)
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return import.meta.env;
-    }
-  } catch {
-    // Ignore errors
-  }
-
   try {
     // Try process.env (Node.js/some bundlers)
     if (typeof process !== 'undefined' && process.env) {

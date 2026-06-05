@@ -1,4 +1,4 @@
-import { NamespaceExistsError } from '@/core/errors.js';
+import { NamespaceExistsError } from '../core/errors.js';
 import type {
   BatchOptions,
   NamespaceConfig,
@@ -8,9 +8,10 @@ import type {
   StorageAdapterFactory,
   VectorData,
   VectorFormat,
-} from '@/core/types.js';
-import { NamespaceManager } from '@/namespaces/manager.js';
-import { VectorNamespace } from '@/namespaces/namespace.js';
+} from '../core/types.js';
+import { NamespaceManager } from '../namespaces/manager.js';
+import { VectorNamespace } from '../namespaces/namespace.js';
+
 import { VectorDB } from './database.js';
 
 export interface VectorFranklOptions {

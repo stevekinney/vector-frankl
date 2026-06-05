@@ -2,7 +2,10 @@
  * Central debug management system
  */
 
-import { log } from '@/utilities/logger.js';
+import { log } from '../utilities/logger.js';
+import type { TimeSource } from '../utilities/time-source.js';
+import { systemTimeSource } from '../utilities/time-source.js';
+
 import { DebugContext } from './debug-context.js';
 import type { DebugConfig, DebugEntry, DebugLevel, ExportFormat } from './types.js';
 
@@ -14,10 +17,11 @@ export class DebugManager {
   private context: DebugContext;
   private startTime: number;
   private entryCounter = 0;
+  private timeSource: TimeSource = systemTimeSource;
 
   private constructor() {
     this.context = DebugContext.getInstance();
-    this.startTime = performance.now();
+    this.startTime = this.timeSource.highResolutionNowMilliseconds();
 
     // Default configuration
     this.config = {
@@ -49,6 +53,11 @@ export class DebugManager {
       DebugManager.instance = new DebugManager();
     }
     return DebugManager.instance;
+  }
+
+  setTimeSource(timeSource: TimeSource = systemTimeSource): void {
+    this.timeSource = timeSource;
+    this.startTime = this.timeSource.highResolutionNowMilliseconds();
   }
 
   /**
@@ -179,8 +188,8 @@ export class DebugManager {
 
     const fullEntry: DebugEntry = {
       ...entry,
-      id: `${Date.now()}-${++this.entryCounter}`,
-      timestamp: performance.now() - this.startTime,
+      id: `${this.timeSource.nowMilliseconds()}-${++this.entryCounter}`,
+      timestamp: this.timeSource.highResolutionNowMilliseconds() - this.startTime,
     };
 
     // Add context information
@@ -298,6 +307,7 @@ export class DebugManager {
   /**
    * Export debug data
    */
+
   async exportData(format?: ExportFormat): Promise<string> {
     const exportFormat = format || this.config.exportFormat;
     const entries = this.getEntries();
@@ -316,7 +326,7 @@ export class DebugManager {
         return this.exportAsHTML(entries);
 
       default:
-        throw new Error(`Unsupported export format: ${exportFormat}`);
+        throw new Error(`Unsupported export format: ${String(exportFormat)}`);
     }
   }
 

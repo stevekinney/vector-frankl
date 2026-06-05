@@ -2,16 +2,25 @@
  * Debug and profiling tools
  * Import via: vector-frankl/debug
  */
-export {
-  getDebug,
-  debugManager,
-  profiler,
+import {
   createDebugConsole,
-  withProfiling,
-  withContext,
-  debugMethod,
   createTimer,
-  type DebugConfig,
-  type DebugConsole,
-  type PerformanceStats,
+  debugManager,
+  debugMethod,
+  getDebug,
+  profiler,
+  withContext,
+  withProfiling,
 } from './debug/index.js';
+
+export type { DebugConfig, DebugConsole, PerformanceStats } from './debug/index.js';
+export {
+  createDebugConsole,
+  createTimer,
+  debugManager,
+  debugMethod,
+  getDebug,
+  profiler,
+  withContext,
+  withProfiling,
+};

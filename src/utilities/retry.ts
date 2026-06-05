@@ -1,6 +1,6 @@
 import { sleep } from 'bun';
 
-import { log } from './logger';
+import { log } from './logger.js';
 
 export interface RetryOptions {
   maxAttempts?: number;

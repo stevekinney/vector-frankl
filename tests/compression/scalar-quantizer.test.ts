@@ -282,15 +282,10 @@ describe('ScalarQuantizer', () => {
         (_, i) => new Float32Array(Array.from({ length: 50 }, (_, j) => i * 10 + j)),
       );
 
-      const start = performance.now();
       const compressed = await quantizer.compressBatch(vectors);
-      const batchTime = performance.now() - start;
 
       // Verify all vectors were compressed
       expect(compressed).toHaveLength(10);
-
-      // Batch should be reasonably fast
-      expect(batchTime).toBeLessThan(1000);
     });
   });
 

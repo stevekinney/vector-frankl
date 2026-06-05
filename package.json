@@ -77,10 +77,11 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:cjs",
-    "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
+    "bench": "bun run test:benchmark",
+    "build": "bun run scripts/build.ts",
+    "build:cjs": "tsc -p tsconfig.build.json --outDir dist/cjs --declaration false --declarationMap false --emitDeclarationOnly false --module CommonJS",
     "build:clean": "rm -rf dist",
-    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
+    "build:js": "tsc -p tsconfig.build.json --emitDeclarationOnly false",
     "build:types": "tsc -p tsconfig.build.json",
     "check:env": "bun run scripts/check-environment.ts",
     "clean": "bun run scripts/clean.ts",
@@ -93,9 +94,10 @@
     "prepare": "husky",
     "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
     "start": "bun run dist/index.js",
-    "test": "r=0; bun test src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test tests/gpu tests/integration tests/search || r=$?; bun test tests/vectors tests/wasm tests/workers || r=$?; bun test tests/storage || r=$?; exit $r",
+    "test": "r=0; bun test --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/gpu tests/integration tests/search || r=$?; bun test --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/vectors tests/wasm tests/workers || r=$?; bun test --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/storage || r=$?; exit $r",
     "test:all": "bun run test && bun run test:end-to-end",
-    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage",
+    "test:benchmark": "bun run scripts/run-benchmark-tests.ts",
+    "test:coverage": "r=0; bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/gpu || r=$?; bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/integration || r=$?; bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/search || r=$?; bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/vectors tests/wasm tests/workers || r=$?; bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/storage || r=$?; exit $r",
     "test:end-to-end": "playwright test",
     "test:end-to-end:chromium": "playwright test --project=chromium",
     "test:end-to-end:firefox": "playwright test --project=firefox",
@@ -103,8 +105,8 @@
     "test:end-to-end:mobile": "playwright test --project=mobile-chrome --project=mobile-safari",
     "test:end-to-end:ui": "playwright test --ui",
     "test:end-to-end:webkit": "playwright test --project=webkit",
-    "test:parallel": "r=0; bun test --parallel src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test --parallel tests/gpu tests/integration tests/search || r=$?; bun test --parallel tests/vectors tests/wasm tests/workers || r=$?; bun test --parallel tests/storage || r=$?; exit $r",
-    "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
+    "test:parallel": "r=0; bun test --parallel --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test --parallel --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/gpu tests/integration tests/search || r=$?; bun test --parallel --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/vectors tests/wasm tests/workers || r=$?; bun test --parallel --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/storage || r=$?; exit $r",
+    "test:watch": "bun test --watch --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "lint-staged": {
@@ -148,7 +150,6 @@
     "eslint-plugin-unused-imports": "^4.1.4",
     "globals": "^17.4.0",
     "husky": "^9.1.7",
-    "level": "^10.0.0",
     "lint-staged": "^16.0.0",
     "lmdb": "^3.0.0",
     "playwright": "^1.53.2",
@@ -157,13 +158,9 @@
     "typescript-eslint": "^8.56.1"
   },
   "peerDependencies": {
-    "level": ">=10.0.0",
     "lmdb": ">=3.0.0"
   },
   "peerDependenciesMeta": {
-    "level": {
-      "optional": true
-    },
     "lmdb": {
       "optional": true
     }

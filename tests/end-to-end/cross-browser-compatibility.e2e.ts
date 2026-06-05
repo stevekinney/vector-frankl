@@ -283,7 +283,7 @@ test.describe('Cross-Browser Compatibility Tests', () => {
             await WebAssembly.instantiate(wasmBytes);
             apiTests.wasm = false; // This will fail, but at least WASM exists
           }
-        } catch (_error) {
+        } catch {
           // Expected to fail with minimal WASM, but WASM is available
           if (typeof WebAssembly !== 'undefined') {
             apiTests.wasm = true;

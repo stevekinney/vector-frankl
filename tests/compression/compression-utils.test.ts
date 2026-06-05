@@ -316,17 +316,14 @@ describe('Compression Utils', () => {
       expect(unpacked).toEqual(values);
     });
 
-    it('should handle large arrays efficiently', () => {
+    it('should handle large arrays', () => {
       const values = Array.from({ length: 1000 }, (_, i) => i % 256);
       const buffer = createQuantizedArray(values.length, 8);
 
-      const start = performance.now();
       packQuantizedValues(values, 8, buffer);
       const unpacked = unpackQuantizedValues(buffer, values.length, 8);
-      const elapsed = performance.now() - start;
 
       expect(unpacked).toEqual(values);
-      expect(elapsed).toBeLessThan(100); // Should be fast
     });
 
     it('should maintain precision across pack/unpack cycles', () => {

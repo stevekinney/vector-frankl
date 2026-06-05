@@ -1,5 +1,5 @@
-import { DimensionMismatchError, InvalidFormatError } from '@/core/errors.js';
-import type { VectorFormat } from '@/core/types.js';
+import { DimensionMismatchError, InvalidFormatError } from '../core/errors.js';
+import type { VectorFormat } from '../core/types.js';
 
 /**
  * Vector format detection and conversion utilities
@@ -367,7 +367,7 @@ export class VectorFormatHandler {
       case 'binary':
         return new Uint8Array(dimension);
       case 'array':
-        return new Array(dimension).fill(0);
+        return Array.from<number>({ length: dimension }).fill(0);
       default:
         throw new InvalidFormatError(
           format,

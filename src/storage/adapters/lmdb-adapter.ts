@@ -1,12 +1,13 @@
 import { rm } from 'node:fs/promises';
 
-import { VectorNotFoundError } from '@/core/errors.js';
+import { VectorNotFoundError } from '../../core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
   StorageAdapter,
   VectorData,
-} from '@/core/types.js';
+} from '../../core/types.js';
+
 import {
   calculateMagnitude,
   jsonToVectorData,
@@ -183,14 +184,7 @@ export class LmdbStorageAdapter implements StorageAdapter {
 
   async count(): Promise<number> {
     const database = this.requireDatabase();
-    let total = 0;
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    for (const _ of database.getRange()) {
-      total++;
-    }
-
-    return total;
+    return Array.from(database.getRange()).length;
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────

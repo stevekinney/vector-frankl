@@ -319,7 +319,11 @@ export function createDebugConsole(): DebugConsole {
 
     set: (key: string, value: unknown) => {
       context.addMetadata(key, value);
-      console.log(`Set context metadata: ${key} = ${value}`);
+      const displayValue =
+        value === null || typeof value !== 'object'
+          ? String(value)
+          : JSON.stringify(value);
+      console.log(`Set context metadata: ${key} = ${displayValue}`);
     },
 
     tag: (key: string, value: string) => {

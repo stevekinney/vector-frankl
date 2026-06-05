@@ -10,6 +10,7 @@ import {
 
 import { VectorDatabase } from '@/core/database.js';
 import type { DatabaseConfig } from '@/core/types.js';
+
 import {
   cleanupIndexedDBMocks,
   setupIndexedDBMocks,
@@ -35,7 +36,7 @@ describe('VectorDatabase', () => {
     // Clean up any existing test database
     try {
       indexedDB.deleteDatabase(testDbName);
-    } catch (_error) {
+    } catch {
       // Ignore errors during cleanup
     }
 
@@ -50,7 +51,7 @@ describe('VectorDatabase', () => {
 
     try {
       indexedDB.deleteDatabase(testDbName);
-    } catch (_error) {
+    } catch {
       // Ignore cleanup errors
     }
   });

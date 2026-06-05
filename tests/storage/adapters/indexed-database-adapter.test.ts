@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+
 import { IndexedDatabaseStorageAdapter } from '@/storage/adapters/indexed-database-adapter.js';
+
 import {
   cleanupIndexedDBMocks,
   setupIndexedDBMocks,

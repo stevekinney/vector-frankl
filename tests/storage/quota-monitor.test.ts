@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { StorageQuotaMonitor } from '@/storage/quota-monitor.js';
 import type { QuotaWarning } from '@/storage/quota-monitor.js';
+import { StorageQuotaMonitor } from '@/storage/quota-monitor.js';
+import { DeterministicClock } from '@/test/helpers/deterministic-clock.js';
+
+const referenceTime = 1_700_000_000_000;
+
+function createClock(): DeterministicClock {
+  return new DeterministicClock(referenceTime);
+}
 
 /**
  * Reset the singleton instance so each test group starts fresh.
@@ -44,13 +51,33 @@ describe('StorageQuotaMonitor', () => {
       expect(first).not.toBe(second);
     });
 
-    test('options are only applied on first instantiation', () => {
+    test('options reconfigure an existing singleton', () => {
       const first = StorageQuotaMonitor.getInstance({ safetyMargin: 0.25 });
       const second = StorageQuotaMonitor.getInstance({ safetyMargin: 0.5 });
 
       expect(first).toBe(second);
-      // The safety margin should be 0.25 from the first call, not 0.5
-      expect((first as any)['safetyMargin']).toBe(0.25);
+      expect((first as any)['safetyMargin']).toBe(0.5);
+    });
+
+    test('time source injection reconfigures an existing singleton', () => {
+      const originalClock = createClock();
+      const monitor = StorageQuotaMonitor.getInstance({ timeSource: originalClock });
+
+      (monitor as any)['updateUsageHistory'](256);
+      expect(getUsageHistory(monitor)[0]?.timestamp).toBe(referenceTime);
+
+      const clock = new DeterministicClock(referenceTime + 5_000);
+      StorageQuotaMonitor.getInstance({ timeSource: clock });
+      expect(getUsageHistory(monitor)).toHaveLength(0);
+
+      (monitor as any)['updateUsageHistory'](512);
+      const history = getUsageHistory(monitor);
+
+      expect(history).toHaveLength(1);
+      expect(history[0]).toEqual({
+        timestamp: referenceTime + 5_000,
+        usage: 512,
+      });
     });
   });
 
@@ -229,7 +256,7 @@ describe('StorageQuotaMonitor', () => {
       const history = getUsageHistory(monitor);
       history.length = 0;
 
-      const now = Date.now();
+      const now = referenceTime;
       history.push({ timestamp: now - 2000, usage: 1000 });
       history.push({ timestamp: now - 1000, usage: 2000 });
 
@@ -243,7 +270,7 @@ describe('StorageQuotaMonitor', () => {
       const history = getUsageHistory(monitor);
       history.length = 0;
 
-      const now = Date.now();
+      const now = referenceTime;
       // Entries with very small usage deltas relative to time
       history.push({ timestamp: now - 4000, usage: 1000 });
       history.push({ timestamp: now - 3000, usage: 1000 });
@@ -261,7 +288,7 @@ describe('StorageQuotaMonitor', () => {
       const history = getUsageHistory(monitor);
       history.length = 0;
 
-      const now = Date.now();
+      const now = referenceTime;
       // Large usage increases: growing by 10 MB per second (huge rate)
       history.push({ timestamp: now - 4000, usage: 10_000_000 });
       history.push({ timestamp: now - 3000, usage: 20_000_000 });
@@ -279,7 +306,7 @@ describe('StorageQuotaMonitor', () => {
       const history = getUsageHistory(monitor);
       history.length = 0;
 
-      const now = Date.now();
+      const now = referenceTime;
       // Large usage decreases
       history.push({ timestamp: now - 4000, usage: 40_000_000 });
       history.push({ timestamp: now - 3000, usage: 30_000_000 });
@@ -297,7 +324,7 @@ describe('StorageQuotaMonitor', () => {
       const history = getUsageHistory(monitor);
       history.length = 0;
 
-      const now = Date.now();
+      const now = referenceTime;
 
       // 3 entries: confidence should be low
       history.push({ timestamp: now - 3000, usage: 1_000_000 });
@@ -325,7 +352,7 @@ describe('StorageQuotaMonitor', () => {
       const history = getUsageHistory(monitor);
       history.length = 0;
 
-      const now = Date.now();
+      const now = referenceTime;
       // All entries at the same timestamp (only last 5 are used)
       history.push({ timestamp: now, usage: 1000 });
       history.push({ timestamp: now, usage: 2000 });
@@ -341,7 +368,7 @@ describe('StorageQuotaMonitor', () => {
       const history = getUsageHistory(monitor);
       history.length = 0;
 
-      const now = Date.now();
+      const now = referenceTime;
 
       // Add 8 entries: first 3 show decrease, last 5 show increase
       history.push({ timestamp: now - 8000, usage: 50_000_000 });
@@ -374,6 +401,7 @@ describe('StorageQuotaMonitor', () => {
       const monitor = StorageQuotaMonitor.getInstance({
         safetyMargin: 0.2,
         initialCheckInterval: 500,
+        timeSource: createClock(),
       });
 
       expect((monitor as any)['safetyMargin']).toBe(0.2);

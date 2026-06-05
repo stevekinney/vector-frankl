@@ -1,12 +1,15 @@
-import { NamespaceNotFoundError } from '@/core/errors.js';
-import { InputValidator } from '@/core/input-validator.js';
+import { NamespaceNotFoundError } from '../core/errors.js';
+import { InputValidator } from '../core/input-validator.js';
 import type {
   NamespaceConfig,
   NamespaceInfo,
   NamespaceStats,
   StorageAdapterFactory,
-} from '@/core/types.js';
-import { log } from '@/utilities/logger.js';
+} from '../core/types.js';
+import { log } from '../utilities/logger.js';
+import type { TimeSource } from '../utilities/time-source.js';
+import { systemTimeSource } from '../utilities/time-source.js';
+
 import { AdapterNamespaceRegistry } from './adapter-registry.js';
 import { VectorNamespace } from './namespace.js';
 import { NamespaceRegistry } from './registry.js';
@@ -36,20 +39,27 @@ export class NamespaceManager {
   private namespaces: Map<string, VectorNamespace>;
   private initialized = false;
   private storageFactory: StorageAdapterFactory | undefined;
+  private timeSource: TimeSource;
 
   constructor(
     private rootDatabaseName = 'vector-frankl-root',
     storageFactory?: StorageAdapterFactory,
+    options: { timeSource?: TimeSource } = {},
   ) {
     this.storageFactory = storageFactory;
+    this.timeSource = options.timeSource ?? systemTimeSource;
 
     if (storageFactory) {
       // Use adapter-backed registry for non-browser environments
       const registryAdapter = storageFactory(`${rootDatabaseName}-registry`);
-      this.registry = new AdapterNamespaceRegistry(registryAdapter);
+      this.registry = new AdapterNamespaceRegistry(registryAdapter, {
+        timeSource: this.timeSource,
+      });
     } else {
       // Default: IndexedDB-backed registry for browser environments
-      this.registry = new NamespaceRegistry(rootDatabaseName);
+      this.registry = new NamespaceRegistry(rootDatabaseName, {
+        timeSource: this.timeSource,
+      });
     }
 
     this.namespaces = new Map();
@@ -127,7 +137,7 @@ export class NamespaceManager {
 
     // Update last accessed time
     await this.registry.updateStats(name, {
-      lastAccessed: Date.now(),
+      lastAccessed: this.timeSource.nowMilliseconds(),
     });
 
     return namespace;
@@ -167,7 +177,11 @@ export class NamespaceManager {
 
       await new Promise<void>((resolve, reject) => {
         databaseToDelete.onsuccess = () => resolve();
-        databaseToDelete.onerror = () => reject(databaseToDelete.error);
+        databaseToDelete.onerror = () =>
+          reject(
+            databaseToDelete.error ??
+              new Error(`Failed to delete database: ${namespaceDatabaseName}`),
+          );
         databaseToDelete.onblocked = () => {
           log.warn(`Delete blocked for namespace database: ${namespaceDatabaseName}`);
         };

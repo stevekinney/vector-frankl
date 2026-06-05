@@ -1,5 +1,5 @@
-import { LOG_LEVELS } from '../configuration/constants';
-import { environment, isProduction, isTest } from '../configuration/environment';
+import { LOG_LEVELS } from '../configuration/constants.js';
+import { environment, isProduction, isTest } from '../configuration/environment.js';
 
 type LogLevel = keyof typeof LOG_LEVELS;
 type LogContext = Record<string, unknown>;
@@ -22,7 +22,7 @@ export class Logger {
     if (isTest() && !environment.ENABLE_DEBUG_LOGGING) {
       return false;
     }
-    return LOG_LEVELS[level as keyof typeof LOG_LEVELS] <= this.level;
+    return LOG_LEVELS[level] <= this.level;
   }
 
   private formatLog(entry: LogEntry): string {
@@ -88,7 +88,7 @@ export class Logger {
   }
 
   setLevel(level: LogLevel): void {
-    this.level = LOG_LEVELS[level as keyof typeof LOG_LEVELS];
+    this.level = LOG_LEVELS[level];
   }
 
   time(label: string): void {

@@ -2,9 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
 import { debugManager } from '../../src/debug/debug-manager.js';
 import { profiler } from '../../src/debug/profiler.js';
+import { DeterministicClock } from '../../src/test/helpers/deterministic-clock.js';
 
 describe('Profiler', () => {
+  let clock: DeterministicClock;
+
   beforeEach(() => {
+    clock = new DeterministicClock();
+    profiler.setTimeSource(clock);
+    debugManager.setTimeSource(clock);
+
     // Reset profiler state
     profiler.clear();
 
@@ -21,7 +28,7 @@ describe('Profiler', () => {
       exportFormat: 'json',
       sampling: { rate: 1, threshold: 0 },
       maxEntries: 10000,
-      consoleOutput: true,
+      consoleOutput: false,
     });
 
     debugManager.enable({ profile: true });
@@ -29,8 +36,10 @@ describe('Profiler', () => {
 
   afterEach(() => {
     profiler.clear();
+    profiler.setTimeSource();
     debugManager.disable();
     debugManager.clearEntries();
+    debugManager.setTimeSource();
   });
 
   describe('Basic Profiling', () => {
@@ -42,6 +51,7 @@ describe('Profiler', () => {
       expect(activeProfiles).toHaveLength(1);
       expect(activeProfiles[0]!.operation).toBe('test-operation');
 
+      clock.advanceBy(1);
       const entry = profiler.endProfile(profileId);
       expect(entry).toBeTruthy();
       expect(entry!.duration).toBeGreaterThan(0);
@@ -59,8 +69,7 @@ describe('Profiler', () => {
       const profileId = profiler.startProfile('test-operation');
 
       profiler.mark(profileId, 'checkpoint-1');
-      // Add small delay
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      clock.advanceBy(1);
       profiler.mark(profileId, 'checkpoint-2');
 
       const entry = profiler.endProfile(profileId);
@@ -111,7 +120,7 @@ describe('Profiler', () => {
 
     it('should profile asynchronous functions', async () => {
       const result = await profiler.profile('async-operation', async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        clock.advanceBy(20);
         return 'async-result';
       });
 
@@ -142,12 +151,12 @@ describe('Profiler', () => {
     it('should support nested profiling', async () => {
       const result = await profiler.profileNested('parent-operation', async (nested) => {
         await nested.profile('child-1', async () => {
-          await new Promise((resolve) => setTimeout(resolve, 5));
+          clock.advanceBy(5);
           return 'child-1-result';
         });
 
         await nested.profile('child-2', async () => {
-          await new Promise((resolve) => setTimeout(resolve, 5));
+          clock.advanceBy(5);
           return 'child-2-result';
         });
 
@@ -172,7 +181,7 @@ describe('Profiler', () => {
       // Generate some test data
       for (let i = 0; i < 5; i++) {
         await profiler.profile(`operation-${i % 2}`, async () => {
-          await new Promise((resolve) => setTimeout(resolve, 10 + i * 2));
+          clock.advanceBy(10 + i * 2);
         });
       }
     });
@@ -205,15 +214,15 @@ describe('Profiler', () => {
   describe('Profile Filtering', () => {
     beforeEach(async () => {
       await profiler.profile('fast-operation', async () => {
-        await new Promise((resolve) => setTimeout(resolve, 5));
+        clock.advanceBy(5);
       });
 
       await profiler.profile('slow-operation', async () => {
-        await new Promise((resolve) => setTimeout(resolve, 25));
+        clock.advanceBy(25);
       });
 
       await profiler.profile('medium-operation', async () => {
-        await new Promise((resolve) => setTimeout(resolve, 15));
+        clock.advanceBy(15);
       });
     });
 

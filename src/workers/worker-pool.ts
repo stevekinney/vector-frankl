@@ -31,6 +31,14 @@ export interface PoolConfig {
   };
 }
 
+function getDefaultWorkerScript(): string {
+  if (typeof location !== 'undefined' && location.href) {
+    return new URL('./vector-worker.js', location.href).href;
+  }
+
+  return './vector-worker.js';
+}
+
 /**
  * Manages a pool of Web Workers for parallel vector operations
  */
@@ -59,8 +67,7 @@ export class WorkerPool {
 
   constructor(config: PoolConfig = {}) {
     this.maxWorkers = config.maxWorkers || navigator.hardwareConcurrency || 4;
-    this.workerScript =
-      config.workerScript || new URL('./vector-worker.ts', import.meta.url).href;
+    this.workerScript = config.workerScript || getDefaultWorkerScript();
     this.defaultTimeout = config.timeout || 30000; // 30 seconds
     // Initialize shared memory manager if enabled
     if (
@@ -75,6 +82,7 @@ export class WorkerPool {
   /**
    * Initialize the worker pool
    */
+
   async init(): Promise<void> {
     if (this.isInitialized) return;
 
@@ -587,6 +595,7 @@ export class WorkerPool {
   /**
    * Terminate all workers and clean up
    */
+
   async terminate(): Promise<void> {
     // Clear all timeouts
     for (const task of this.activeTasks.values()) {

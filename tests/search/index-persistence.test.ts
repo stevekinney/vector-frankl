@@ -3,6 +3,9 @@ import { describe, expect, it } from 'bun:test';
 import type { VectorData } from '@/core/types.js';
 import { HNSWIndex } from '@/search/hnsw-index.js';
 import { IndexCache } from '@/search/index-persistence.js';
+import { DeterministicClock } from '@/test/helpers/deterministic-clock.js';
+
+const referenceTime = 1_700_000_000_000;
 
 function makeVector(
   id: string,
@@ -15,7 +18,7 @@ function makeVector(
     id,
     vector,
     magnitude,
-    timestamp: Date.now(),
+    timestamp: referenceTime,
   };
   if (metadata) {
     result.metadata = metadata;
@@ -32,13 +35,13 @@ function makeVector(
  * test only the in-memory cache behavior via putInCache / getIndex cache-hit
  * path / markDirty / getStats / clear / eviction.
  */
-function createTestCache(): IndexCache {
+function createTestCache(clock = new DeterministicClock()): IndexCache {
   // VectorDatabase constructor checks for IndexedDB and throws, so we bypass
   // it by casting a plain object. The persistence manager will exist but any
   // actual load/save calls will fail -- which is fine since we only test cache
   // hit paths and in-memory bookkeeping.
   const stubDatabase = {} as ConstructorParameters<typeof IndexCache>[0];
-  return new IndexCache(stubDatabase);
+  return new IndexCache(stubDatabase, { timeSource: clock });
 }
 
 function createIndex(distanceMetric: 'cosine' | 'euclidean' = 'cosine'): HNSWIndex {
@@ -231,17 +234,12 @@ describe('IndexCache', () => {
   });
 
   describe('LRU eviction', () => {
-    // evictLeastRecentlyUsed compares lastAccess timestamps with strict <,
-    // so entries must have distinct timestamps for eviction to work. We use
-    // Bun.sleep(1) between insertions to guarantee at least 1ms separation.
-
     it('should evict the least recently used entry when cache exceeds max size', async () => {
       const cache = createTestCache();
 
       // Fill the cache to capacity (maxCacheSize = 5)
       for (let i = 0; i < 5; i++) {
         cache.putInCache(`index-${i}`, createIndex(), 'cosine');
-        await Bun.sleep(1);
       }
 
       expect(cache.getStats().cacheSize).toBe(5);
@@ -250,27 +248,30 @@ describe('IndexCache', () => {
       cache.putInCache('index-5', createIndex(), 'cosine');
 
       expect(cache.getStats().cacheSize).toBe(5);
+      const evicted = await cache.getIndex('index-0').catch(() => null);
+      expect(evicted).toBeNull();
     });
 
     it('should evict the entry with the oldest lastAccess timestamp', async () => {
-      const cache = createTestCache();
+      const clock = new DeterministicClock();
+      const cache = createTestCache(clock);
 
-      // Insert entries with distinct timestamps via sleep
+      // Insert entries with distinct timestamps via deterministic clock advancement
       cache.putInCache('oldest', createIndex(), 'cosine');
-      await Bun.sleep(1);
+      clock.advanceBy(1);
       cache.putInCache('second', createIndex(), 'cosine');
-      await Bun.sleep(1);
+      clock.advanceBy(1);
       cache.putInCache('third', createIndex(), 'cosine');
-      await Bun.sleep(1);
+      clock.advanceBy(1);
       cache.putInCache('fourth', createIndex(), 'cosine');
-      await Bun.sleep(1);
+      clock.advanceBy(1);
       cache.putInCache('fifth', createIndex(), 'cosine');
-      await Bun.sleep(1);
+      clock.advanceBy(1);
 
       // Access "oldest" to give it a fresh lastAccess timestamp, making
       // "second" the true LRU candidate
       await cache.getIndex('oldest');
-      await Bun.sleep(1);
+      clock.advanceBy(1);
 
       // Trigger eviction by inserting a 6th entry -- "second" should be evicted
       cache.putInCache('sixth', createIndex(), 'cosine');
@@ -281,6 +282,8 @@ describe('IndexCache', () => {
       const oldestResult = await cache.getIndex('oldest');
       expect(oldestResult).not.toBeNull();
       expect(oldestResult!.index).toBeDefined();
+      const secondResult = await cache.getIndex('second').catch(() => null);
+      expect(secondResult).toBeNull();
     });
 
     it('should maintain max cache size after multiple insertions beyond capacity', async () => {
@@ -289,7 +292,6 @@ describe('IndexCache', () => {
       // Insert 10 entries into a cache with max size 5
       for (let i = 0; i < 10; i++) {
         cache.putInCache(`index-${i}`, createIndex(), 'cosine');
-        await Bun.sleep(1);
       }
 
       expect(cache.getStats().cacheSize).toBe(5);

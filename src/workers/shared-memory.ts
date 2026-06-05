@@ -3,6 +3,9 @@
  */
 
 import type { DistanceMetric } from '../core/types.js';
+import { log } from '../utilities/logger.js';
+import type { TimeSource } from '../utilities/time-source.js';
+import { systemTimeSource } from '../utilities/time-source.js';
 
 export interface SharedMemoryConfig {
   /** Maximum memory pool size in bytes */
@@ -13,6 +16,8 @@ export interface SharedMemoryConfig {
   alignment?: number;
   /** Enable memory statistics tracking */
   enableStats?: boolean;
+  /** Time source for deterministic tests */
+  timeSource?: TimeSource;
 }
 
 export interface MemoryBlock {
@@ -53,7 +58,8 @@ export interface SharedMemoryStats {
  */
 export class SharedMemoryManager {
   private memoryPool: MemoryBlock[] = [];
-  private config: Required<SharedMemoryConfig>;
+  private config: Required<Omit<SharedMemoryConfig, 'timeSource'>>;
+  private timeSource: TimeSource;
   private stats: SharedMemoryStats = {
     totalAllocated: 0,
     totalUsed: 0,
@@ -70,6 +76,7 @@ export class SharedMemoryManager {
       alignment: config.alignment || 8,
       enableStats: config.enableStats ?? true,
     };
+    this.timeSource = config.timeSource ?? systemTimeSource;
 
     // Check SharedArrayBuffer support
     if (typeof SharedArrayBuffer === 'undefined') {
@@ -103,7 +110,7 @@ export class SharedMemoryManager {
 
     // Mark as in use
     block.inUse = true;
-    block.lastUsed = Date.now();
+    block.lastUsed = this.timeSource.nowMilliseconds();
 
     // Create layout information
     const layout: SharedMemoryLayout = {
@@ -129,7 +136,7 @@ export class SharedMemoryManager {
     const block = this.memoryPool.find((b) => b.buffer === buffer);
     if (block) {
       block.inUse = false;
-      block.lastUsed = Date.now();
+      block.lastUsed = this.timeSource.nowMilliseconds();
       this.updateStats();
     }
   }
@@ -381,7 +388,7 @@ export class SharedMemoryManager {
    * Cleanup unused memory blocks
    */
   cleanup(maxAge: number = 60000): void {
-    const now = Date.now();
+    const now = this.timeSource.nowMilliseconds();
     const initialLength = this.memoryPool.length;
 
     this.memoryPool = this.memoryPool.filter((block) => {
@@ -395,7 +402,7 @@ export class SharedMemoryManager {
 
     const removedCount = initialLength - this.memoryPool.length;
     if (removedCount > 0 && this.config.enableStats) {
-      console.debug(`Cleaned up ${removedCount} memory blocks`);
+      log.debug(`Cleaned up ${removedCount} memory blocks`);
     }
 
     this.updateStats();
@@ -418,14 +425,15 @@ export class SharedMemoryManager {
   private createBlock(size: number): MemoryBlock {
     const alignedSize = this.align(size);
     const buffer = new SharedArrayBuffer(alignedSize);
+    const now = this.timeSource.nowMilliseconds();
 
     const block: MemoryBlock = {
       buffer,
       offset: 0,
       size: alignedSize,
       inUse: false,
-      created: Date.now(),
-      lastUsed: Date.now(),
+      created: now,
+      lastUsed: now,
     };
 
     this.memoryPool.push(block);
@@ -447,7 +455,7 @@ export class SharedMemoryManager {
     headerView.setUint32(24, layout.dataOffset, true);
 
     // Timestamp
-    headerView.setFloat64(32, Date.now(), true);
+    headerView.setFloat64(32, this.timeSource.nowMilliseconds(), true);
   }
 
   private align(value: number): number {
@@ -491,6 +499,9 @@ export class SharedMemoryManager {
 
     return quantized;
   }
+
+  // Placeholder for shared-memory worker-pool delegation: intentionally async because the real
+  // implementation will await worker round-trips. Until then it returns no results.
 
   private async processChunkInWorkers(
     _buffer: SharedArrayBuffer,

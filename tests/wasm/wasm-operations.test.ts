@@ -10,7 +10,7 @@ describe('WASMOperations', () => {
       enableWASM: true,
       wasmThreshold: 32,
       enableSIMDFallback: true,
-      enableProfiling: true,
+      enableProfiling: false,
     });
 
     await wasmOps.init();
@@ -54,7 +54,7 @@ describe('WASMOperations', () => {
       expect(result).toBeCloseTo(expected, 6);
     });
 
-    it('should handle large vectors efficiently', async () => {
+    it('should handle large vectors', async () => {
       // Large enough to trigger WASM optimization
       const size = 100;
       const vectorA = new Float32Array(Array.from({ length: size }, (_, i) => i + 1));
@@ -62,9 +62,7 @@ describe('WASMOperations', () => {
         Array.from({ length: size }, (_, i) => (i + 1) * 2),
       );
 
-      const start = performance.now();
       const result = await wasmOps.dotProduct(vectorA, vectorB);
-      const elapsed = performance.now() - start;
 
       // Verify result
       let expected = 0;
@@ -73,7 +71,6 @@ describe('WASMOperations', () => {
       }
 
       expect(result).toBeCloseTo(expected, 6);
-      expect(elapsed).toBeLessThan(100); // Should be fast
     });
 
     it('should handle small vectors with scalar/SIMD fallback', async () => {
@@ -251,50 +248,18 @@ describe('WASMOperations', () => {
       expect(results[2]).toBe(2); // [1,1] · [1,1] = 2
     });
 
-    it('should handle large batch operations efficiently', async () => {
+    it('should handle large batch operations', async () => {
       const vectors = Array.from({ length: 20 }, (_, i) => new Float32Array([i, i + 1]));
       const query = new Float32Array([1, 1]);
 
-      const start = performance.now();
       const results = await wasmOps.batchDotProduct(vectors, query);
-      const elapsed = performance.now() - start;
 
       expect(results).toHaveLength(20);
-      expect(elapsed).toBeLessThan(1000);
 
       // Verify results
       for (let i = 0; i < 20; i++) {
         expect(results[i]).toBe(i + (i + 1)); // i*1 + (i+1)*1
       }
-    });
-  });
-
-  describe('Performance Benchmarking', () => {
-    it('should provide comprehensive performance benchmarks', async () => {
-      const benchmark = await wasmOps.benchmarkAll(100, 50);
-
-      expect(benchmark.simd).toBeDefined();
-      expect(benchmark.scalar).toBeDefined();
-      expect(benchmark.speedup).toBeDefined();
-
-      expect(benchmark.simd.time).toBeGreaterThan(0);
-      expect(benchmark.scalar.time).toBeGreaterThan(0);
-      expect(benchmark.speedup.simdVsScalar).toBeGreaterThan(0);
-
-      if (benchmark.wasm) {
-        expect(benchmark.wasm.time).toBeGreaterThan(0);
-        expect(benchmark.speedup.wasmVsScalar).toBeGreaterThan(0);
-        expect(benchmark.speedup.wasmVsSIMD).toBeDefined();
-      }
-    });
-
-    it('should show reasonable performance characteristics', async () => {
-      const smallBenchmark = await wasmOps.benchmarkAll(50, 10);
-      const largeBenchmark = await wasmOps.benchmarkAll(500, 10);
-
-      // Larger vectors should show better relative performance for optimized implementations
-      expect(smallBenchmark.speedup.simdVsScalar).toBeGreaterThan(0);
-      expect(largeBenchmark.speedup.simdVsScalar).toBeGreaterThan(0);
     });
   });
 

@@ -1,15 +1,16 @@
-import { BrowserSupportError, VectorNotFoundError } from '@/core/errors.js';
+import { BrowserSupportError, VectorNotFoundError } from '../../core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
   StorageAdapter,
   VectorData,
-} from '@/core/types.js';
+} from '../../core/types.js';
+
 import {
-  type SerializedVectorData,
   binaryToVectorData,
   calculateMagnitude,
   serializableToVectorData,
+  type SerializedVectorData,
   vectorDataToBinary,
   vectorDataToSerializable,
 } from './serialization.js';
@@ -73,6 +74,13 @@ export class OPFSStorageAdapter implements StorageAdapter {
   private readonly format: 'binary' | 'json';
   private rootHandle: FileSystemDirectoryHandle | undefined;
   private vectorsHandle: FileSystemDirectoryHandle | undefined;
+
+  static isAvailable(): boolean {
+    return (
+      typeof globalThis.navigator !== 'undefined' &&
+      typeof navigator.storage?.getDirectory === 'function'
+    );
+  }
 
   constructor(options: OPFSStorageAdapterOptions) {
     this.directory = options.directory;

@@ -1,5 +1,7 @@
-import type { StorageAdapter, VectorData } from '@/core/types.js';
-import { log } from '@/utilities/logger.js';
+import type { StorageAdapter, VectorData } from '../core/types.js';
+import { log } from '../utilities/logger.js';
+import type { TimeSource } from '../utilities/time-source.js';
+import { systemTimeSource } from '../utilities/time-source.js';
 
 /**
  * Configuration for eviction policies
@@ -39,9 +41,24 @@ interface VectorScore {
  * Base class for eviction policies
  */
 abstract class BaseEvictionPolicy {
-  constructor(protected storage: StorageAdapter) {}
+  protected timeSource: TimeSource;
+
+  constructor(
+    protected storage: StorageAdapter,
+    options: { timeSource?: TimeSource } = {},
+  ) {
+    this.timeSource = options.timeSource ?? systemTimeSource;
+  }
 
   abstract evict(config: EvictionConfig): Promise<EvictionResult>;
+
+  protected nowMilliseconds(): number {
+    return this.timeSource.nowMilliseconds();
+  }
+
+  protected highResolutionNowMilliseconds(): number {
+    return this.timeSource.highResolutionNowMilliseconds();
+  }
 
   /**
    * Calculate the estimated size of a vector in bytes
@@ -81,7 +98,10 @@ abstract class BaseEvictionPolicy {
         return obj.length * 2;
       case 'object':
         if (Array.isArray(obj)) {
-          return obj.reduce((sum, item) => sum + this.estimateObjectSize(item), 24);
+          return obj.reduce<number>(
+            (sum, item) => sum + this.estimateObjectSize(item),
+            24,
+          );
         }
 
         {
@@ -111,7 +131,7 @@ abstract class BaseEvictionPolicy {
  */
 export class LRUEvictionPolicy extends BaseEvictionPolicy {
   async evict(config: EvictionConfig): Promise<EvictionResult> {
-    const startTime = performance.now();
+    const startTime = this.highResolutionNowMilliseconds();
     const targetBytes = config.targetBytes || 0;
     const maxVectors = config.maxVectors || Infinity;
     const batchSize = config.batchSize || 1000;
@@ -165,7 +185,7 @@ export class LRUEvictionPolicy extends BaseEvictionPolicy {
       );
     }
 
-    const duration = performance.now() - startTime;
+    const duration = this.highResolutionNowMilliseconds() - startTime;
 
     return {
       evictedCount: evictedCount - errors.length,
@@ -182,7 +202,7 @@ export class LRUEvictionPolicy extends BaseEvictionPolicy {
  */
 export class LFUEvictionPolicy extends BaseEvictionPolicy {
   async evict(config: EvictionConfig): Promise<EvictionResult> {
-    const startTime = performance.now();
+    const startTime = this.highResolutionNowMilliseconds();
     const targetBytes = config.targetBytes || 0;
     const maxVectors = config.maxVectors || Infinity;
 
@@ -228,7 +248,7 @@ export class LFUEvictionPolicy extends BaseEvictionPolicy {
       evictedCount,
       freedBytes,
       errors,
-      duration: performance.now() - startTime,
+      duration: this.highResolutionNowMilliseconds() - startTime,
       strategy: 'lfu',
     };
   }
@@ -239,9 +259,9 @@ export class LFUEvictionPolicy extends BaseEvictionPolicy {
  */
 export class TTLEvictionPolicy extends BaseEvictionPolicy {
   async evict(config: EvictionConfig): Promise<EvictionResult> {
-    const startTime = performance.now();
+    const startTime = this.highResolutionNowMilliseconds();
     const ttlMs = (config.ttlHours || 24) * 60 * 60 * 1000;
-    const cutoffTime = Date.now() - ttlMs;
+    const cutoffTime = this.nowMilliseconds() - ttlMs;
 
     const allVectors = await this.storage.getAll();
     const candidates = allVectors.filter((vector) => {
@@ -276,7 +296,7 @@ export class TTLEvictionPolicy extends BaseEvictionPolicy {
       evictedCount,
       freedBytes,
       errors,
-      duration: performance.now() - startTime,
+      duration: this.highResolutionNowMilliseconds() - startTime,
       strategy: 'ttl',
     };
   }
@@ -287,7 +307,7 @@ export class TTLEvictionPolicy extends BaseEvictionPolicy {
  */
 export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
   async evict(config: EvictionConfig): Promise<EvictionResult> {
-    const startTime = performance.now();
+    const startTime = this.highResolutionNowMilliseconds();
     const targetBytes = config.targetBytes || 0;
     const maxVectors = config.maxVectors || Infinity;
 
@@ -332,7 +352,7 @@ export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
       evictedCount,
       freedBytes,
       errors,
-      duration: performance.now() - startTime,
+      duration: this.highResolutionNowMilliseconds() - startTime,
       strategy: 'score',
     };
   }
@@ -342,7 +362,7 @@ export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
    * Lower scores are evicted first
    */
   private calculateEvictionScore(vector: VectorData): number {
-    const now = Date.now();
+    const now = this.nowMilliseconds();
     const age = now - vector.timestamp;
     const timeSinceAccess = now - (vector.lastAccessed || vector.timestamp);
     const accessCount = vector.accessCount || 0;
@@ -368,10 +388,12 @@ export class ScoreBasedEvictionPolicy extends BaseEvictionPolicy {
  */
 export class HybridEvictionPolicy extends BaseEvictionPolicy {
   async evict(config: EvictionConfig): Promise<EvictionResult> {
-    const startTime = performance.now();
+    const startTime = this.highResolutionNowMilliseconds();
 
     // Phase 1: Remove expired vectors (TTL)
-    const ttlPolicy = new TTLEvictionPolicy(this.storage);
+    const ttlPolicy = new TTLEvictionPolicy(this.storage, {
+      timeSource: this.timeSource,
+    });
     const ttlResult = await ttlPolicy.evict({
       ...config,
       strategy: 'ttl',
@@ -383,7 +405,7 @@ export class HybridEvictionPolicy extends BaseEvictionPolicy {
       return {
         ...ttlResult,
         strategy: 'hybrid-ttl-only',
-        duration: performance.now() - startTime,
+        duration: this.highResolutionNowMilliseconds() - startTime,
       };
     }
 
@@ -395,7 +417,9 @@ export class HybridEvictionPolicy extends BaseEvictionPolicy {
     );
 
     if (remainingTarget > 0 || remainingVectors > 0) {
-      const scorePolicy = new ScoreBasedEvictionPolicy(this.storage);
+      const scorePolicy = new ScoreBasedEvictionPolicy(this.storage, {
+        timeSource: this.timeSource,
+      });
       const scoreResult = await scorePolicy.evict({
         ...config,
         targetBytes: remainingTarget,
@@ -406,7 +430,7 @@ export class HybridEvictionPolicy extends BaseEvictionPolicy {
         evictedCount: ttlResult.evictedCount + scoreResult.evictedCount,
         freedBytes: ttlResult.freedBytes + scoreResult.freedBytes,
         errors: [...ttlResult.errors, ...scoreResult.errors],
-        duration: performance.now() - startTime,
+        duration: this.highResolutionNowMilliseconds() - startTime,
         strategy: 'hybrid',
       };
     }
@@ -414,7 +438,7 @@ export class HybridEvictionPolicy extends BaseEvictionPolicy {
     return {
       ...ttlResult,
       strategy: 'hybrid-ttl-only',
-      duration: performance.now() - startTime,
+      duration: this.highResolutionNowMilliseconds() - startTime,
     };
   }
 }
@@ -424,13 +448,19 @@ export class HybridEvictionPolicy extends BaseEvictionPolicy {
  */
 export class EvictionManager {
   private policies: Map<string, BaseEvictionPolicy> = new Map();
+  private timeSource: TimeSource;
 
-  constructor(private storage: StorageAdapter) {
-    this.policies.set('lru', new LRUEvictionPolicy(storage));
-    this.policies.set('lfu', new LFUEvictionPolicy(storage));
-    this.policies.set('ttl', new TTLEvictionPolicy(storage));
-    this.policies.set('score', new ScoreBasedEvictionPolicy(storage));
-    this.policies.set('hybrid', new HybridEvictionPolicy(storage));
+  constructor(
+    private storage: StorageAdapter,
+    options: { timeSource?: TimeSource } = {},
+  ) {
+    this.timeSource = options.timeSource ?? systemTimeSource;
+    const policyOptions = { timeSource: this.timeSource };
+    this.policies.set('lru', new LRUEvictionPolicy(storage, policyOptions));
+    this.policies.set('lfu', new LFUEvictionPolicy(storage, policyOptions));
+    this.policies.set('ttl', new TTLEvictionPolicy(storage, policyOptions));
+    this.policies.set('score', new ScoreBasedEvictionPolicy(storage, policyOptions));
+    this.policies.set('hybrid', new HybridEvictionPolicy(storage, policyOptions));
   }
 
   /**
@@ -471,7 +501,7 @@ export class EvictionManager {
     expiredVectors: number;
   }> {
     const allVectors = await this.storage.getAll();
-    const now = Date.now();
+    const now = this.timeSource.nowMilliseconds();
     const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
 
     let totalBytes = 0;

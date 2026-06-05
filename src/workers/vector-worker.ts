@@ -106,6 +106,7 @@ self.onmessage = async (event: MessageEvent<WorkerTask>) => {
 /**
  * Perform similarity search on a subset of vectors
  */
+
 async function performSimilaritySearch(data: {
   vectors: VectorData[];
   queryVector: Float32Array;
@@ -163,6 +164,7 @@ async function performSimilaritySearch(data: {
 /**
  * Calculate similarities for multiple queries against multiple vectors
  */
+
 async function performBatchSimilarity(data: {
   vectors: VectorData[];
   queries: Float32Array[];
@@ -278,6 +280,7 @@ function quantizeVectors(data: { vectors: Float32Array[]; bits: number }): {
 /**
  * Perform similarity search using SharedArrayBuffer for zero-copy
  */
+
 async function performSharedSimilaritySearch(data: {
   sharedBuffer: SharedArrayBuffer;
   vectorCount: number;

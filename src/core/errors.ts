@@ -99,7 +99,9 @@ export class DimensionMismatchError extends VectorDatabaseError {
     super(
       `Vector dimension mismatch: expected ${expected}, got ${actual}`,
       'DIMENSION_MISMATCH',
-      { vectorId },
+      {
+        vectorId,
+      },
     );
     this.expected = expected;
     this.actual = actual;
@@ -119,7 +121,11 @@ export class QuotaExceededError extends VectorDatabaseError {
     super(
       `Storage quota exceeded: ${usage}/${quota} bytes (${percentage}%)`,
       'QUOTA_EXCEEDED',
-      { usage, quota, percentage },
+      {
+        usage,
+        quota,
+        percentage,
+      },
     );
     this.usage = usage;
     this.quota = quota;
@@ -251,7 +257,10 @@ export class IndexError extends VectorDatabaseError {
     super(
       `Index operation '${operation}' failed for ${indexType}: ${message}`,
       'INDEX_ERROR',
-      { indexType, operation },
+      {
+        indexType,
+        operation,
+      },
     );
     this.indexType = indexType;
     this.operation = operation;

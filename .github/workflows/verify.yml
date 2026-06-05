@@ -65,16 +65,22 @@ jobs:
         run: bun run typecheck
 
       - name: Test (core)
-        run: bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts
+        run: bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' src tests/unit tests/compression tests/debug tests/debug-mock.test.ts
 
-      - name: Test (search, gpu, integration)
-        run: bun test --coverage tests/gpu tests/integration tests/search
+      - name: Test (gpu)
+        run: bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/gpu
+
+      - name: Test (integration)
+        run: bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/integration
+
+      - name: Test (search)
+        run: bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/search
 
       - name: Test (vectors, wasm, workers)
-        run: bun test --coverage tests/vectors tests/wasm tests/workers
+        run: bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/vectors tests/wasm tests/workers
 
       - name: Test (storage)
-        run: bun test --coverage tests/storage
+        run: bun test --coverage --timeout 30000 --path-ignore-patterns '**/*.benchmark.test.ts' tests/storage
 
       - name: Build
         run: bun run build

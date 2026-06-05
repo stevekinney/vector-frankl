@@ -3,13 +3,13 @@
  */
 
 export {
-  BenchmarkSuite,
   type BenchmarkConfig,
   type BenchmarkResult,
+  BenchmarkSuite,
   type BenchmarkSummary,
 } from './benchmark-suite.js';
 export {
   BenchmarkRunner,
-  QuickBenchmark,
   type BenchmarkRunnerOptions,
+  QuickBenchmark,
 } from './runner.js';

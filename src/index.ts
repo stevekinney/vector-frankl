@@ -12,121 +12,180 @@
  *   vector-frankl/compression — Compression internals
  */
 
+import { VectorDB } from './api/database.js';
+import { VectorFrankl } from './api/vector-frankl.js';
+import {
+  BatchOperationError,
+  BrowserSupportError,
+  DatabaseInitializationError,
+  DimensionMismatchError,
+  IndexError,
+  InvalidFormatError,
+  isVectorDatabaseError,
+  NamespaceExistsError,
+  NamespaceNotFoundError,
+  QuotaExceededError,
+  TransactionError,
+  VectorDatabaseError,
+  VectorNotFoundError,
+} from './core/errors.js';
+import { AdapterNamespaceRegistry } from './namespaces/adapter-registry.js';
+import { NamespaceManager } from './namespaces/manager.js';
+import { VectorNamespace } from './namespaces/namespace.js';
+import { NamespaceRegistry } from './namespaces/registry.js';
+import {
+  createDistanceCalculator,
+  DistanceCalculator,
+  DistanceMetrics,
+  listAvailableMetrics,
+  registerCustomMetric,
+} from './search/distance-metrics.js';
+import { HNSWIndex } from './search/hnsw-index.js';
+import { IndexCache, IndexPersistence } from './search/index-persistence.js';
+import {
+  MetadataFilterCompiler,
+  metadataQuery,
+  MetadataRangeQuery,
+} from './search/metadata-filter.js';
+import { SearchEngine } from './search/search-engine.js';
+import {
+  EvictionManager,
+  HybridEvictionPolicy,
+  LFUEvictionPolicy,
+  LRUEvictionPolicy,
+  ScoreBasedEvictionPolicy,
+  TTLEvictionPolicy,
+} from './storage/eviction-policy.js';
+import { ChromeStorageAdapter } from './storage/adapters/chrome-storage-adapter.js';
+import { IndexedDatabaseStorageAdapter } from './storage/adapters/indexed-database-adapter.js';
+import { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';
+import { OPFSStorageAdapter } from './storage/adapters/opfs-adapter.js';
+import { SQLiteStorageAdapter } from './storage/adapters/sqlite-adapter.js';
+import { StorageQuotaMonitor } from './storage/quota-monitor.js';
+import { resolveStorageAdapter } from './storage/resolve-storage-adapter.js';
+import { systemTimeSource } from './utilities/time-source.js';
+import { VectorFormatHandler } from './vectors/formats.js';
+import { VectorOperations } from './vectors/operations.js';
+
+const VERSION = '1.0.0-beta.1';
+
 // Main API (with namespace support)
-export { VectorFrankl } from './api/vector-frankl.js';
 export type { VectorFranklOptions } from './api/vector-frankl.js';
+export { VectorFrankl };
 
 // Simple API (without namespace support)
-export { VectorDB } from './api/database.js';
+export { VectorDB };
 
 // Namespace management
-export { AdapterNamespaceRegistry } from './namespaces/adapter-registry.js';
-export { NamespaceManager } from './namespaces/manager.js';
-export { VectorNamespace } from './namespaces/namespace.js';
-export { NamespaceRegistry } from './namespaces/registry.js';
+export { AdapterNamespaceRegistry, NamespaceManager, NamespaceRegistry, VectorNamespace };
 
 // Core types
 export type {
+  AndFilter,
+  // Batch operations
+  BatchOptions,
+  BatchProgress,
+  CompressionStrategy,
   // Database types
   DatabaseConfig,
-  VectorData,
-  VectorFormat,
-
+  DistanceMetric,
+  FilterOperator,
+  FilterValue,
+  HNSWParameters,
+  IndexConfig,
+  // Index types
+  IndexStrategy,
+  KDTreeParameters,
+  MetadataFilter,
   // Namespace types
   NamespaceConfig,
   NamespaceInfo,
   NamespaceStats,
-
+  NotFilter,
+  OrFilter,
   // Search types
   SearchOptions,
   SearchResult,
-  DistanceMetric,
-  MetadataFilter,
-  FilterOperator,
-  FilterValue,
   SimpleFilter,
-  AndFilter,
-  OrFilter,
-  NotFilter,
-
-  // Batch operations
-  BatchOptions,
-  BatchProgress,
-
   // Storage types
   StorageAdapter,
   StorageAdapterFactory,
   StorageEstimate,
-
-  // Index types
-  IndexStrategy,
-  IndexConfig,
-  HNSWParameters,
-  KDTreeParameters,
-  CompressionStrategy,
+  VectorData,
+  VectorFormat,
 } from './core/types.js';
 
 // Errors
 export {
-  VectorDatabaseError,
+  BatchOperationError,
+  BrowserSupportError,
+  DatabaseInitializationError,
   DimensionMismatchError,
-  QuotaExceededError,
-  VectorNotFoundError,
+  IndexError,
   InvalidFormatError,
+  isVectorDatabaseError,
   NamespaceExistsError,
   NamespaceNotFoundError,
-  DatabaseInitializationError,
+  QuotaExceededError,
   TransactionError,
-  BatchOperationError,
-  IndexError,
-  BrowserSupportError,
-  isVectorDatabaseError,
-} from './core/errors.js';
+  VectorDatabaseError,
+  VectorNotFoundError,
+};
 
 // Vector utilities
-export { VectorOperations } from './vectors/operations.js';
-export { VectorFormatHandler } from './vectors/formats.js';
+export type { TimeSource } from './utilities/time-source.js';
+export { systemTimeSource, VectorFormatHandler, VectorOperations };
 
 // Search utilities
-export { SearchEngine } from './search/search-engine.js';
+export type { DistanceMetricImplementation } from './search/distance-metrics.js';
 export {
-  DistanceMetrics,
-  DistanceCalculator,
   createDistanceCalculator,
-  registerCustomMetric,
+  DistanceCalculator,
+  DistanceMetrics,
+  HNSWIndex,
+  IndexCache,
+  IndexPersistence,
   listAvailableMetrics,
-  type DistanceMetricImplementation,
-} from './search/distance-metrics.js';
-export {
   MetadataFilterCompiler,
-  MetadataRangeQuery,
   metadataQuery,
-} from './search/metadata-filter.js';
-export { HNSWIndex } from './search/hnsw-index.js';
-export { IndexPersistence, IndexCache } from './search/index-persistence.js';
+  MetadataRangeQuery,
+  registerCustomMetric,
+  SearchEngine,
+};
 
 // Storage adapters (universally usable)
-export { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';
-export { IndexedDatabaseStorageAdapter } from './storage/adapters/indexed-database-adapter.js';
-export { OPFSStorageAdapter } from './storage/adapters/opfs-adapter.js';
+export {
+  ChromeStorageAdapter,
+  IndexedDatabaseStorageAdapter,
+  MemoryStorageAdapter,
+  OPFSStorageAdapter,
+  SQLiteStorageAdapter,
+};
+
+// Storage adapter resolution
+export type {
+  ResolvedStorageAdapter,
+  StorageAdapterPreference,
+  StorageResolutionOptions,
+} from './storage/resolve-storage-adapter.js';
+export { resolveStorageAdapter };
 
 // Storage management utilities
-export {
-  StorageQuotaMonitor,
-  type QuotaEstimate,
-  type QuotaWarning,
-  type StorageBreakdown,
-} from './storage/quota-monitor.js';
+export type { EvictionConfig, EvictionResult } from './storage/eviction-policy.js';
 export {
   EvictionManager,
-  LRUEvictionPolicy,
-  LFUEvictionPolicy,
-  TTLEvictionPolicy,
-  ScoreBasedEvictionPolicy,
   HybridEvictionPolicy,
-  type EvictionConfig,
-  type EvictionResult,
-} from './storage/eviction-policy.js';
+  LFUEvictionPolicy,
+  LRUEvictionPolicy,
+  ScoreBasedEvictionPolicy,
+  StorageQuotaMonitor,
+  TTLEvictionPolicy,
+};
+export type {
+  QuotaEstimate,
+  QuotaWarning,
+  StorageBreakdown,
+} from './storage/quota-monitor.js';
 
-// Version — sourced from package.json to maintain a single source of truth
-export { version as VERSION } from '../package.json';
+// Version — keep this in sync with the canonical package metadata.
+export { VERSION };
