@@ -320,6 +320,84 @@ describe('Vector Database Integration Tests', () => {
     });
   });
 
+  describe('Indexed Mutation Consistency', () => {
+    beforeEach(async () => {
+      await db.delete();
+      db = new VectorDB(`${testDBName}-indexed-mutations`, 2, {
+        autoEviction: false,
+        useIndex: true,
+      });
+      await db.init();
+    });
+
+    it('should clear cached and persisted indexes when clearing vectors', async () => {
+      await db.addVector('first-vector', [1, 0], { label: 'first' });
+      await db.addVector('second-vector', [0, 1], { label: 'second' });
+      await db.rebuildIndex();
+
+      expect(db.getIndexStats().nodeCount).toBe(2);
+
+      await db.clear();
+
+      const stats = await db.getStats();
+      expect(stats.vectorCount).toBe(0);
+      expect(db.getIndexStats().nodeCount).toBe(0);
+      expect(await db.search([1, 0], 5, { includeMetadata: true })).toEqual([]);
+    });
+
+    it('should force-rebuild cached indexes after metadata updates', async () => {
+      await db.addVector('metadata-vector', [1, 0], { label: 'old' });
+      await db.rebuildIndex();
+
+      await db.updateMetadata('metadata-vector', { label: 'new' });
+
+      const results = await db.search([1, 0], 1, { includeMetadata: true });
+      expect(results).toHaveLength(1);
+      expect(results[0]!.metadata).toEqual({ label: 'new' });
+    });
+
+    it('should force-rebuild cached indexes after batch vector updates', async () => {
+      await db.addVector('updated-vector', [1, 0], { label: 'old' });
+      await db.addVector('target-vector', [1, 0], { label: 'target' });
+      await db.rebuildIndex();
+
+      await db.updateBatch([
+        {
+          id: 'updated-vector',
+          metadata: { label: 'updated' },
+          vector: [0, 1],
+        },
+      ]);
+
+      const results = await db.search([1, 0], 2, {
+        includeMetadata: true,
+        includeVector: true,
+      });
+
+      expect(results[0]!.id).toBe('target-vector');
+
+      const updatedResult = results.find((result) => result.id === 'updated-vector');
+      expect(updatedResult?.metadata).toEqual({ label: 'updated' });
+      expect(Array.from(updatedResult!.vector!)).toEqual([0, 1]);
+    });
+
+    it('should reject invalid metadata in batch updates before writing', async () => {
+      await db.addVector('batch-validation', [1, 0], { version: 1 });
+
+      expect(
+        db.updateBatch([
+          {
+            id: 'batch-validation',
+            metadata: { '../secret': 'value' },
+          },
+        ]),
+      ).rejects.toThrow('Invalid metadata key: ../secret');
+
+      const stored = await db.getVector('batch-validation');
+      expect(stored?.metadata).toEqual({ version: 1 });
+    });
+  });
+
   describe('Storage Management', () => {
     it('should monitor storage quota', async () => {
       const quotaInfo = await db.getStorageQuota();

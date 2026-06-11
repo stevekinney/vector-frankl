@@ -659,15 +659,30 @@ export class SearchEngine {
   }
 
   /**
+   * Clear the active index and any persisted snapshot for this search engine.
+   */
+  async clearIndex(): Promise<void> {
+    if (!this.useIndex || !this.hnswIndex) {
+      return;
+    }
+
+    this.hnswIndex.clear();
+
+    if (this.indexCache) {
+      await this.indexCache.deleteIndex(this.indexId);
+    }
+  }
+
+  /**
    * Rebuild the index from storage
    */
-  async rebuildIndex(): Promise<void> {
+  async rebuildIndex(options: { loadFromCache?: boolean } = {}): Promise<void> {
     if (!this.useIndex || !this.hnswIndex) {
       return;
     }
 
     // Try to load from cache/persistence first
-    if (this.indexCache) {
+    if (options.loadFromCache !== false && this.indexCache) {
       const cached = await this.indexCache.getIndex(this.indexId);
       if (cached) {
         this.hnswIndex = cached.index;

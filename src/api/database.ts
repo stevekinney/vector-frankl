@@ -592,6 +592,7 @@ export class VectorDB {
   async clear(): Promise<void> {
     await this.ensureInitialized();
     await this.storage.clear();
+    await this.searchEngine.clearIndex();
   }
 
   /**
@@ -709,8 +710,13 @@ export class VectorDB {
       updateTimestamp?: boolean;
     },
   ): Promise<void> {
+    const validatedId = InputValidator.validateVectorId(id);
+    const validatedMetadata = InputValidator.validateMetadata(metadata);
+
     await this.ensureInitialized();
-    await this.storage.updateMetadata(id, metadata, options);
+    await this.storage.updateMetadata(validatedId, validatedMetadata, options);
+
+    await this.searchEngine.rebuildIndex({ loadFromCache: false });
   }
 
   /**
@@ -729,16 +735,21 @@ export class VectorDB {
     errors: Array<{ id: string; error: Error }>;
   }> {
     await this.ensureInitialized();
+    const validatedIds = InputValidator.validateVectorIds(
+      updates.map((update) => update.id),
+    );
 
     // Validate and convert vectors
-    const processedUpdates = updates.map((update) => {
+    const processedUpdates = updates.map((update, index) => {
       const processed: {
         id: string;
         vector?: Float32Array;
         metadata?: Record<string, unknown>;
-      } = { id: update.id };
+      } = { id: validatedIds[index]! };
 
       if (update.vector) {
+        VectorFormatHandler.validate(update.vector, this.dimension);
+
         if (update.vector.length !== this.dimension) {
           throw new DimensionMismatchError(this.dimension, update.vector.length);
         }
@@ -746,12 +757,15 @@ export class VectorDB {
       }
 
       if (update.metadata !== undefined) {
-        processed.metadata = update.metadata;
+        processed.metadata = InputValidator.validateMetadata(update.metadata);
       }
 
       return processed;
     });
 
-    return this.storage.updateBatch(processedUpdates, options);
+    const result = await this.storage.updateBatch(processedUpdates, options);
+    await this.searchEngine.rebuildIndex({ loadFromCache: false });
+
+    return result;
   }
 }
