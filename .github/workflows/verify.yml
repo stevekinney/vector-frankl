@@ -91,6 +91,9 @@ jobs:
           fi
           echo "✅ Build output verified"
 
+      - name: Verify package surface
+        run: bun run scripts/check-package.ts
+
       - name: Install Playwright browsers
         run: bunx playwright install chromium --with-deps
 

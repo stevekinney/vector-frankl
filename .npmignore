@@ -61,6 +61,7 @@ test-output/
 
 # Keep these files
 !dist/
+!dist/**
 !LICENSE
 !README.md
 !CHANGELOG.md
