@@ -3,6 +3,7 @@
  */
 
 import type { DistanceMetric } from '../core/types.js';
+import { createDistanceCalculator } from '../search/distance-metrics.js';
 
 export interface SharedMemoryConfig {
   /** Maximum memory pool size in bytes */
@@ -493,20 +494,80 @@ export class SharedMemoryManager {
   }
 
   private async processChunkInWorkers(
-    _buffer: SharedArrayBuffer,
-    _layout: {
+    buffer: SharedArrayBuffer,
+    layout: {
       vectorsOffset: number;
       queriesOffset: number;
       vectorCount: number;
       queryCount: number;
     },
-    _k: number,
-    _metric: DistanceMetric,
+    k: number,
+    metric: DistanceMetric,
     _options: { topK?: number; threshold?: number },
   ): Promise<Array<Array<{ index: number; distance: number; score: number }>>> {
-    // This would delegate to the worker pool
-    // For now, return empty results as placeholder
-    return [];
+    const dimension = new DataView(buffer).getUint32(8, true);
+    const bytesPerVector = dimension * Float32Array.BYTES_PER_ELEMENT;
+    const calculator = createDistanceCalculator(metric);
+    const metricInfo = calculator.getMetricInfo();
+    const results: Array<Array<{ index: number; distance: number; score: number }>> = [];
+
+    for (let queryIndex = 0; queryIndex < layout.queryCount; queryIndex++) {
+      const queryView = new Float32Array(
+        buffer,
+        layout.queriesOffset + queryIndex * bytesPerVector,
+        dimension,
+      );
+      const query = metricInfo.requiresNormalized
+        ? this.normalizeVector(queryView)
+        : queryView;
+
+      const queryResults: Array<{ index: number; distance: number; score: number }> = [];
+
+      for (let vectorIndex = 0; vectorIndex < layout.vectorCount; vectorIndex++) {
+        const vectorView = new Float32Array(
+          buffer,
+          layout.vectorsOffset + vectorIndex * bytesPerVector,
+          dimension,
+        );
+        const vector = metricInfo.requiresNormalized
+          ? this.normalizeVector(vectorView)
+          : vectorView;
+        const distance = calculator.calculate(query, vector);
+
+        queryResults.push({
+          index: vectorIndex,
+          distance,
+          score: this.distanceToScore(distance, metric, dimension),
+        });
+      }
+
+      queryResults.sort((a, b) => a.distance - b.distance);
+      results.push(queryResults.slice(0, k));
+    }
+
+    return results;
+  }
+
+  private distanceToScore(
+    distance: number,
+    metric: DistanceMetric,
+    dimension: number,
+  ): number {
+    switch (metric) {
+      case 'cosine':
+        return 1 - distance / 2;
+      case 'dot':
+        return -distance;
+      case 'euclidean':
+      case 'manhattan':
+        return Math.exp(-distance);
+      case 'hamming':
+        return dimension > 0 ? 1 - distance / dimension : 1 / (1 + distance);
+      case 'jaccard':
+        return 1 - distance;
+      default:
+        return 1 / (1 + distance);
+    }
   }
 
   private updateStats(): void {

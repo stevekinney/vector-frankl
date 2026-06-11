@@ -313,5 +313,28 @@ describe('SharedMemoryManager', () => {
       expect(batch1!.vectorCount).toBe(1);
       expect(batch1!.queryCount).toBe(2);
     });
+
+    it('should return top results for shared memory batch search', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const results = await manager.sharedMemoryBatchSearch(
+        [
+          new Float32Array([1, 0]),
+          new Float32Array([0, 1]),
+          new Float32Array([0.5, 0.5]),
+        ],
+        [new Float32Array([1, 0]), new Float32Array([0, 1])],
+        2,
+        'cosine',
+      );
+
+      expect(results).toHaveLength(2);
+      expect(results[0]).toHaveLength(2);
+      expect(results[0]![0]).toMatchObject({ index: 0, distance: 0, score: 1 });
+      expect(results[1]).toHaveLength(2);
+      expect(results[1]![0]).toMatchObject({ index: 1, distance: 0, score: 1 });
+    });
   });
 });
