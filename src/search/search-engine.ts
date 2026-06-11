@@ -660,6 +660,21 @@ export class SearchEngine {
   }
 
   /**
+   * Clear the active index and any persisted snapshot for this search engine.
+   */
+  async clearIndex(): Promise<void> {
+    if (!this.useIndex || !this.hnswIndex) {
+      return;
+    }
+
+    this.hnswIndex.clear();
+
+    if (this.indexCache) {
+      await this.indexCache.deleteIndex(this.indexId);
+    }
+  }
+
+  /**
    * Rebuild the index from storage
    */
   async rebuildIndex(): Promise<void> {

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { VectorDB, VectorFrankl } from '@/index.js';
+import { MemoryStorageAdapter, VectorDB, VectorFrankl } from '@/index.js';
 
 import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
 
@@ -235,15 +235,15 @@ describe('Vector Database Integration Tests', () => {
       const queryVector = new Float32Array(dimension).fill(0.5);
 
       // Test cosine similarity (default)
-      db.setDistanceMetric('cosine');
+      await db.setDistanceMetric('cosine');
       const cosineResults = await db.search(queryVector, 3);
 
       // Test euclidean distance
-      db.setDistanceMetric('euclidean');
+      await db.setDistanceMetric('euclidean');
       const euclideanResults = await db.search(queryVector, 3);
 
       // Test manhattan distance
-      db.setDistanceMetric('manhattan');
+      await db.setDistanceMetric('manhattan');
       const manhattanResults = await db.search(queryVector, 3);
 
       // Results should be different with different metrics
@@ -318,6 +318,134 @@ describe('Vector Database Integration Tests', () => {
       indexStats = db.getIndexStats();
       expect(indexStats.enabled).toBe(true);
       // Note: Node count might differ due to implementation details
+    });
+  });
+
+  describe('Indexed Mutation Consistency', () => {
+    beforeEach(async () => {
+      await db.delete();
+      db = new VectorDB('indexed-mutation-consistency', 2, {
+        autoEviction: false,
+        storage: new MemoryStorageAdapter(),
+        useIndex: true,
+      });
+      await db.init();
+    });
+
+    it('should clear indexed vectors from storage and search results', async () => {
+      await db.addVector('first-vector', [1, 0], { label: 'first' });
+      await db.addVector('second-vector', [0, 1], { label: 'second' });
+
+      expect(db.getIndexStats().nodeCount).toBe(2);
+
+      await db.clear();
+
+      const stats = await db.getStats();
+      expect(stats.vectorCount).toBe(0);
+      expect(db.getIndexStats().nodeCount).toBe(0);
+      expect(await db.search([1, 0], 5, { includeMetadata: true })).toEqual([]);
+    });
+
+    it('should return updated metadata from indexed search results', async () => {
+      await db.addVector('metadata-vector', [1, 0], { label: 'old' });
+
+      await db.updateMetadata('metadata-vector', { label: 'new' });
+
+      const results = await db.search([1, 0], 1, { includeMetadata: true });
+      expect(results).toHaveLength(1);
+      expect(results[0]!.metadata).toEqual({ label: 'new' });
+    });
+
+    it('should search batch-updated vectors from their new coordinates', async () => {
+      await db.addVector('updated-vector', [1, 0], { label: 'old' });
+      await db.addVector('target-vector', [1, 0], { label: 'target' });
+
+      await db.updateBatch([
+        {
+          id: 'updated-vector',
+          metadata: { label: 'updated' },
+          vector: [0, 1],
+        },
+      ]);
+
+      const results = await db.search([1, 0], 2, {
+        includeMetadata: true,
+        includeVector: true,
+      });
+
+      expect(results[0]!.id).toBe('target-vector');
+
+      const updatedResult = results.find((result) => result.id === 'updated-vector');
+      expect(updatedResult?.metadata).toEqual({ label: 'updated' });
+      expect(Array.from(updatedResult!.vector!)).toEqual([0, 1]);
+    });
+
+    it('should rebuild the index when the distance metric changes', async () => {
+      await db.addVector('cosine-match', [2, 0], { label: 'cosine' });
+      await db.addVector('euclidean-match', [1, 0], { label: 'euclidean' });
+
+      const cosineResults = await db.search([1, 0], 2);
+      expect(cosineResults[0]!.id).toBe('cosine-match');
+
+      await db.setDistanceMetric('euclidean');
+
+      expect(db.getIndexStats().nodeCount).toBe(2);
+      const euclideanResults = await db.search([1, 0], 2);
+      expect(euclideanResults[0]!.id).toBe('euclidean-match');
+    });
+  });
+
+  describe('Public API Validation', () => {
+    it('should validate vector IDs for exists checks', async () => {
+      expect(db.exists('../invalid')).rejects.toThrow(
+        'Vector ID contains invalid characters',
+      );
+    });
+
+    it('should validate metadata updates before writing', async () => {
+      await db.addVector('metadata-validation', new Float32Array(dimension).fill(1));
+
+      expect(
+        db.updateMetadata('metadata-validation', {
+          '../secret': 'value',
+        }),
+      ).rejects.toThrow('Invalid metadata key: ../secret');
+    });
+
+    it('should reject duplicate IDs in batch updates before writing', async () => {
+      await db.addVector('duplicate-batch', new Float32Array(dimension).fill(1), {
+        version: 1,
+      });
+
+      expect(
+        db.updateBatch([
+          { id: 'duplicate-batch', metadata: { version: 2 } },
+          { id: 'duplicate-batch', metadata: { version: 3 } },
+        ]),
+      ).rejects.toThrow('Duplicate vector ID found: duplicate-batch');
+
+      const stored = await db.getVector('duplicate-batch');
+      expect(stored?.metadata).toEqual({ version: 1 });
+    });
+
+    it('should validate searchRange distance and options', async () => {
+      expect(db.searchRange(new Float32Array(dimension).fill(1), -1)).rejects.toThrow(
+        'Distance must be non-negative',
+      );
+
+      expect(
+        db.searchRange(new Float32Array(dimension).fill(1), 1, {
+          maxResults: 0,
+        }),
+      ).rejects.toThrow('maxResults must be a positive integer');
+    });
+
+    it('should validate searchStream options before yielding results', async () => {
+      const stream = db.searchStream(new Float32Array(dimension).fill(1), {
+        batchSize: 0,
+      });
+
+      expect(stream.next()).rejects.toThrow('batchSize must be a positive integer');
     });
   });
 

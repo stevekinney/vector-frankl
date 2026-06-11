@@ -295,6 +295,10 @@ export class VectorDB {
     maxDistance: number,
     options?: SearchOptions & { maxResults?: number },
   ): Promise<SearchResult[]> {
+    const validatedMaxDistance = InputValidator.validateDistance(maxDistance);
+    const validatedOptions = InputValidator.validateSearchOptions(options);
+    VectorFormatHandler.validate(queryVector, this.dimension);
+
     await this.ensureInitialized();
 
     // Validate dimension
@@ -306,7 +310,11 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    return this.searchEngine.searchRange(query, maxDistance, options);
+    return this.searchEngine.searchRange(
+      query,
+      validatedMaxDistance,
+      validatedOptions as SearchOptions & { maxResults?: number },
+    );
   }
 
   /**
@@ -320,6 +328,9 @@ export class VectorDB {
       progressive?: boolean;
     },
   ): AsyncGenerator<SearchResult[], void, unknown> {
+    const validatedOptions = InputValidator.validateSearchOptions(options);
+    VectorFormatHandler.validate(queryVector, this.dimension);
+
     await this.ensureInitialized();
 
     // Validate dimension
@@ -331,15 +342,26 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    yield* this.searchEngine.searchStream(query, options);
+    yield* this.searchEngine.searchStream(
+      query,
+      validatedOptions as SearchOptions & {
+        batchSize?: number;
+        maxResults?: number;
+        progressive?: boolean;
+      },
+    );
   }
 
   /**
    * Set the distance metric for search
    */
-  setDistanceMetric(metric: DistanceMetric): void {
+  async setDistanceMetric(metric: DistanceMetric): Promise<void> {
     this.distanceMetric = metric;
     this.searchEngine.setDistanceMetric(metric);
+
+    if (this.initialized && this.searchEngine.getIndexStats().enabled) {
+      await this.searchEngine.rebuildIndex();
+    }
   }
 
   /**
@@ -594,6 +616,7 @@ export class VectorDB {
   async clear(): Promise<void> {
     await this.ensureInitialized();
     await this.storage.clear();
+    await this.searchEngine.clearIndex();
   }
 
   /**
@@ -626,8 +649,10 @@ export class VectorDB {
    * Check if a vector exists
    */
   async exists(id: string): Promise<boolean> {
+    const validatedId = InputValidator.validateVectorId(id);
+
     await this.ensureInitialized();
-    return this.storage.exists(id);
+    return this.storage.exists(validatedId);
   }
 
   /**
@@ -711,8 +736,14 @@ export class VectorDB {
       updateTimestamp?: boolean;
     },
   ): Promise<void> {
+    const validatedId = InputValidator.validateVectorId(id);
+    const validatedMetadata = InputValidator.validateMetadata(metadata);
+
     await this.ensureInitialized();
-    await this.storage.updateMetadata(id, metadata, options);
+    await this.storage.updateMetadata(validatedId, validatedMetadata, options);
+
+    // HNSW nodes hold metadata snapshots, so rebuild to prevent stale search results.
+    await this.searchEngine.rebuildIndex();
   }
 
   /**
@@ -731,16 +762,21 @@ export class VectorDB {
     errors: Array<{ id: string; error: Error }>;
   }> {
     await this.ensureInitialized();
+    const validatedIds = InputValidator.validateVectorIds(
+      updates.map((update) => update.id),
+    );
 
     // Validate and convert vectors
-    const processedUpdates = updates.map((update) => {
+    const processedUpdates = updates.map((update, index) => {
       const processed: {
         id: string;
         vector?: Float32Array;
         metadata?: Record<string, unknown>;
-      } = { id: update.id };
+      } = { id: validatedIds[index]! };
 
       if (update.vector) {
+        VectorFormatHandler.validate(update.vector, this.dimension);
+
         if (update.vector.length !== this.dimension) {
           throw new DimensionMismatchError(this.dimension, update.vector.length);
         }
@@ -748,12 +784,15 @@ export class VectorDB {
       }
 
       if (update.metadata !== undefined) {
-        processed.metadata = update.metadata;
+        processed.metadata = InputValidator.validateMetadata(update.metadata);
       }
 
       return processed;
     });
 
-    return this.storage.updateBatch(processedUpdates, options);
+    const result = await this.storage.updateBatch(processedUpdates, options);
+    await this.searchEngine.rebuildIndex();
+
+    return result;
   }
 }

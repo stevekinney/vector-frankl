@@ -66,7 +66,7 @@ The production-readiness audit used these checks as the baseline:
 
 ## Core Correctness
 
-- [ ] Fix indexed `clear()` so it removes every indexed node and persisted index
+- [x] Fix indexed `clear()` so it removes every indexed node and persisted index
       entry before returning.
 
   Acceptance: after `clear()`, `count()` is zero, `getIndexStats().nodeCount` is
@@ -74,7 +74,7 @@ The production-readiness audit used these checks as the baseline:
 
   Verification: `bun test tests/unit/core/database.test.ts tests/search`
 
-- [ ] Add a regression test proving `clear()` cannot return stale vectors from
+- [x] Add a regression test proving `clear()` cannot return stale vectors from
       an HNSW index.
 
   Acceptance: the test fails against the audited implementation and passes after
@@ -82,21 +82,21 @@ The production-readiness audit used these checks as the baseline:
 
   Verification: `bun test tests/unit/core/database.test.ts -t clear`
 
-- [ ] Fix `updateMetadata()` so the search index returns current metadata.
+- [x] Fix `updateMetadata()` so the search index returns current metadata.
 
   Acceptance: `search(query, k, { includeMetadata: true })` returns the updated
   metadata immediately after `updateMetadata()` when indexing is enabled.
 
   Verification: `bun test tests/unit/core/database.test.ts -t updateMetadata`
 
-- [ ] Add input validation to `updateMetadata()` for vector ID and metadata.
+- [x] Add input validation to `updateMetadata()` for vector ID and metadata.
 
   Acceptance: invalid IDs, prototype-pollution keys, oversized metadata, invalid
   numbers, functions, and excessive nesting are rejected before storage writes.
 
   Verification: `bun test tests/unit/core/input-validator.test.ts tests/unit/core/database.test.ts -t updateMetadata`
 
-- [ ] Fix `updateBatch()` so vector and metadata updates keep the index
+- [x] Fix `updateBatch()` so vector and metadata updates keep the index
       synchronized.
 
   Acceptance: batch-updated vectors search from their new coordinates, stale
@@ -104,7 +104,7 @@ The production-readiness audit used these checks as the baseline:
 
   Verification: `bun test tests/unit/core/database.test.ts tests/search -t updateBatch`
 
-- [ ] Add input validation to `updateBatch()` for duplicate IDs, invalid IDs,
+- [x] Add input validation to `updateBatch()` for duplicate IDs, invalid IDs,
       metadata, dimensions, and batch size before any partial writes occur.
 
   Acceptance: invalid batch input is rejected atomically and does not mutate
@@ -112,7 +112,7 @@ The production-readiness audit used these checks as the baseline:
 
   Verification: `bun test tests/unit/core/database.test.ts tests/unit/core/input-validator.test.ts -t batch`
 
-- [ ] Validate `exists(id)` with the same vector ID rules used by `getVector()`,
+- [x] Validate `exists(id)` with the same vector ID rules used by `getVector()`,
       `deleteVector()`, and `updateVector()`.
 
   Acceptance: malformed IDs are rejected consistently across all public ID-based
@@ -120,7 +120,7 @@ The production-readiness audit used these checks as the baseline:
 
   Verification: `bun test tests/unit/core/database.test.ts -t exists`
 
-- [ ] Validate `searchRange()` inputs before search execution.
+- [x] Validate `searchRange()` inputs before search execution.
 
   Acceptance: query vector format, vector dimension, maximum distance, filters,
   result limits, timeout, and abort signal are validated consistently with
@@ -128,14 +128,14 @@ The production-readiness audit used these checks as the baseline:
 
   Verification: `bun test tests/unit/core/database.test.ts tests/search -t searchRange`
 
-- [ ] Validate `searchStream()` inputs before streaming starts.
+- [x] Validate `searchStream()` inputs before streaming starts.
 
   Acceptance: invalid query vectors and options throw before the first yielded
   batch, and valid options are passed through with typed semantics.
 
   Verification: `bun test tests/unit/core/database.test.ts tests/search -t searchStream`
 
-- [ ] Rebuild or invalidate the index when `setDistanceMetric()` changes the
+- [x] Rebuild or invalidate the index when `setDistanceMetric()` changes the
       metric.
 
   Acceptance: changing the metric cannot leave an empty, stale, or old-metric
