@@ -339,8 +339,7 @@ describe('WASMOperations', () => {
       await noWasmOps.init();
 
       const capabilities = noWasmOps.getCapabilities();
-      // Note: capabilities may still show WASM as available if the environment supports it
-      // but the operations will use SIMD/scalar fallback
+      expect(capabilities.wasmAvailable).toBe(false);
       expect(capabilities.scalarAvailable).toBe(true);
 
       // Operations should still work

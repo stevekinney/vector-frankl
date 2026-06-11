@@ -5,7 +5,7 @@ import { WASMOperations } from '../wasm/wasm-operations.js';
 import { VectorFormatHandler } from './formats.js';
 
 /**
- * Vector mathematical operations with WebAssembly and SIMD acceleration
+ * Vector mathematical operations with optional WebAssembly and SIMD acceleration.
  */
 export class VectorOperations {
   private static simdOps = new SIMDOperations();
@@ -286,7 +286,7 @@ export class VectorOperations {
       throw new DimensionMismatchError(vectorA.length, vectorB.length);
     }
 
-    // Three-tier optimization: WASM → SIMD → Scalar
+    // Use WASM only when a real backend is available; otherwise fall back.
     if (vectorA.length >= this.wasmThreshold && this.isWasmInitialized) {
       try {
         return await this.wasmOps.vectorSubtract(vectorA, vectorB);
@@ -312,7 +312,7 @@ export class VectorOperations {
    * Scale a vector by a scalar
    */
   static async scale(vector: Float32Array, scalar: number): Promise<Float32Array> {
-    // Three-tier optimization: WASM → SIMD → Scalar
+    // Use WASM only when a real backend is available; otherwise fall back.
     if (vector.length >= this.wasmThreshold && this.isWasmInitialized) {
       try {
         return await this.wasmOps.scalarMultiply(vector, scalar);

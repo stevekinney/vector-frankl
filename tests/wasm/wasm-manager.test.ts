@@ -27,13 +27,13 @@ describe('WASMManager', () => {
       expect(capabilities.performance).toBeDefined();
     });
 
-    it('should initialize WebAssembly module if supported', async () => {
-      if (wasmManager.getCapabilities().supported) {
-        await wasmManager.init();
-        expect(wasmManager.isAvailable()).toBe(true);
-      } else {
-        console.log('WebAssembly not supported in this environment, skipping');
-      }
+    it('should not report vector-operation availability without a real module', async () => {
+      await wasmManager.init();
+
+      expect(wasmManager.getCapabilities().supported).toBe(
+        typeof WebAssembly !== 'undefined',
+      );
+      expect(wasmManager.isAvailable()).toBe(false);
     });
   });
 
@@ -72,17 +72,28 @@ describe('WASMManager', () => {
     const testVectorA = new Float32Array([1, 2, 3, 4]);
     const testVectorB = new Float32Array([5, 6, 7, 8]);
 
+    it('should reject vector operations when no real WASM backend is loaded', async () => {
+      await wasmManager.init();
+
+      expect(wasmManager.dotProduct(testVectorA, testVectorB)).rejects.toThrow(
+        'WebAssembly not available',
+      );
+      expect(wasmManager.magnitude(testVectorA)).rejects.toThrow(
+        'WebAssembly not available',
+      );
+      expect(wasmManager.vectorAdd(testVectorA, testVectorB)).rejects.toThrow(
+        'WebAssembly not available',
+      );
+    });
+
     it('should compute dot product with WebAssembly', async () => {
       if (!wasmManager.isAvailable()) {
         console.log('WASM not available, skipping operation tests');
         return;
       }
 
-      // The inline WASM module may return simplified results
-      // This test verifies the operation doesn't crash
       const result = await wasmManager.dotProduct(testVectorA, testVectorB);
-      expect(typeof result).toBe('number');
-      expect(isFinite(result)).toBe(true);
+      expect(result).toBe(70);
     });
 
     it('should compute magnitude with WebAssembly', async () => {
@@ -111,16 +122,12 @@ describe('WASMManager', () => {
         return;
       }
 
-      // Test with mismatched vector lengths (if supported by implementation)
       const vectorA = new Float32Array([1, 2]);
       const vectorB = new Float32Array([1, 2, 3]);
 
-      try {
-        await wasmManager.dotProduct(vectorA, vectorB);
-        // If it doesn't throw, that's fine too - depends on WASM implementation
-      } catch (error) {
-        expect(error).toBeInstanceOf(Error);
-      }
+      expect(wasmManager.dotProduct(vectorA, vectorB)).rejects.toThrow(
+        'Vector dimensions must match',
+      );
     });
   });
 
@@ -178,10 +185,8 @@ describe('WASMManager', () => {
     it('should handle cleanup gracefully', async () => {
       const tempWasm = new WASMManager();
 
-      if (tempWasm.getCapabilities().supported) {
-        await tempWasm.init();
-        expect(tempWasm.isAvailable()).toBe(true);
-      }
+      await tempWasm.init();
+      expect(tempWasm.isAvailable()).toBe(false);
 
       await tempWasm.cleanup();
       expect(tempWasm.isAvailable()).toBe(false);
@@ -283,7 +288,6 @@ describe('WASMManager', () => {
         const result = await wasmManager.dotProduct(specialA, specialB);
         expect(typeof result).toBe('number');
       } catch (error) {
-        // May throw depending on how WASM handles special values
         expect(error).toBeInstanceOf(Error);
       }
     });

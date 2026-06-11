@@ -15,8 +15,7 @@
     "machine-learning",
     "hnsw",
     "webgpu",
-    "simd",
-    "wasm"
+    "simd"
   ],
   "homepage": "https://github.com/stevekinney/vector-frankl#readme",
   "bugs": {
