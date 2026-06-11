@@ -398,6 +398,14 @@ export class IndexCache {
   }
 
   /**
+   * Remove an index from cache and persistence.
+   */
+  async deleteIndex(indexId: string): Promise<void> {
+    this.cache.delete(indexId);
+    await this.persistenceManager.deleteIndex(indexId);
+  }
+
+  /**
    * Evict least recently used index
    */
   private evictLeastRecentlyUsed(): void {

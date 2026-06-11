@@ -85,12 +85,31 @@ describe('SearchEngine', () => {
     });
 
     it('should not initialize GPU engine when navigator.gpu is unavailable', async () => {
-      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
-        useGPU: true,
+      const hadNavigator = 'navigator' in globalThis;
+      const previousNavigator = globalThis.navigator;
+
+      Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: {},
       });
-      const gpuStats = engine.getGPUStats();
-      expect(gpuStats.enabled).toBe(true);
-      expect(gpuStats.initialized).toBe(false);
+
+      try {
+        const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+          useGPU: true,
+        });
+        const gpuStats = engine.getGPUStats();
+        expect(gpuStats.enabled).toBe(true);
+        expect(gpuStats.initialized).toBe(false);
+      } finally {
+        if (hadNavigator) {
+          Object.defineProperty(globalThis, 'navigator', {
+            configurable: true,
+            value: previousNavigator,
+          });
+        } else {
+          Reflect.deleteProperty(globalThis, 'navigator');
+        }
+      }
     });
   });
 

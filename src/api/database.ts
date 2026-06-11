@@ -592,6 +592,7 @@ export class VectorDB {
   async clear(): Promise<void> {
     await this.ensureInitialized();
     await this.storage.clear();
+    await this.searchEngine.clearIndex();
   }
 
   /**
@@ -711,6 +712,8 @@ export class VectorDB {
   ): Promise<void> {
     await this.ensureInitialized();
     await this.storage.updateMetadata(id, metadata, options);
+
+    await this.searchEngine.rebuildIndex({ loadFromCache: false });
   }
 
   /**
@@ -752,6 +755,9 @@ export class VectorDB {
       return processed;
     });
 
-    return this.storage.updateBatch(processedUpdates, options);
+    const result = await this.storage.updateBatch(processedUpdates, options);
+    await this.searchEngine.rebuildIndex({ loadFromCache: false });
+
+    return result;
   }
 }
