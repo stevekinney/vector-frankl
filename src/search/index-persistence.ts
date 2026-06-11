@@ -92,7 +92,11 @@ export class IndexPersistence {
         return new Promise<
           { id: string; data: SerializableHNSWIndex; timestamp: number } | undefined
         >((resolve, reject) => {
-          const request = store.get(indexId);
+          const request = store.get<{
+            id: string;
+            data: SerializableHNSWIndex;
+            timestamp: number;
+          }>(indexId);
 
           request.onsuccess = () => resolve(request.result);
           request.onerror = () =>
@@ -167,7 +171,11 @@ export class IndexPersistence {
         return new Promise<
           Array<{ id: string; data: SerializableHNSWIndex; timestamp: number }>
         >((resolve, reject) => {
-          const request = store.getAll();
+          const request = store.getAll<{
+            id: string;
+            data: SerializableHNSWIndex;
+            timestamp: number;
+          }>();
 
           request.onsuccess = () => resolve(request.result || []);
           request.onerror = () =>

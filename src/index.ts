@@ -128,5 +128,5 @@ export {
   type EvictionResult,
 } from './storage/eviction-policy.js';
 
-// Version — sourced from package.json to maintain a single source of truth
-export { version as VERSION } from '../package.json';
+// Version
+export const VERSION = '1.0.0-beta.1';
