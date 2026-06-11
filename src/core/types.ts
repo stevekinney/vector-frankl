@@ -34,6 +34,29 @@ export interface VectorData {
   };
 }
 
+export interface IndexedDatabaseObjectStoreNames {
+  contains(name: string): boolean;
+}
+
+export interface IndexedDatabaseUpgradeDatabase {
+  objectStoreNames: IndexedDatabaseObjectStoreNames;
+  createObjectStore(
+    name: string,
+    options?: { keyPath?: string | string[]; autoIncrement?: boolean },
+  ): IndexedDatabaseObjectStore;
+  deleteObjectStore(name: string): void;
+}
+
+export interface IndexedDatabaseObjectStore {
+  createIndex(
+    name: string,
+    keyPath: string | string[],
+    options?: { unique?: boolean; multiEntry?: boolean },
+  ): unknown;
+}
+
+export type IndexedDatabaseTransactionMode = 'readonly' | 'readwrite' | 'versionchange';
+
 /**
  * Database configuration
  */
@@ -42,7 +65,7 @@ export interface DatabaseConfig {
   version?: number;
   persistence?: boolean;
   /** Optional callback to override default schema creation during upgrades */
-  onUpgrade?: (database: IDBDatabase, oldVersion: number) => void;
+  onUpgrade?: (database: IndexedDatabaseUpgradeDatabase, oldVersion: number) => void;
 }
 
 /**
@@ -246,7 +269,7 @@ export interface KDTreeParameters {
  */
 export interface TransactionOptions {
   stores?: string[];
-  mode?: IDBTransactionMode;
+  mode?: IndexedDatabaseTransactionMode;
   timeout?: number;
   retries?: number;
 }

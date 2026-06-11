@@ -4,7 +4,12 @@ import {
   NamespaceNotFoundError,
   TransactionError,
 } from '@/core/errors.js';
-import type { NamespaceConfig, NamespaceInfo, NamespaceStats } from '@/core/types.js';
+import type {
+  IndexedDatabaseUpgradeDatabase,
+  NamespaceConfig,
+  NamespaceInfo,
+  NamespaceStats,
+} from '@/core/types.js';
 import { validateNamespaceName } from './validate-namespace-name.js';
 
 /**
@@ -23,7 +28,7 @@ export class NamespaceRegistry {
     this.database = new VectorDatabase({
       name: rootDatabaseName,
       version: 1,
-      onUpgrade: (db: IDBDatabase) => {
+      onUpgrade: (db: IndexedDatabaseUpgradeDatabase) => {
         // Namespaces store
         if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.NAMESPACES)) {
           const namespaceStore = db.createObjectStore(
