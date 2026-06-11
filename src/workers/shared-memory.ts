@@ -4,6 +4,7 @@
 
 import type { DistanceMetric } from '../core/types.js';
 import { createDistanceCalculator } from '../search/distance-metrics.js';
+import { log } from '../utilities/logger.js';
 
 export interface SharedMemoryConfig {
   /** Maximum memory pool size in bytes */
@@ -396,7 +397,7 @@ export class SharedMemoryManager {
 
     const removedCount = initialLength - this.memoryPool.length;
     if (removedCount > 0 && this.config.enableStats) {
-      console.debug(`Cleaned up ${removedCount} memory blocks`);
+      log.debug('Cleaned up shared memory blocks', { removedCount });
     }
 
     this.updateStats();

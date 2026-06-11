@@ -2,6 +2,8 @@
  * SIMD-accelerated vector operations for high-performance computing
  */
 
+import { log } from '../utilities/logger.js';
+
 export interface SIMDConfig {
   /** Enable SIMD optimizations */
   enableSIMD?: boolean;
@@ -146,9 +148,10 @@ export class SIMDOperations {
 
     if (this.config.enableProfiling) {
       const endTime = performance.now();
-      console.debug(
-        `SIMD dot product: ${endTime - startTime}ms for ${a.length} elements`,
-      );
+      log.debug('SIMD dot product completed', {
+        durationMilliseconds: endTime - startTime,
+        elementCount: a.length,
+      });
     }
 
     return result;
@@ -171,9 +174,10 @@ export class SIMDOperations {
 
     if (this.config.enableProfiling) {
       const endTime = performance.now();
-      console.debug(
-        `SIMD Euclidean distance: ${endTime - startTime}ms for ${a.length} elements`,
-      );
+      log.debug('SIMD Euclidean distance completed', {
+        durationMilliseconds: endTime - startTime,
+        elementCount: a.length,
+      });
     }
 
     return result;
@@ -196,9 +200,10 @@ export class SIMDOperations {
 
     if (this.config.enableProfiling) {
       const endTime = performance.now();
-      console.debug(
-        `SIMD Manhattan distance: ${endTime - startTime}ms for ${a.length} elements`,
-      );
+      log.debug('SIMD Manhattan distance completed', {
+        durationMilliseconds: endTime - startTime,
+        elementCount: a.length,
+      });
     }
 
     return result;
@@ -217,9 +222,10 @@ export class SIMDOperations {
 
     if (this.config.enableProfiling) {
       const endTime = performance.now();
-      console.debug(
-        `SIMD normalize: ${endTime - startTime}ms for ${vector.length} elements`,
-      );
+      log.debug('SIMD normalize completed', {
+        durationMilliseconds: endTime - startTime,
+        elementCount: vector.length,
+      });
     }
 
     return result;

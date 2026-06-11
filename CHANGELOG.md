@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- WASM operations now report unavailable unless a real vector-operation backend is loaded, preserving SIMD/scalar fallback behavior instead of advertising placeholder acceleration
 - Replace all production `console.log`/`console.warn`/`console.error` calls with structured logger (`src/utilities/logger.ts`) so output can be suppressed
 - Convert HNSW `pruneConnections` lookup from `Array.includes()` (O(n)) to `Set.has()` (O(1))
 - Reject namespace names containing `-ns-` to prevent database name collisions
@@ -42,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Web Worker pool for parallel processing
 - SIMD acceleration for vector operations
 - WebGPU support for GPU-accelerated search
-- WebAssembly modules for high-performance operations
+- WebAssembly capability detection for optional acceleration
 - Comprehensive input validation and security features
 - ReDoS (Regular Expression Denial of Service) protection
 - Memory safety with configurable limits
@@ -57,7 +58,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Input validation for all user inputs
 - ReDoS protection with timeout and pattern validation
 - Memory limits to prevent exhaustion attacks
-- WASM module integrity verification
+- WebAssembly capability detection
 - Sanitized error messages to prevent information leakage
 
 ### Performance

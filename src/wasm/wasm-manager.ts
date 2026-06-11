@@ -1,5 +1,5 @@
 /**
- * WebAssembly manager for high-performance vector operations
+ * WebAssembly manager for optional vector-operation backends.
  */
 
 import { log } from '../utilities/logger.js';
@@ -13,7 +13,7 @@ export interface WASMConfig {
   enableProfiling?: boolean;
   /** Maximum memory allocation in bytes */
   maxMemory?: number;
-  /** WASM module path */
+  /** Reserved for a future compiled WASM module path */
   modulePath?: string;
 }
 
@@ -50,12 +50,15 @@ export interface WASMPerformanceStats {
 }
 
 /**
- * High-performance WebAssembly operations manager
+ * WebAssembly operations manager.
+ *
+ * The package does not currently bundle a compiled vector-operation module. Keep WASM
+ * unavailable unless a real backend is wired in so callers fall back to SIMD/scalar
+ * implementations instead of relying on placeholder exports.
  */
 export class WASMManager {
   private config: Required<WASMConfig>;
   private capabilities: WASMCapabilities;
-  private wasmModule: WebAssembly.Module | null = null;
   private wasmInstance: WebAssembly.Instance | null = null;
   private memory: WebAssembly.Memory | null = null;
   private isInitialized = false;
@@ -150,71 +153,17 @@ export class WASMManager {
    * Initialize WebAssembly module with security validation
    */
   async init(): Promise<void> {
-    if (this.isInitialized || !this.capabilities.supported) {
+    if (this.isInitialized || !this.config.enableWASM || !this.capabilities.supported) {
       return;
     }
 
     try {
-      // For demonstration purposes, we'll create a mock WASM implementation
-      // In production, you would load a real compiled WASM module from a .wasm file
-      if (this.capabilities.supported) {
-        // Use the simplest possible valid WASM module
-        const wasmCode = new Uint8Array([
-          0x00,
-          0x61,
-          0x73,
-          0x6d, // magic
-          0x01,
-          0x00,
-          0x00,
-          0x00, // version
-        ]);
-
-        try {
-          // Validate WASM module before compilation
-          await this.validateWASMModule(wasmCode);
-
-          this.wasmModule = await WebAssembly.compile(wasmCode);
-          this.wasmInstance = await WebAssembly.instantiate(this.wasmModule, {
-            // Provide secure import object with limited capabilities
-            env: {
-              // Only allow necessary imports
-              ...(this.memory && { memory: this.memory }),
-              console_log: (msg: number) => {
-                // Secure logging with message length limit
-                if (msg < 1000) {
-                  log.debug(`WASM: ${msg}`);
-                }
-              },
-            },
-          });
-        } catch (error) {
-          // If even the minimal module fails, we'll work without real WASM
-          log.warn('WASM module validation or compilation failed', {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-
-        // Create a wrapper instance with mock functions for demonstration
-        // In production, you would have real WASM exports
-        this.wasmInstance = {
-          exports: {
-            dotProduct: (_ptr: number, _length: number) => 0.0,
-            magnitude: (_length: number) => 1.0,
-            noop: () => {},
-          },
-        } as WebAssembly.Instance;
-
-        this.isInitialized = true;
-
-        if (this.config.enableProfiling) {
-          log.debug('WebAssembly module initialized successfully (demo mode)');
-          log.debug(
-            'WASM capabilities',
-            this.capabilities as unknown as Record<string, unknown>,
-          );
-        }
+      if (!this.config.modulePath) {
+        log.debug('No WebAssembly module configured; using SIMD/scalar fallbacks');
+        return;
       }
+
+      log.warn('External WebAssembly modules are not enabled in this build');
     } catch (error) {
       log.warn('Failed to initialize WebAssembly', {
         error: error instanceof Error ? error.message : String(error),
@@ -222,106 +171,6 @@ export class WASMManager {
       this.capabilities.supported = false;
       throw error;
     }
-  }
-
-  /**
-   * Validate WASM module for security and integrity
-   */
-  private async validateWASMModule(wasmCode: Uint8Array): Promise<void> {
-    // Basic validation checks
-    if (!wasmCode || wasmCode.length === 0) {
-      throw new Error('Empty WASM module');
-    }
-
-    // Check minimum size for a valid WASM module
-    if (wasmCode.length < 8) {
-      throw new Error('WASM module too small to be valid');
-    }
-
-    // Verify WASM magic number and version
-    const magic = new Uint8Array(wasmCode.slice(0, 4));
-    const version = new Uint8Array(wasmCode.slice(4, 8));
-
-    const expectedMagic = new Uint8Array([0x00, 0x61, 0x73, 0x6d]);
-    const expectedVersion = new Uint8Array([0x01, 0x00, 0x00, 0x00]);
-
-    if (!this.arrayEquals(magic, expectedMagic)) {
-      throw new Error('Invalid WASM magic number');
-    }
-
-    if (!this.arrayEquals(version, expectedVersion)) {
-      throw new Error('Unsupported WASM version');
-    }
-
-    // Check module size limits to prevent memory exhaustion
-    const MAX_MODULE_SIZE = 10 * 1024 * 1024; // 10MB max
-    if (wasmCode.length > MAX_MODULE_SIZE) {
-      throw new Error(
-        `WASM module too large: ${wasmCode.length} bytes exceeds maximum ${MAX_MODULE_SIZE} bytes`,
-      );
-    }
-
-    // Validate module using WebAssembly.validate
-    if (!WebAssembly.validate(wasmCode)) {
-      throw new Error('Invalid WASM module structure');
-    }
-
-    // Additional security checks for suspicious patterns
-    await this.checkForSuspiciousPatterns(wasmCode);
-  }
-
-  /**
-   * Check for suspicious patterns in WASM bytecode
-   */
-  private async checkForSuspiciousPatterns(wasmCode: Uint8Array): Promise<void> {
-    // Check for excessive import sections (could indicate malicious behavior)
-    let importSectionCount = 0;
-    let currentPos = 8; // Skip magic and version
-
-    while (currentPos < wasmCode.length) {
-      if (currentPos + 1 >= wasmCode.length) break;
-
-      const sectionId = wasmCode[currentPos];
-      currentPos++;
-
-      if (currentPos >= wasmCode.length) break;
-
-      // Read section size (LEB128 encoded)
-      let sectionSize = 0;
-      let shift = 0;
-      let byte;
-
-      do {
-        if (currentPos >= wasmCode.length) break;
-        byte = wasmCode[currentPos++];
-        if (byte !== undefined) {
-          sectionSize |= (byte & 0x7f) << shift;
-          shift += 7;
-        }
-      } while (byte !== undefined && byte & 0x80 && shift < 35);
-
-      if (sectionId === 2) {
-        // Import section
-        importSectionCount++;
-        if (importSectionCount > 10) {
-          throw new Error('Suspicious: Too many import sections in WASM module');
-        }
-      }
-
-      // Skip section content
-      currentPos += sectionSize;
-    }
-  }
-
-  /**
-   * Compare two Uint8Arrays for equality
-   */
-  private arrayEquals(a: Uint8Array, b: Uint8Array): boolean {
-    if (a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i++) {
-      if (a[i] !== b[i]) return false;
-    }
-    return true;
   }
 
   /**
@@ -392,6 +241,10 @@ export class WASMManager {
    * Compute dot product using WebAssembly
    */
   async dotProduct(vectorA: Float32Array, vectorB: Float32Array): Promise<number> {
+    if (vectorA.length !== vectorB.length) {
+      throw new Error('Vector dimensions must match');
+    }
+
     if (!this.isAvailable() || !this.wasmInstance) {
       throw new Error('WebAssembly not available');
     }
@@ -399,21 +252,14 @@ export class WASMManager {
     const startTime = this.config.enableProfiling ? performance.now() : 0;
 
     try {
-      // For the simplified WASM module, we'll compute in JavaScript
-      // but demonstrate the WASM integration pattern
       const exports = this.wasmInstance.exports as {
         dotProduct: (ptr: number, length: number) => number;
         magnitude: (length: number) => number;
         noop: () => void;
       };
 
-      // Call the WASM function (currently returns 0.0 in our simplified module)
-      // In a real implementation, this would do the actual computation
-      // Call the WASM function for integration purposes
       exports.dotProduct(0, vectorA.length);
 
-      // For demonstration, compute the actual result in JavaScript
-      // In production, the WASM module would do this computation
       let result = 0;
       for (let i = 0; i < vectorA.length; i++) {
         result += (vectorA[i] ?? 0) * (vectorB[i] ?? 0);
@@ -421,9 +267,10 @@ export class WASMManager {
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
-        console.debug(
-          `WASM dot product: ${endTime - startTime}ms for ${vectorA.length} elements`,
-        );
+        log.debug('WASM dot product completed', {
+          durationMilliseconds: endTime - startTime,
+          elementCount: vectorA.length,
+        });
       }
 
       return result;
@@ -449,12 +296,8 @@ export class WASMManager {
         noop: () => void;
       };
 
-      // Call the WASM function (currently returns 1.0 in our simplified module)
-      // Call the WASM function for integration purposes
       exports.magnitude(vector.length);
 
-      // For demonstration, compute the actual result in JavaScript
-      // In production, the WASM module would do this computation
       let sum = 0;
       for (let i = 0; i < vector.length; i++) {
         sum += (vector[i] ?? 0) * (vector[i] ?? 0);
@@ -463,9 +306,10 @@ export class WASMManager {
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
-        console.debug(
-          `WASM magnitude: ${endTime - startTime}ms for ${vector.length} elements`,
-        );
+        log.debug('WASM magnitude completed', {
+          durationMilliseconds: endTime - startTime,
+          elementCount: vector.length,
+        });
       }
 
       return result;
@@ -478,6 +322,10 @@ export class WASMManager {
    * Vector addition using WebAssembly
    */
   async vectorAdd(vectorA: Float32Array, vectorB: Float32Array): Promise<Float32Array> {
+    if (vectorA.length !== vectorB.length) {
+      throw new Error('Vector dimensions must match');
+    }
+
     if (!this.isAvailable() || !this.wasmInstance) {
       throw new Error('WebAssembly not available');
     }
@@ -491,11 +339,8 @@ export class WASMManager {
         noop: () => void;
       };
 
-      // Call the WASM noop function to demonstrate integration
       exports.noop();
 
-      // For demonstration, compute the actual result in JavaScript
-      // In production, the WASM module would do this computation
       const result = new Float32Array(vectorA.length);
       for (let i = 0; i < vectorA.length; i++) {
         result[i] = (vectorA[i] ?? 0) + (vectorB[i] ?? 0);
@@ -503,9 +348,10 @@ export class WASMManager {
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
-        console.debug(
-          `WASM vector add: ${endTime - startTime}ms for ${vectorA.length} elements`,
-        );
+        log.debug('WASM vector add completed', {
+          durationMilliseconds: endTime - startTime,
+          elementCount: vectorA.length,
+        });
       }
 
       return result;
@@ -546,14 +392,20 @@ export class WASMManager {
 
     // Benchmark JavaScript
     const jsStart = performance.now();
+    let javascriptChecksum = 0;
     for (let i = 0; i < iterations; i++) {
-      let _sum = 0;
+      let sum = 0;
       for (let j = 0; j < vectorA.length; j++) {
-        _sum += (vectorA[j] ?? 0) * (vectorB[j] ?? 0);
+        sum += (vectorA[j] ?? 0) * (vectorB[j] ?? 0);
       }
+      javascriptChecksum += sum;
     }
     const jsEnd = performance.now();
     const jsTime = jsEnd - jsStart;
+
+    if (!Number.isFinite(javascriptChecksum)) {
+      throw new Error('JavaScript benchmark produced a non-finite checksum');
+    }
 
     const dataSize = vectorLength * 4 * 2; // 2 vectors * 4 bytes per float
     const totalData = (dataSize * iterations) / (1024 * 1024); // MB
@@ -581,7 +433,6 @@ export class WASMManager {
    * Cleanup WebAssembly resources
    */
   async cleanup(): Promise<void> {
-    this.wasmModule = null;
     this.wasmInstance = null;
     this.memory = null;
     this.isInitialized = false;

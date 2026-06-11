@@ -9,7 +9,7 @@ A high-performance vector database built on IndexedDB for browser-based storage,
 
 ## ✨ Why Vector Frankl is Awesome
 
-- **Unparalleled Performance:** Leveraging SIMD, WebAssembly, and WebGPU, Vector Frankl delivers near-native speed for vector operations, ensuring your AI features are responsive and efficient, even with large datasets.
+- **Unparalleled Performance:** Leveraging SIMD and WebGPU, Vector Frankl delivers fast vector operations, ensuring your AI features are responsive and efficient, even with large datasets.
 - **Runs Anywhere:** Defaults to IndexedDB in the browser for zero-config client-side AI, but pluggable storage adapters let you run the same API on top of SQLite, LevelDB, LMDB, Redis, S3, or the file system in Bun and Node.
 - **Rich Feature Set:** From advanced vector compression and multiple distance metrics to robust namespace management and comprehensive debugging tools, Vector Frankl provides everything you need to build sophisticated vector-based applications.
 - **Developer-Friendly:** With 100% TypeScript support, a clear API, and built-in performance monitoring, integrating and optimizing your AI workflows has never been easier.
@@ -50,7 +50,7 @@ The broader pattern here is moving vector search compute to the edge—the brows
 
 - 🏗️ **Namespace Management**: Isolated vector collections with independent configurations
 - 🎯 **Multiple Distance Metrics**: Cosine, Euclidean, Manhattan, Hamming, Jaccard, and custom metrics
-- 🚀 **Performance Optimizations**: SIMD operations, WebAssembly, and WebGPU acceleration
+- 🚀 **Performance Optimizations**: SIMD operations, WebGPU acceleration, and scalar fallbacks
 - 📦 **Vector Compression**: Scalar quantization, product quantization, and binary compression
 - 🔄 **Background Processing**: Web Workers for parallel operations
 
@@ -81,7 +81,7 @@ The broader pattern here is moving vector search compute to the edge—the brows
 
 - ⚡ **SIMD Operations**: Single Instruction, Multiple Data for vectorized computations
 - 🌐 **WebGPU Support**: GPU-accelerated search and mathematical operations
-- 🔧 **WebAssembly**: High-performance computing modules for critical operations
+- 🔧 **Acceleration Fallbacks**: Honest capability detection with SIMD/scalar fallbacks when optional acceleration is unavailable
 
 ## 📋 Prerequisites
 
@@ -277,7 +277,7 @@ const result = await manager.compress(vector);
 
 ### Performance Acceleration
 
-SIMD, WebAssembly, and WebGPU acceleration are used automatically by the search engine when available. You don't need to import or configure them directly — Vector Frankl detects browser capabilities and selects the fastest path.
+SIMD and WebGPU acceleration are used automatically by the search engine when available. You don't need to import or configure them directly — Vector Frankl detects browser capabilities and selects the fastest available path, falling back to scalar operations when acceleration is unavailable.
 
 #### WebGPU Acceleration
 
@@ -380,7 +380,7 @@ const searchWithProfiling = withProfiling('vector-search', (query, k) =>
 ├─────────────────────────────────────────────────────────────┤
 │  API Layer: VectorDB | VectorFrankl | Direct Modules       │
 ├─────────────────────────────────────────────────────────────┤
-│     Acceleration: SIMD | WebGPU | WebAssembly | Workers    │
+│        Acceleration: SIMD | WebGPU | Workers | Scalar      │
 ├─────────────────────────────────────────────────────────────┤
 │        Core: Search | Storage | Compression | Index        │
 ├─────────────────────────────────────────────────────────────┤
@@ -488,7 +488,7 @@ src/
 ├── types/              # Shared type definitions
 ├── utilities/          # Logging, file I/O, and helpers
 ├── vectors/            # Vector operations and formats
-├── wasm/               # WebAssembly modules
+├── wasm/               # WebAssembly capability detection and fallbacks
 ├── workers/            # Web Worker support
 └── index.ts            # Main exports
 
@@ -526,7 +526,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - IndexedDB for persistent browser storage
 - HNSW algorithm for efficient similarity search
-- WebGPU, WebAssembly, and SIMD for performance acceleration
+- WebGPU and SIMD for performance acceleration
 
 ## 📚 Related Projects
 
