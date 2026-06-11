@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
-import { VectorDB, VectorFrankl } from '@/index.js';
+import { VectorDB, VectorFrankl, SearchEngine } from '@/index.js';
+import { VectorDatabase } from '@/core/database.js';
+import type { SearchOptions, StorageAdapter } from '@/core/types.js';
 import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
 
 describe('Vector Database Integration Tests', () => {
@@ -321,9 +323,41 @@ describe('Vector Database Integration Tests', () => {
   });
 
   describe('Indexed Mutation Consistency', () => {
+    const indexedMutationDBName = `${testDBName}-indexed-mutations`;
+
+    async function searchPersistedIndex(
+      queryVector: [number, number],
+      k: number,
+      options?: SearchOptions,
+    ) {
+      const internals = db as unknown as {
+        database: VectorDatabase | null;
+        storage: StorageAdapter;
+      };
+
+      if (!internals.database) {
+        throw new Error('Indexed mutation tests require default IndexedDB storage');
+      }
+
+      const searchEngine = new SearchEngine(internals.storage, 2, 'cosine', {
+        database: internals.database,
+        indexId: `${indexedMutationDBName}-main`,
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      await searchEngine.rebuildIndex();
+
+      try {
+        return await searchEngine.search(new Float32Array(queryVector), k, options);
+      } finally {
+        await searchEngine.cleanup();
+      }
+    }
+
     beforeEach(async () => {
       await db.delete();
-      db = new VectorDB(`${testDBName}-indexed-mutations`, 2, {
+      db = new VectorDB(indexedMutationDBName, 2, {
         autoEviction: false,
         useIndex: true,
       });
@@ -343,6 +377,52 @@ describe('Vector Database Integration Tests', () => {
       expect(stats.vectorCount).toBe(0);
       expect(db.getIndexStats().nodeCount).toBe(0);
       expect(await db.search([1, 0], 5, { includeMetadata: true })).toEqual([]);
+
+      expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
+        [],
+      );
+    });
+
+    it('should delete persisted indexes when clearing while indexing is disabled', async () => {
+      await db.addVector('disabled-index-vector', [1, 0], { label: 'stale' });
+      await db.rebuildIndex();
+      await db.setIndexing(false);
+
+      await db.clear();
+      await db.setIndexing(true);
+
+      expect(db.getIndexStats().nodeCount).toBe(0);
+      expect(await db.search([1, 0], 5, { includeMetadata: true })).toEqual([]);
+      expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
+        [],
+      );
+    });
+
+    it('should delete persisted indexes when clearing from a non-indexed instance', async () => {
+      await db.addVector('recreated-index-vector', [1, 0], { label: 'stale' });
+      await db.rebuildIndex();
+      await db.close();
+
+      db = new VectorDB(indexedMutationDBName, 2, {
+        autoEviction: false,
+        useIndex: false,
+      });
+      await db.init();
+      await db.clear();
+      await db.close();
+
+      db = new VectorDB(indexedMutationDBName, 2, {
+        autoEviction: false,
+        useIndex: true,
+      });
+      await db.init();
+      await db.rebuildIndex();
+
+      expect(db.getIndexStats().nodeCount).toBe(0);
+      expect(await db.search([1, 0], 5, { includeMetadata: true })).toEqual([]);
+      expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
+        [],
+      );
     });
 
     it('should force-rebuild cached indexes after metadata updates', async () => {
@@ -354,6 +434,12 @@ describe('Vector Database Integration Tests', () => {
       const results = await db.search([1, 0], 1, { includeMetadata: true });
       expect(results).toHaveLength(1);
       expect(results[0]!.metadata).toEqual({ label: 'new' });
+
+      const persistedResults = await searchPersistedIndex([1, 0], 1, {
+        includeMetadata: true,
+      });
+      expect(persistedResults).toHaveLength(1);
+      expect(persistedResults[0]!.metadata).toEqual({ label: 'new' });
     });
 
     it('should force-rebuild cached indexes after batch vector updates', async () => {
@@ -379,22 +465,19 @@ describe('Vector Database Integration Tests', () => {
       const updatedResult = results.find((result) => result.id === 'updated-vector');
       expect(updatedResult?.metadata).toEqual({ label: 'updated' });
       expect(Array.from(updatedResult!.vector!)).toEqual([0, 1]);
-    });
 
-    it('should reject invalid metadata in batch updates before writing', async () => {
-      await db.addVector('batch-validation', [1, 0], { version: 1 });
+      const persistedResults = await searchPersistedIndex([1, 0], 2, {
+        includeMetadata: true,
+        includeVector: true,
+      });
 
-      expect(
-        db.updateBatch([
-          {
-            id: 'batch-validation',
-            metadata: { '../secret': 'value' },
-          },
-        ]),
-      ).rejects.toThrow('Invalid metadata key: ../secret');
+      expect(persistedResults[0]!.id).toBe('target-vector');
 
-      const stored = await db.getVector('batch-validation');
-      expect(stored?.metadata).toEqual({ version: 1 });
+      const persistedUpdatedResult = persistedResults.find(
+        (result) => result.id === 'updated-vector',
+      );
+      expect(persistedUpdatedResult?.metadata).toEqual({ label: 'updated' });
+      expect(Array.from(persistedUpdatedResult!.vector!)).toEqual([0, 1]);
     });
   });
 

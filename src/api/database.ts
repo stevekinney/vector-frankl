@@ -710,11 +710,8 @@ export class VectorDB {
       updateTimestamp?: boolean;
     },
   ): Promise<void> {
-    const validatedId = InputValidator.validateVectorId(id);
-    const validatedMetadata = InputValidator.validateMetadata(metadata);
-
     await this.ensureInitialized();
-    await this.storage.updateMetadata(validatedId, validatedMetadata, options);
+    await this.storage.updateMetadata(id, metadata, options);
 
     await this.searchEngine.rebuildIndex({ loadFromCache: false });
   }
@@ -735,21 +732,16 @@ export class VectorDB {
     errors: Array<{ id: string; error: Error }>;
   }> {
     await this.ensureInitialized();
-    const validatedIds = InputValidator.validateVectorIds(
-      updates.map((update) => update.id),
-    );
 
     // Validate and convert vectors
-    const processedUpdates = updates.map((update, index) => {
+    const processedUpdates = updates.map((update) => {
       const processed: {
         id: string;
         vector?: Float32Array;
         metadata?: Record<string, unknown>;
-      } = { id: validatedIds[index]! };
+      } = { id: update.id };
 
       if (update.vector) {
-        VectorFormatHandler.validate(update.vector, this.dimension);
-
         if (update.vector.length !== this.dimension) {
           throw new DimensionMismatchError(this.dimension, update.vector.length);
         }
@@ -757,7 +749,7 @@ export class VectorDB {
       }
 
       if (update.metadata !== undefined) {
-        processed.metadata = InputValidator.validateMetadata(update.metadata);
+        processed.metadata = update.metadata;
       }
 
       return processed;

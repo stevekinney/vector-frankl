@@ -72,12 +72,12 @@ export class SearchEngine {
     this.useGPU = options?.useGPU ?? false;
     this.gpuThreshold = options?.gpuConfig?.gpuThreshold ?? 5000;
 
+    if (options?.database) {
+      this.indexCache = new IndexCache(options.database as VectorDatabase);
+    }
+
     if (this.useIndex) {
       this.hnswIndex = new HNSWIndex(distanceMetric, options?.indexConfig);
-
-      if (options?.database) {
-        this.indexCache = new IndexCache(options.database as VectorDatabase);
-      }
     }
 
     // Initialize worker pool if workers are enabled
@@ -662,11 +662,9 @@ export class SearchEngine {
    * Clear the active index and any persisted snapshot for this search engine.
    */
   async clearIndex(): Promise<void> {
-    if (!this.useIndex || !this.hnswIndex) {
-      return;
+    if (this.hnswIndex) {
+      this.hnswIndex.clear();
     }
-
-    this.hnswIndex.clear();
 
     if (this.indexCache) {
       await this.indexCache.deleteIndex(this.indexId);
