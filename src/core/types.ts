@@ -57,6 +57,10 @@ export interface IndexedDatabaseObjectStore {
 
 export type IndexedDatabaseTransactionMode = 'readonly' | 'readwrite' | 'versionchange';
 
+export interface VectorAbortSignal {
+  readonly aborted: boolean;
+}
+
 /**
  * Database configuration
  */
@@ -136,7 +140,7 @@ export interface SearchOptions {
   includeVector?: boolean;
   includeMetadata?: boolean;
   timeout?: number;
-  signal?: AbortSignal;
+  signal?: VectorAbortSignal;
 }
 
 /**
@@ -193,7 +197,7 @@ export interface FilterOperator {
 export interface BatchOptions {
   batchSize?: number;
   onProgress?: (progress: BatchProgress) => void;
-  abortSignal?: AbortSignal;
+  abortSignal?: VectorAbortSignal;
   parallel?: boolean;
 }
 
