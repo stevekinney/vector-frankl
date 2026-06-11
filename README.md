@@ -211,7 +211,7 @@ await db.init();
 
 ```typescript
 // SQLite (Bun runtime only)
-import { SQLiteStorageAdapter } from 'vector-frankl/src/storage/adapters/sqlite-adapter';
+import { SQLiteStorageAdapter } from 'vector-frankl/adapters/sqlite';
 
 const sqlite = new SQLiteStorageAdapter({ filename: './vectors.db' });
 const db = new VectorDB('my-vectors', 384, { storage: sqlite });
@@ -221,7 +221,7 @@ await db.init();
 ```typescript
 // Use a factory so each namespace gets its own storage
 import { VectorFrankl } from 'vector-frankl';
-import { SQLiteStorageAdapter } from 'vector-frankl/src/storage/adapters/sqlite-adapter';
+import { SQLiteStorageAdapter } from 'vector-frankl/adapters/sqlite';
 
 const frankl = new VectorFrankl('my-vectors', {
   defaultDimension: 384,
