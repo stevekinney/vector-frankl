@@ -90,6 +90,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "prepack": "bun run build",
+    "package:check": "bun run build && bun run scripts/check-package.ts",
     "prepare": "husky",
     "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
     "start": "bun run dist/index.js",
