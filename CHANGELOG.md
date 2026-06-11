@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `SharedMemoryManager.sharedMemoryBatchSearch()` now returns top-k results instead of an empty placeholder response
 - WebGPU `uncapturederror` event listener now removed in `cleanup()`, preventing listener accumulation across `init()` calls
 
 ### Added
