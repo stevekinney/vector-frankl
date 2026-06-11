@@ -4,7 +4,13 @@ import {
   DatabaseInitializationError,
   TransactionError,
 } from './errors.js';
-import type { DatabaseConfig } from './types.js';
+import type {
+  DatabaseConfig,
+  IndexedDatabaseInfo,
+  IndexedDatabaseUpgradeDatabase,
+  IndexedDatabaseTransaction,
+  IndexedDatabaseTransactionMode,
+} from './types.js';
 
 /**
  * Core database class for managing IndexedDB connections and operations
@@ -13,9 +19,7 @@ export class VectorDatabase {
   private database: IDBDatabase | null = null;
   private readonly name: string;
   private readonly version: number;
-  private readonly onUpgrade:
-    | ((database: IDBDatabase, oldVersion: number) => void)
-    | undefined;
+  private readonly onUpgrade: DatabaseConfig['onUpgrade'];
   private initializationPromise: Promise<void> | null = null;
 
   /**
@@ -96,10 +100,11 @@ export class VectorDatabase {
 
       request.onupgradeneeded = (event) => {
         const database = (event.target as IDBOpenDBRequest).result;
+        const upgradeDatabase = database as unknown as IndexedDatabaseUpgradeDatabase;
         if (this.onUpgrade) {
-          this.onUpgrade(database, event.oldVersion);
+          this.onUpgrade(upgradeDatabase, event.oldVersion);
         } else {
-          this.createSchema(database, event.oldVersion);
+          this.createSchema(upgradeDatabase, event.oldVersion);
         }
       };
 
@@ -116,7 +121,10 @@ export class VectorDatabase {
   /**
    * Create or upgrade database schema
    */
-  private createSchema(database: IDBDatabase, _oldVersion: number): void {
+  private createSchema(
+    database: Parameters<NonNullable<DatabaseConfig['onUpgrade']>>[0],
+    _oldVersion: number,
+  ): void {
     // Create vectors store if it doesn't exist
     if (!database.objectStoreNames.contains(VectorDatabase.STORES.VECTORS)) {
       const vectorStore = database.createObjectStore(VectorDatabase.STORES.VECTORS, {
@@ -200,13 +208,13 @@ export class VectorDatabase {
    */
   async transaction(
     storeNames: string | string[],
-    mode: IDBTransactionMode = 'readonly',
-  ): Promise<IDBTransaction> {
+    mode: IndexedDatabaseTransactionMode = 'readonly',
+  ): Promise<IndexedDatabaseTransaction> {
     const database = await this.getDatabase();
 
     try {
       const stores = Array.isArray(storeNames) ? storeNames : [storeNames];
-      return database.transaction(stores, mode);
+      return database.transaction(stores, mode) as IndexedDatabaseTransaction;
     } catch (error) {
       throw new TransactionError(
         'create transaction',
@@ -221,8 +229,8 @@ export class VectorDatabase {
    */
   async executeTransaction<T>(
     storeNames: string | string[],
-    mode: IDBTransactionMode,
-    operation: (transaction: IDBTransaction) => Promise<T>,
+    mode: IndexedDatabaseTransactionMode,
+    operation: (transaction: IndexedDatabaseTransaction) => Promise<T>,
   ): Promise<T> {
     const transaction = await this.transaction(storeNames, mode);
 
@@ -353,7 +361,7 @@ export class VectorDatabase {
   /**
    * Get all available databases (Chrome only)
    */
-  static async getAllDatabases(): Promise<IDBDatabaseInfo[]> {
+  static async getAllDatabases(): Promise<IndexedDatabaseInfo[]> {
     if ('databases' in indexedDB) {
       return indexedDB.databases();
     }

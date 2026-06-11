@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Published `vector-frankl/adapters/*` subpath exports for storage adapters documented in the README
 - Unit tests for distance metrics, search engine, input validator, eviction policies, quota monitor, and index persistence
 
 ### Removed

@@ -4,7 +4,14 @@ import {
   NamespaceNotFoundError,
   TransactionError,
 } from '@/core/errors.js';
-import type { NamespaceConfig, NamespaceInfo, NamespaceStats } from '@/core/types.js';
+import type {
+  IndexedDatabaseUpgradeDatabase,
+  IndexedDatabaseRequest,
+  IndexedDatabaseTransaction,
+  NamespaceConfig,
+  NamespaceInfo,
+  NamespaceStats,
+} from '@/core/types.js';
 import { validateNamespaceName } from './validate-namespace-name.js';
 
 /**
@@ -23,7 +30,7 @@ export class NamespaceRegistry {
     this.database = new VectorDatabase({
       name: rootDatabaseName,
       version: 1,
-      onUpgrade: (db: IDBDatabase) => {
+      onUpgrade: (db: IndexedDatabaseUpgradeDatabase) => {
         // Namespaces store
         if (!db.objectStoreNames.contains(NamespaceRegistry.STORES.NAMESPACES)) {
           const namespaceStore = db.createObjectStore(
@@ -82,7 +89,7 @@ export class NamespaceRegistry {
       await this.database.executeTransaction(
         [NamespaceRegistry.STORES.NAMESPACES],
         'readwrite',
-        async (tx: IDBTransaction) => {
+        async (tx: IndexedDatabaseTransaction) => {
           const namespaceStore = tx.objectStore(NamespaceRegistry.STORES.NAMESPACES);
 
           // Check if namespace already exists
@@ -122,7 +129,7 @@ export class NamespaceRegistry {
       const result = await this.database.executeTransaction(
         [NamespaceRegistry.STORES.NAMESPACES],
         'readonly',
-        async (tx: IDBTransaction) => {
+        async (tx: IndexedDatabaseTransaction) => {
           const namespaceStore = tx.objectStore(NamespaceRegistry.STORES.NAMESPACES);
           return this.promisifyRequest(namespaceStore.get(name)) as Promise<
             NamespaceInfo | undefined
@@ -149,11 +156,11 @@ export class NamespaceRegistry {
       return await this.database.executeTransaction(
         [NamespaceRegistry.STORES.NAMESPACES],
         'readonly',
-        async (tx: IDBTransaction) => {
+        async (tx: IndexedDatabaseTransaction) => {
           const namespaceStore = tx.objectStore(NamespaceRegistry.STORES.NAMESPACES);
           const namespaces: NamespaceInfo[] = [];
 
-          const cursor = namespaceStore.openCursor();
+          const cursor = namespaceStore.openCursor<NamespaceInfo>();
           await this.iterateCursor(cursor, (value) => {
             namespaces.push(value);
           });
@@ -180,7 +187,7 @@ export class NamespaceRegistry {
       await this.database.executeTransaction(
         [NamespaceRegistry.STORES.NAMESPACES],
         'readwrite',
-        async (tx: IDBTransaction) => {
+        async (tx: IndexedDatabaseTransaction) => {
           const namespaceStore = tx.objectStore(NamespaceRegistry.STORES.NAMESPACES);
 
           const namespace = (await this.promisifyRequest(namespaceStore.get(name))) as
@@ -220,7 +227,7 @@ export class NamespaceRegistry {
       await this.database.executeTransaction(
         [NamespaceRegistry.STORES.NAMESPACES],
         'readwrite',
-        async (tx: IDBTransaction) => {
+        async (tx: IndexedDatabaseTransaction) => {
           const namespaceStore = tx.objectStore(NamespaceRegistry.STORES.NAMESPACES);
 
           const namespace = (await this.promisifyRequest(namespaceStore.get(name))) as
@@ -310,7 +317,7 @@ export class NamespaceRegistry {
   /**
    * Helper to promisify IndexedDB requests
    */
-  private promisifyRequest<T>(request: IDBRequest<T>): Promise<T> {
+  private promisifyRequest<T>(request: IndexedDatabaseRequest<T>): Promise<T> {
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () =>
@@ -322,7 +329,10 @@ export class NamespaceRegistry {
    * Helper to iterate over a cursor
    */
   private async iterateCursor(
-    cursorRequest: IDBRequest<IDBCursorWithValue | null>,
+    cursorRequest: IndexedDatabaseRequest<{
+      readonly value: NamespaceInfo;
+      continue(): void;
+    } | null>,
     callback: (value: NamespaceInfo) => void,
   ): Promise<void> {
     return new Promise((resolve, reject) => {

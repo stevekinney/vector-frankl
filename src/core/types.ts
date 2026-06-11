@@ -34,6 +34,70 @@ export interface VectorData {
   };
 }
 
+export interface IndexedDatabaseObjectStoreNames {
+  contains(name: string): boolean;
+}
+
+export interface IndexedDatabaseUpgradeDatabase {
+  objectStoreNames: IndexedDatabaseObjectStoreNames;
+  createObjectStore(
+    name: string,
+    options?: { keyPath?: string | string[]; autoIncrement?: boolean },
+  ): IndexedDatabaseObjectStore;
+  deleteObjectStore(name: string): void;
+}
+
+export interface IndexedDatabaseObjectStore {
+  createIndex(
+    name: string,
+    keyPath: string | string[],
+    options?: { unique?: boolean; multiEntry?: boolean },
+  ): unknown;
+  add<T = unknown>(value: T, key?: unknown): IndexedDatabaseRequest<unknown>;
+  put<T = unknown>(value: T, key?: unknown): IndexedDatabaseRequest<unknown>;
+  get<T = unknown>(query: unknown): IndexedDatabaseRequest<T | undefined>;
+  getAll<T = unknown>(query?: unknown, count?: number): IndexedDatabaseRequest<T[]>;
+  delete(query: unknown): IndexedDatabaseRequest<undefined>;
+  clear(): IndexedDatabaseRequest<undefined>;
+  count(query?: unknown): IndexedDatabaseRequest<number>;
+  openCursor<T = unknown>(
+    query?: unknown,
+    direction?: string,
+  ): IndexedDatabaseRequest<IndexedDatabaseCursor<T> | null>;
+}
+
+export type IndexedDatabaseTransactionMode = 'readonly' | 'readwrite' | 'versionchange';
+
+export interface IndexedDatabaseRequest<T = unknown> {
+  onsuccess: ((event: unknown) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  readonly result: T;
+  readonly error: Error | null;
+}
+
+export interface IndexedDatabaseCursor<T = unknown> {
+  readonly value: T;
+  continue(): void;
+}
+
+export interface IndexedDatabaseTransaction {
+  oncomplete: ((event: unknown) => void) | null;
+  onerror: ((event: unknown) => void) | null;
+  onabort: ((event: unknown) => void) | null;
+  readonly error: Error | null;
+  objectStore(name: string): IndexedDatabaseObjectStore;
+  abort(): void;
+}
+
+export interface IndexedDatabaseInfo {
+  name?: string;
+  version?: number;
+}
+
+export interface VectorAbortSignal {
+  readonly aborted: boolean;
+}
+
 /**
  * Database configuration
  */
@@ -42,7 +106,7 @@ export interface DatabaseConfig {
   version?: number;
   persistence?: boolean;
   /** Optional callback to override default schema creation during upgrades */
-  onUpgrade?: (database: IDBDatabase, oldVersion: number) => void;
+  onUpgrade?: (database: IndexedDatabaseUpgradeDatabase, oldVersion: number) => void;
 }
 
 /**
@@ -113,7 +177,7 @@ export interface SearchOptions {
   includeVector?: boolean;
   includeMetadata?: boolean;
   timeout?: number;
-  signal?: AbortSignal;
+  signal?: VectorAbortSignal;
 }
 
 /**
@@ -170,7 +234,7 @@ export interface FilterOperator {
 export interface BatchOptions {
   batchSize?: number;
   onProgress?: (progress: BatchProgress) => void;
-  abortSignal?: AbortSignal;
+  abortSignal?: VectorAbortSignal;
   parallel?: boolean;
 }
 
@@ -246,7 +310,7 @@ export interface KDTreeParameters {
  */
 export interface TransactionOptions {
   stores?: string[];
-  mode?: IDBTransactionMode;
+  mode?: IndexedDatabaseTransactionMode;
   timeout?: number;
   retries?: number;
 }

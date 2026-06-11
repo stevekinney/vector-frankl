@@ -1,7 +1,13 @@
 import { log } from '@/utilities/logger.js';
 import { VectorDatabase } from './database.js';
 import { BatchOperationError, TransactionError, VectorNotFoundError } from './errors.js';
-import type { BatchOptions, BatchProgress, StorageAdapter, VectorData } from './types.js';
+import type {
+  BatchOptions,
+  BatchProgress,
+  IndexedDatabaseObjectStore,
+  StorageAdapter,
+  VectorData,
+} from './types.js';
 
 // Default batch size constant
 const DEFAULT_BATCH_SIZE = 1000;
@@ -78,7 +84,7 @@ export class VectorStorage implements StorageAdapter {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
 
         return new Promise<VectorData>((resolve, reject) => {
-          const request = store.get(id);
+          const request = store.get<VectorData>(id);
 
           request.onsuccess = () => {
             const vector = request.result;
@@ -137,7 +143,7 @@ export class VectorStorage implements StorageAdapter {
           ids.map(
             (id) =>
               new Promise<void>((resolve) => {
-                const request = store.get(id);
+                const request = store.get<VectorData>(id);
 
                 request.onsuccess = () => {
                   const vector = request.result;
@@ -272,7 +278,7 @@ export class VectorStorage implements StorageAdapter {
             (id) =>
               new Promise<void>((resolve) => {
                 // Check existence before deleting to report accurate count
-                const getRequest = store.get(id);
+                const getRequest = store.get<VectorData>(id);
 
                 getRequest.onsuccess = () => {
                   if (!getRequest.result) {
@@ -344,7 +350,7 @@ export class VectorStorage implements StorageAdapter {
         const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
 
         return new Promise<VectorData[]>((resolve, reject) => {
-          const request = store.getAll();
+          const request = store.getAll<VectorData>();
 
           request.onsuccess = () => resolve(request.result || []);
           request.onerror = () =>
@@ -711,11 +717,11 @@ export class VectorStorage implements StorageAdapter {
    * Get a vector from store within a transaction
    */
   private async getVectorFromStore(
-    store: IDBObjectStore,
+    store: IndexedDatabaseObjectStore,
     id: string,
   ): Promise<VectorData | null> {
     return new Promise((resolve, reject) => {
-      const request = store.get(id);
+      const request = store.get<VectorData>(id);
 
       request.onsuccess = () => {
         resolve(request.result || null);
@@ -737,7 +743,7 @@ export class VectorStorage implements StorageAdapter {
    * Put a vector into store within a transaction
    */
   private async putVectorInStore(
-    store: IDBObjectStore,
+    store: IndexedDatabaseObjectStore,
     vector: VectorData,
   ): Promise<void> {
     return new Promise((resolve, reject) => {
