@@ -26,6 +26,11 @@ const environmentSchema = z.object({
 
 export type Environment = z.infer<typeof environmentSchema>;
 
+interface EnvironmentVariableSources {
+  importMetaEnvironment?: Record<string, string | undefined> | undefined;
+  processEnvironment?: Record<string, string | undefined> | undefined;
+}
+
 function validateEnvironment(env?: Record<string, string | undefined>): Environment {
   // In browser environments, provide sensible defaults
   const envToValidate = env || {};
@@ -56,28 +61,43 @@ function validateEnvironment(env?: Record<string, string | undefined>): Environm
   }
 }
 
-// Safely get environment variables, handling browser context
-function getEnvironmentVariables(): Record<string, string | undefined> {
+function getImportMetaEnvironment(): Record<string, string | undefined> | undefined {
   try {
-    // Try import.meta.env first (Vite/modern bundlers)
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return import.meta.env;
-    }
-  } catch {
-    // Ignore errors
-  }
+    const importMeta = import.meta as ImportMeta & {
+      env?: Record<string, string | undefined>;
+    };
 
+    return importMeta.env;
+  } catch {
+    return undefined;
+  }
+}
+
+function getProcessEnvironment(): Record<string, string | undefined> | undefined {
   try {
-    // Try process.env (Node.js/some bundlers)
     if (typeof process !== 'undefined' && process.env) {
       return process.env;
     }
   } catch {
-    // Ignore errors
+    return undefined;
   }
 
-  // Return empty object for browser environments
-  return {};
+  return undefined;
+}
+
+export function resolveEnvironmentVariables({
+  importMetaEnvironment,
+  processEnvironment,
+}: EnvironmentVariableSources = {}): Record<string, string | undefined> {
+  return importMetaEnvironment ?? processEnvironment ?? {};
+}
+
+// Safely get environment variables, handling browser context
+function getEnvironmentVariables(): Record<string, string | undefined> {
+  return resolveEnvironmentVariables({
+    importMetaEnvironment: getImportMetaEnvironment(),
+    processEnvironment: getProcessEnvironment(),
+  });
 }
 
 export const environment = validateEnvironment(getEnvironmentVariables());
