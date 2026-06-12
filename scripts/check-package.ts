@@ -6,7 +6,13 @@ type PackageManifest = {
 
 const packageManifest = (await Bun.file('package.json').json()) as PackageManifest;
 
-const basePackageFiles = ['package.json', 'README.md', 'LICENSE', 'CHANGELOG.md'];
+const basePackageFiles = [
+  'package.json',
+  'README.md',
+  'LICENSE',
+  'CHANGELOG.md',
+  'dist/cjs/package.json',
+];
 
 const collectPackageTargets = (value: unknown): string[] => {
   if (typeof value === 'string') {
