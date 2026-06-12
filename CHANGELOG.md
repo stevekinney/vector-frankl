@@ -45,6 +45,7 @@ support tiers.
 
 - ESM bundle was tree-shaken to broken empty exports by `sideEffects: false`; scoped to `["./src/**/*.ts"]` so the published bundle is valid and consumer tree-shaking still works
 - CommonJS bundle crashed Node's parser on `import.meta`; per-format shims keep `import.meta` out of CJS output
+- CommonJS adapter subpath exports now resolve to published CommonJS adapter builds
 - `SharedMemoryManager.sharedMemoryBatchSearch()` returns top-k results instead of an empty placeholder
 - Persisted HNSW index lifecycle: validates against storage on reopen, rebuilds/disables stale indexes
 - WebGPU `uncapturederror` listener removed in `cleanup()`, preventing accumulation across `init()` calls
