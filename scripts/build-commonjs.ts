@@ -23,14 +23,17 @@ const adapterEntrypoints = [
 const commonjsImportMetaEnvironmentPlugin: Bun.BunPlugin = {
   name: 'commonjs-import-meta-environment',
   setup(build) {
-    build.onLoad({ filter: /src\/configuration\/environment\.ts$/ }, async ({ path }) => {
-      const source = await Bun.file(path).text();
+    build.onLoad(
+      { filter: /(^|[/\\])src[/\\]configuration[/\\]environment\.ts$/ },
+      async ({ path }) => {
+        const source = await Bun.file(path).text();
 
-      return {
-        contents: source.replaceAll('import.meta', 'undefined'),
-        loader: 'ts',
-      };
-    });
+        return {
+          contents: source.replaceAll('import.meta', 'undefined'),
+          loader: 'ts',
+        };
+      },
+    );
   },
 };
 

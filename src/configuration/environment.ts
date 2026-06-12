@@ -29,8 +29,8 @@ const environmentSchema = z.object({
 export type Environment = z.infer<typeof environmentSchema>;
 
 interface EnvironmentVariableSources {
-  importMetaEnvironment?: Record<string, string | undefined> | undefined;
-  processEnvironment?: Record<string, string | undefined> | undefined;
+  importMetaEnvironment?: Record<string, string | undefined>;
+  processEnvironment?: Record<string, string | undefined>;
 }
 
 export function resolveEnvironmentVariables({
