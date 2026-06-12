@@ -59,15 +59,6 @@ function validateEnvironment(env?: Record<string, string | undefined>): Environm
 // Safely get environment variables, handling browser context
 function getEnvironmentVariables(): Record<string, string | undefined> {
   try {
-    // Try import.meta.env first (Vite/modern bundlers)
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return import.meta.env;
-    }
-  } catch {
-    // Ignore errors
-  }
-
-  try {
     // Try process.env (Node.js/some bundlers)
     if (typeof process !== 'undefined' && process.env) {
       return process.env;

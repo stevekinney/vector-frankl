@@ -69,51 +69,61 @@
     "./adapters/chrome-storage": {
       "types": "./dist/storage/adapters/chrome-storage-adapter.d.ts",
       "import": "./dist/storage/adapters/chrome-storage-adapter.js",
+      "require": "./dist/cjs/storage/adapters/chrome-storage-adapter.js",
       "default": "./dist/storage/adapters/chrome-storage-adapter.js"
     },
     "./adapters/file-system": {
       "types": "./dist/storage/adapters/file-system-adapter.d.ts",
       "import": "./dist/storage/adapters/file-system-adapter.js",
+      "require": "./dist/cjs/storage/adapters/file-system-adapter.js",
       "default": "./dist/storage/adapters/file-system-adapter.js"
     },
     "./adapters/indexed-database": {
       "types": "./dist/storage/adapters/indexed-database-adapter.d.ts",
       "import": "./dist/storage/adapters/indexed-database-adapter.js",
+      "require": "./dist/cjs/storage/adapters/indexed-database-adapter.js",
       "default": "./dist/storage/adapters/indexed-database-adapter.js"
     },
     "./adapters/level": {
       "types": "./dist/storage/adapters/level-adapter.d.ts",
       "import": "./dist/storage/adapters/level-adapter.js",
+      "require": "./dist/cjs/storage/adapters/level-adapter.js",
       "default": "./dist/storage/adapters/level-adapter.js"
     },
     "./adapters/lmdb": {
       "types": "./dist/storage/adapters/lmdb-adapter.d.ts",
       "import": "./dist/storage/adapters/lmdb-adapter.js",
+      "require": "./dist/cjs/storage/adapters/lmdb-adapter.js",
       "default": "./dist/storage/adapters/lmdb-adapter.js"
     },
     "./adapters/memory": {
       "types": "./dist/storage/adapters/memory-adapter.d.ts",
       "import": "./dist/storage/adapters/memory-adapter.js",
+      "require": "./dist/cjs/storage/adapters/memory-adapter.js",
       "default": "./dist/storage/adapters/memory-adapter.js"
     },
     "./adapters/opfs": {
       "types": "./dist/storage/adapters/opfs-adapter.d.ts",
       "import": "./dist/storage/adapters/opfs-adapter.js",
+      "require": "./dist/cjs/storage/adapters/opfs-adapter.js",
       "default": "./dist/storage/adapters/opfs-adapter.js"
     },
     "./adapters/redis": {
       "types": "./dist/storage/adapters/redis-adapter.d.ts",
       "import": "./dist/storage/adapters/redis-adapter.js",
+      "require": "./dist/cjs/storage/adapters/redis-adapter.js",
       "default": "./dist/storage/adapters/redis-adapter.js"
     },
     "./adapters/s3": {
       "types": "./dist/storage/adapters/s3-adapter.d.ts",
       "import": "./dist/storage/adapters/s3-adapter.js",
+      "require": "./dist/cjs/storage/adapters/s3-adapter.js",
       "default": "./dist/storage/adapters/s3-adapter.js"
     },
     "./adapters/sqlite": {
       "types": "./dist/storage/adapters/sqlite-adapter.d.ts",
       "import": "./dist/storage/adapters/sqlite-adapter.js",
+      "require": "./dist/cjs/storage/adapters/sqlite-adapter.js",
       "default": "./dist/storage/adapters/sqlite-adapter.js"
     }
   },
@@ -126,9 +136,11 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:cjs && bun run build:adapters",
+    "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:cjs && bun run build:adapters && bun run build:adapters:cjs && bun run build:cjs-package",
     "build:adapters": "bun build --target=bun --root=src/storage/adapters --outdir=dist/storage/adapters --format=esm --sourcemap=external ./src/storage/adapters/chrome-storage-adapter.ts ./src/storage/adapters/file-system-adapter.ts ./src/storage/adapters/indexed-database-adapter.ts ./src/storage/adapters/level-adapter.ts ./src/storage/adapters/lmdb-adapter.ts ./src/storage/adapters/memory-adapter.ts ./src/storage/adapters/opfs-adapter.ts ./src/storage/adapters/redis-adapter.ts ./src/storage/adapters/s3-adapter.ts ./src/storage/adapters/sqlite-adapter.ts",
+    "build:adapters:cjs": "bun build --target=browser --root=src/storage/adapters --outdir=dist/cjs/storage/adapters --format=cjs --sourcemap=external ./src/storage/adapters/chrome-storage-adapter.ts ./src/storage/adapters/file-system-adapter.ts ./src/storage/adapters/indexed-database-adapter.ts ./src/storage/adapters/level-adapter.ts ./src/storage/adapters/lmdb-adapter.ts ./src/storage/adapters/memory-adapter.ts ./src/storage/adapters/opfs-adapter.ts ./src/storage/adapters/redis-adapter.ts ./src/storage/adapters/s3-adapter.ts ./src/storage/adapters/sqlite-adapter.ts",
     "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
+    "build:cjs-package": "bun run scripts/write-commonjs-package-manifest.ts",
     "build:clean": "rm -rf dist",
     "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
     "build:types": "tsc -p tsconfig.build.json && bun run scripts/rewrite-declaration-imports.ts",
