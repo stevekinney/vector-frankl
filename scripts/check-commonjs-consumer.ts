@@ -2,18 +2,15 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const adapterSubpaths = [
-  'chrome-storage',
-  'file-system',
-  'indexed-database',
-  'level',
-  'lmdb',
-  'memory',
-  'opfs',
-  'redis',
-  's3',
-  'sqlite',
-];
+interface PackageManifest {
+  exports?: Record<string, unknown>;
+}
+
+const packageManifest = (await Bun.file('package.json').json()) as PackageManifest;
+const adapterSubpaths = Object.keys(packageManifest.exports ?? {})
+  .filter((subpath) => subpath.startsWith('./adapters/'))
+  .map((subpath) => subpath.replace('./adapters/', ''))
+  .toSorted();
 
 async function run(command: string[], cwd: string): Promise<string> {
   const process = Bun.spawn(command, {

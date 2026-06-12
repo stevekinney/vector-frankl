@@ -27,8 +27,8 @@ const environmentSchema = z.object({
 export type Environment = z.infer<typeof environmentSchema>;
 
 interface EnvironmentVariableSources {
-  importMetaEnvironment?: Record<string, string | undefined> | undefined;
-  processEnvironment?: Record<string, string | undefined> | undefined;
+  importMetaEnvironment?: Record<string, string | undefined>;
+  processEnvironment?: Record<string, string | undefined>;
 }
 
 function validateEnvironment(env?: Record<string, string | undefined>): Environment {
@@ -94,10 +94,19 @@ export function resolveEnvironmentVariables({
 
 // Safely get environment variables, handling browser context
 function getEnvironmentVariables(): Record<string, string | undefined> {
-  return resolveEnvironmentVariables({
-    importMetaEnvironment: getImportMetaEnvironment(),
-    processEnvironment: getProcessEnvironment(),
-  });
+  const sources: EnvironmentVariableSources = {};
+  const importMetaEnvironment = getImportMetaEnvironment();
+  const processEnvironment = getProcessEnvironment();
+
+  if (importMetaEnvironment !== undefined) {
+    sources.importMetaEnvironment = importMetaEnvironment;
+  }
+
+  if (processEnvironment !== undefined) {
+    sources.processEnvironment = processEnvironment;
+  }
+
+  return resolveEnvironmentVariables(sources);
 }
 
 export const environment = validateEnvironment(getEnvironmentVariables());
