@@ -20,3 +20,12 @@ export {
   type RecallFixture,
   type RecallResult,
 } from './hnsw-recall-benchmark.js';
+export {
+  PRODUCTION_TARGETS,
+  evaluateTarget,
+  findTarget,
+  targetsForCategory,
+  type ProductionTarget,
+  type TargetDirection,
+  type TargetUnit,
+} from './production-targets.js';

@@ -126,6 +126,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
+    "benchmark:production": "bun run scripts/benchmark-production.ts",
     "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:worker && bun run build:cjs && bun run build:adapters",
     "build:adapters": "bun build --target=bun --root=src/storage/adapters --outdir=dist/storage/adapters --format=esm --sourcemap=external ./src/storage/adapters/chrome-storage-adapter.ts ./src/storage/adapters/file-system-adapter.ts ./src/storage/adapters/indexed-database-adapter.ts ./src/storage/adapters/level-adapter.ts ./src/storage/adapters/lmdb-adapter.ts ./src/storage/adapters/memory-adapter.ts ./src/storage/adapters/opfs-adapter.ts ./src/storage/adapters/redis-adapter.ts ./src/storage/adapters/s3-adapter.ts ./src/storage/adapters/sqlite-adapter.ts",
     "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",

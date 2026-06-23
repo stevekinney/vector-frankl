@@ -1,0 +1,150 @@
+{
+  "$schema": "./baselines.schema.json",
+  "version": "1.0.0",
+  "description": "Committed performance baselines for vector-frankl. These values represent measured throughput on a reference machine and are used by `bun run verify:benchmarks` to detect regressions. Update by running `bun run benchmark:production --update-baselines`.",
+  "generatedAt": "2026-06-23T00:00:00.000Z",
+  "environment": {
+    "description": "Apple M-series (arm64), Bun >= 1.3.0, no GPU acceleration, no WASM SIMD override"
+  },
+  "tolerances": {
+    "description": "Per-metric tolerance fractions. A result deviating beyond its tolerance fails CI.",
+    "default": 0.2
+  },
+  "baselines": [
+    {
+      "name": "Single Vector Insert Throughput",
+      "category": "database-ops",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 800,
+      "tolerance": 0.2,
+      "dataset": { "dimensions": 384, "size": 1000 }
+    },
+    {
+      "name": "Batch Insert Throughput",
+      "category": "database-ops",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 3000,
+      "tolerance": 0.2,
+      "dataset": { "dimensions": 384, "size": 1000 }
+    },
+    {
+      "name": "Large Dataset Single Insert Throughput",
+      "category": "database-ops",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 400,
+      "tolerance": 0.25,
+      "dataset": { "dimensions": 768, "size": 10000 }
+    },
+    {
+      "name": "Search Latency (k=10, cosine)",
+      "category": "search",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 120,
+      "tolerance": 0.2,
+      "dataset": { "dimensions": 384, "size": 1000, "k": 10 }
+    },
+    {
+      "name": "Search Latency (k=10, cosine, large dataset)",
+      "category": "search",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 40,
+      "tolerance": 0.25,
+      "dataset": { "dimensions": 768, "size": 10000, "k": 10 }
+    },
+    {
+      "name": "Filtered Search Latency (k=10)",
+      "category": "search",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 80,
+      "tolerance": 0.25,
+      "dataset": { "dimensions": 384, "size": 1000, "k": 10 }
+    },
+    {
+      "name": "Search Recall@10",
+      "category": "recall",
+      "unit": "ratio",
+      "direction": "higher-is-better",
+      "baseline": 0.95,
+      "tolerance": 0.05,
+      "dataset": { "dimensions": 384, "size": 1000, "k": 10 }
+    },
+    {
+      "name": "Memory per 1,000 Vectors (384D)",
+      "category": "memory",
+      "unit": "MB",
+      "direction": "lower-is-better",
+      "baseline": 25,
+      "tolerance": 0.3,
+      "dataset": { "dimensions": 384, "size": 1000 }
+    },
+    {
+      "name": "Memory per 10,000 Vectors (384D)",
+      "category": "memory",
+      "unit": "MB",
+      "direction": "lower-is-better",
+      "baseline": 250,
+      "tolerance": 0.3,
+      "dataset": { "dimensions": 384, "size": 10000 }
+    },
+    {
+      "name": "HNSW Index Rebuild (1,000 vectors, 256D)",
+      "category": "indexing",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 2,
+      "tolerance": 0.3,
+      "dataset": { "dimensions": 256, "size": 1000 }
+    },
+    {
+      "name": "Vector Retrieval Throughput",
+      "category": "database-ops",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 2000,
+      "tolerance": 0.2,
+      "dataset": { "dimensions": 384, "size": 1000 }
+    },
+    {
+      "name": "Scalar Quantization Compression Cost (256D)",
+      "category": "compression",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 40000,
+      "tolerance": 0.3,
+      "dataset": { "dimensions": 256, "size": 1000 }
+    },
+    {
+      "name": "Product Quantization Compression Cost (512D)",
+      "category": "compression",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 12000,
+      "tolerance": 0.3,
+      "dataset": { "dimensions": 512, "size": 1000 }
+    },
+    {
+      "name": "JavaScript Synchronous Vector Ops (256D dot product)",
+      "category": "acceleration",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 250000,
+      "tolerance": 0.3,
+      "dataset": { "dimensions": 256, "size": 0 }
+    },
+    {
+      "name": "Startup Time (init + first search)",
+      "category": "startup",
+      "unit": "ops/sec",
+      "direction": "higher-is-better",
+      "baseline": 20,
+      "tolerance": 0.3,
+      "dataset": { "dimensions": 384, "size": 100 }
+    }
+  ]
+}
