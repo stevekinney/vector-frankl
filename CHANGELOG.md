@@ -7,27 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-beta.3] - 2026-06-23
+
+Production-readiness release resolving the full ROADMAP audit (issues #45–#107):
+correctness, packaging, acceleration honesty, documentation accuracy, security,
+and a unified release-verification gate. See the
+[Production Readiness](README.md#production-readiness) section for per-feature
+support tiers.
+
+### Supported (Stable)
+
+- Core vector database on IndexedDB with namespace isolation, quota monitoring, and eviction policies (LRU/LFU/TTL/score-based/hybrid)
+- Distance metrics: cosine, euclidean, manhattan, hamming, jaccard, dot — with property-based tests
+- Storage adapters: Memory, IndexedDB (browser); Memory, SQLite, LevelDB, LMDB, Redis, S3, file system (server) — each with a published `static capabilities` descriptor and a support-matrix entry
+- Scalar and product quantization compression with quality/persistence/corruption tests
+- SIMD-accelerated and scalar vector operations (Workers for parallel batch work)
+- Cursor/streaming scan APIs for large stores; mutation atomicity with index-recovery semantics
+- Dual ESM + CommonJS publishing, verified across Bun/Node/TypeScript/browser consumers from the packed tarball
+
+### Experimental
+
+- WebGPU acceleration (CPU parity + resource limits; falls back to CPU when unavailable)
+- WebAssembly integration (`WASMManager`) — no module bundled by default; consumers supply their own
+- SharedArrayBuffer-backed batch search (requires cross-origin isolation — see [docs/shared-memory.md](docs/shared-memory.md))
+- HNSW approximate index (classified experimental; recall/deletion/persistence documented, not yet guaranteed)
+- OPFS and Chrome-storage adapters (hardened, experimental)
+
 ### Changed
 
-- WASM operations now report unavailable unless a real vector-operation backend is loaded, preserving SIMD/scalar fallback behavior instead of advertising placeholder acceleration
-- Replace all production `console.log`/`console.warn`/`console.error` calls with structured logger (`src/utilities/logger.ts`) so output can be suppressed
-- Convert HNSW `pruneConnections` lookup from `Array.includes()` (O(n)) to `Set.has()` (O(1))
-- Reject namespace names containing `-ns-` to prevent database name collisions
-- Refactor `NamespaceRegistry` to use `onUpgrade` callback instead of `as any` type bypass
+- WASM operations report unavailable unless a real backend is loaded, preserving SIMD/scalar fallback instead of advertising placeholder acceleration
+- README, `docs/API.md`, `docs/ADAPTERS.md`, and `docs/MIGRATIONS.md` rewritten so every claim maps to verified, exported behavior
+- All production `console.*` calls replaced with a structured logger so output can be suppressed
+- HNSW `pruneConnections` lookup converted from `Array.includes()` (O(n)) to `Set.has()` (O(1))
+- `SearchOptions` is now a closed, validated contract; `maxResults`/`batchSize` are bounded (≤ 50,000) to prevent memory exhaustion
 
 ### Fixed
 
-- `SharedMemoryManager.sharedMemoryBatchSearch()` now returns top-k results instead of an empty placeholder response
-- WebGPU `uncapturederror` event listener now removed in `cleanup()`, preventing listener accumulation across `init()` calls
+- ESM bundle was tree-shaken to broken empty exports by `sideEffects: false`; scoped to `["./src/**/*.ts"]` so the published bundle is valid and consumer tree-shaking still works
+- CommonJS bundle crashed Node's parser on `import.meta`; per-format shims keep `import.meta` out of CJS output
+- `SharedMemoryManager.sharedMemoryBatchSearch()` returns top-k results instead of an empty placeholder
+- Persisted HNSW index lifecycle: validates against storage on reopen, rebuilds/disables stale indexes
+- WebGPU `uncapturederror` listener removed in `cleanup()`, preventing accumulation across `init()` calls
+- HNSW entry-point re-election crash on deletion of the current entry point
 
 ### Added
 
-- Published `vector-frankl/adapters/*` subpath exports for storage adapters documented in the README
-- Unit tests for distance metrics, search engine, input validator, eviction policies, quota monitor, and index persistence
+- Unified `verify:production` release gate composing lint, format, typecheck, tests, build, export-map, package-consumer, documentation-example, acceleration, benchmark-regression, bundle-size, supply-chain, and changelog checks; `prepublishOnly` delegates to it
+- `vector-frankl/adapters/*` subpath exports and `WASMManager` on the main entry
+- Observability hooks, health/diagnostics reporting, and graceful-shutdown coverage
+- Complete public input validation, ReDoS + memory-exhaustion regression tests, structured error codes, and a public threat model (`docs/SECURITY.md`)
+- Real benchmark regression gates with committed baselines; large-dataset and flaky-test detection
+- CI production-verification job, dependency/license/provenance/packed-file supply-chain checks, and GitHub production issue templates
 
-### Removed
+### Known limitations
 
-- Completed items from ROADMAP.md (all resolved)
+- HNSW recall, deletion, update, and persistence are not yet guaranteed (experimental)
+- WebGPU requires compatible hardware/browser; WebAssembly ships no default module
+- SharedArrayBuffer features require cross-origin isolation (COOP/COEP headers)
+- IndexedDB stores vectors as plaintext (no encryption at rest) — see [Encryption at Rest](docs/SECURITY.md#encryption-at-rest)
+- S3 adapter is single-writer; benchmark baselines are measured against the in-memory adapter under Bun
+
+### Migration
+
+- No breaking API changes from `1.0.0-beta.1` for the core `VectorDB`/`VectorFrankl` surface. Removed dead `NamespaceConfig` fields (`indexStrategy`, `compression`, `compressionConfig`) that never affected runtime. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
+
+### Verification evidence
+
+- `bun run verify:production` passes end-to-end (all 13 sub-gates green); 2,200 unit tests pass (0 failures); all 6 packed-tarball consumers (Bun/Node × ESM/CJS, TypeScript, browser) import and run core flows.
+- Post-release smoke test: after publish, run `npm view vector-frankl version` and import `vector-frankl` in a fresh ESM + CJS consumer to confirm the published tarball loads.
 
 ## [1.0.0-beta.1] - 2025-01-07
 
@@ -76,4 +123,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebGPU requires compatible hardware and browser
 - Some advanced features may not work in all environments
 
+[1.0.0-beta.3]: https://github.com/stevekinney/vector-frankl/releases/tag/v1.0.0-beta.3
 [1.0.0-beta.1]: https://github.com/stevekinney/vector-frankl/releases/tag/v1.0.0-beta.1
