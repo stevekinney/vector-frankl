@@ -3,6 +3,7 @@
  */
 
 import { log } from '@/utilities/logger.js';
+import { VERSION } from '@/version.js';
 import { DebugContext } from './debug-context.js';
 import type { DebugConfig, DebugEntry, DebugLevel, ExportFormat } from './types.js';
 
@@ -359,7 +360,7 @@ export class DebugManager {
       traceEvents,
       displayTimeUnit: 'ms',
       metadata: {
-        'vector-frankl-version': '1.0.0',
+        'vector-frankl-version': VERSION,
       },
     });
   }
