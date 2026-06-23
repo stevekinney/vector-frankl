@@ -2,7 +2,7 @@
   "$schema": "./baselines.schema.json",
   "version": "1.0.0",
   "description": "Committed performance baselines for vector-frankl. These values represent measured throughput on a reference machine and are used by `bun run verify:benchmarks` to detect regressions. Update by running `bun run benchmark:production --update-baselines`.",
-  "generatedAt": "2026-06-23T22:07:25.653Z",
+  "generatedAt": "2026-06-23T23:28:07.816Z",
   "environment": {
     "description": "linux/x64, Bun 1.3.2, no GPU acceleration, no WASM SIMD override (GitHub Actions runner)"
   },
@@ -16,7 +16,7 @@
       "category": "database-ops",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 7586.65,
+      "baseline": 12969.16,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 384,
@@ -28,7 +28,7 @@
       "category": "database-ops",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 336.1,
+      "baseline": 341.95,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 384,
@@ -40,7 +40,7 @@
       "category": "database-ops",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 8688.55,
+      "baseline": 16083.89,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 768,
@@ -52,7 +52,7 @@
       "category": "search",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 95.59,
+      "baseline": 103.52,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 384,
@@ -65,7 +65,7 @@
       "category": "search",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 58.07,
+      "baseline": 98.25,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 768,
@@ -78,7 +78,7 @@
       "category": "search",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 376.98,
+      "baseline": 419.62,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 384,
@@ -128,7 +128,7 @@
       "category": "indexing",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 0.28,
+      "baseline": 0.27,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 256,
@@ -140,7 +140,7 @@
       "category": "database-ops",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 81278.35,
+      "baseline": 101061.14,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 384,
@@ -152,7 +152,7 @@
       "category": "compression",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 20181.8,
+      "baseline": 24532.65,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 256,
@@ -164,7 +164,7 @@
       "category": "compression",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 10958.64,
+      "baseline": 5487.15,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 512,
@@ -176,7 +176,7 @@
       "category": "acceleration",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 95495.48,
+      "baseline": 134030.29,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 256,
@@ -188,7 +188,7 @@
       "category": "startup",
       "unit": "ops/sec",
       "direction": "higher-is-better",
-      "baseline": 1337.47,
+      "baseline": 1297.27,
       "tolerance": 0.3,
       "dataset": {
         "dimensions": 384,
