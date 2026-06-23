@@ -127,26 +127,26 @@ async function buildCjs(): Promise<void> {
 
 async function main(): Promise<void> {
   switch (formatArg) {
-  case 'esm': {
-    await buildEsm();
-  
-  break;
-  }
-  case 'cjs': {
-    await buildCjs();
-  
-  break;
-  }
-  case undefined: {
-    // Build both when no --format flag is given
-    await buildEsm();
-    await buildCjs();
-  
-  break;
-  }
-  default: {
-    assertBuildFormat(formatArg);
-  }
+    case 'esm': {
+      await buildEsm();
+
+      break;
+    }
+    case 'cjs': {
+      await buildCjs();
+
+      break;
+    }
+    case undefined: {
+      // Build both when no --format flag is given
+      await buildEsm();
+      await buildCjs();
+
+      break;
+    }
+    default: {
+      assertBuildFormat(formatArg);
+    }
   }
 }
 
