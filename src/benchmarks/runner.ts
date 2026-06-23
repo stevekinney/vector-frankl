@@ -8,6 +8,7 @@ import {
   type BenchmarkConfig,
   type BenchmarkSummary,
 } from './benchmark-suite.js';
+import { runHNSWRecallBenchmarks } from './hnsw-recall-benchmark.js';
 
 export interface BenchmarkRunnerOptions {
   /** Configuration for the benchmark suite */
@@ -284,9 +285,17 @@ export class QuickBenchmark {
   }
 
   /**
-   * Run comprehensive benchmarks with all features
+   * Run comprehensive benchmarks with all features.
+   *
+   * HNSW recall benchmarks run first (no IndexedDB required). The broader
+   * database benchmark suite is attempted afterwards and failures there are
+   * surfaced but do not suppress recall failures.
    */
   static async runFull(): Promise<void> {
+    // HNSW recall benchmarks — always run, no IndexedDB dependency.
+    await runHNSWRecallBenchmarks();
+
+    // Broader database benchmark suite (requires IndexedDB / browser env).
     const runner = new BenchmarkRunner({
       config: {
         verbose: true,
@@ -317,6 +326,8 @@ export class QuickBenchmark {
         config.testIndexing = false;
         break;
       case 'indexing':
+        // HNSW recall benchmarks run standalone (no IndexedDB needed).
+        await runHNSWRecallBenchmarks();
         config.testCompression = false;
         config.testFormats = false;
         config.testIndexing = true;

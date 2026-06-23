@@ -182,19 +182,20 @@ export class HNSWIndex {
     const node = this.nodes.get(id);
     if (!node) return;
 
-    // Remove all connections to this node
+    // Remove all connections to this node from its neighbours
     for (const [level, connections] of node.connections) {
       for (const connectedId of connections) {
         this.removeConnection(connectedId, id, level);
       }
     }
 
-    // Find new entry point if needed
+    // Delete the node first so findNewEntryPoint cannot re-select it
+    this.nodes.delete(id);
+
+    // Update entry point after the node is gone
     if (this.entryPoint === id) {
       this.entryPoint = this.findNewEntryPoint();
     }
-
-    this.nodes.delete(id);
   }
 
   /**
@@ -237,10 +238,13 @@ export class HNSWIndex {
     const candidates = new Set<string>();
     const w = new Map<string, number>(); // nodeId -> distance
 
-    // Initialize with entry point
+    // Guard: entry point may no longer exist (deleted after being set as currentClosest)
+    const entryNode = this.nodes.get(entryPoint);
+    if (!entryNode) return [];
+
     const entryDistance = this.distanceCalculator.calculate(
       queryVector,
-      this.nodes.get(entryPoint)!.vector,
+      entryNode.vector,
     );
 
     candidates.add(entryPoint);
@@ -270,17 +274,21 @@ export class HNSWIndex {
         }
       }
 
-      // Explore neighbors
-      const node = this.nodes.get(closest)!;
-      const connections = node.connections.get(level) || new Set<string>();
+      // Explore neighbors — guard against stale connections pointing to deleted nodes
+      const node = this.nodes.get(closest);
+      if (!node) continue;
+      const connections = node.connections.get(level) ?? new Set<string>();
 
       for (const neighborId of connections) {
         if (!visited.has(neighborId)) {
           visited.add(neighborId);
 
+          const neighborNode = this.nodes.get(neighborId);
+          if (!neighborNode) continue; // skip stale/deleted neighbour
+
           const neighborDistance = this.distanceCalculator.calculate(
             queryVector,
-            this.nodes.get(neighborId)!.vector,
+            neighborNode.vector,
           );
 
           candidates.add(neighborId);

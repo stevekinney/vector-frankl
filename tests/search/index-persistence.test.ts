@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
-import type { VectorData } from '@/core/types.js';
+import type { DistanceMetric, VectorData } from '@/core/types.js';
+import { createDistanceCalculator } from '@/search/distance-metrics.js';
 import { SearchEngine } from '@/search/search-engine.js';
 import { HNSWIndex } from '@/search/hnsw-index.js';
 import { IndexCache } from '@/search/index-persistence.js';
@@ -378,6 +379,255 @@ describe('IndexCache', () => {
 
       expect(restoredStats.nodeCount).toBe(originalStats.nodeCount);
       expect(restoredStats.avgConnections).toBe(originalStats.avgConnections);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // persist — exportState / importState mutation stress tests
+  // Simulates "close → reopen" via exportState + importState on a fresh index.
+  // -------------------------------------------------------------------------
+
+  describe('persist', () => {
+    // Seeded RNG helpers — shared by all tests in this block
+    function makeSeededRng(seed: number): () => number {
+      function splitmix32(state: number): number {
+        state = (state + 0x9e3779b9) | 0;
+        let z = state;
+        z = Math.imul(z ^ (z >>> 16), 0x85ebca6b);
+        z = Math.imul(z ^ (z >>> 13), 0xc2b2ae35);
+        return (z ^ (z >>> 16)) >>> 0;
+      }
+      let s0 = splitmix32(seed);
+      let s1 = splitmix32(s0);
+      let s2 = splitmix32(s1);
+      let s3 = splitmix32(s2);
+      return () => {
+        const result = Math.imul(s1 * 5, 7) >>> 0;
+        const t = (s1 << 9) >>> 0;
+        s2 ^= s0;
+        s3 ^= s1;
+        s1 ^= s2;
+        s0 ^= s3;
+        s2 ^= t;
+        s3 = ((s3 << 11) | (s3 >>> 21)) >>> 0;
+        return (result >>> 0) / 0x100000000;
+      };
+    }
+
+    function generateVectors(count: number, dim: number, seed: number): Float32Array[] {
+      const rng = makeSeededRng(seed);
+      return Array.from({ length: count }, () => {
+        const raw = new Float32Array(dim);
+        let mag = 0;
+        for (let i = 0; i < dim; i++) {
+          raw[i] = rng() * 2 - 1;
+          mag += raw[i]! * raw[i]!;
+        }
+        mag = Math.sqrt(mag);
+        if (mag > 0) {
+          for (let i = 0; i < dim; i++) raw[i] = raw[i]! / mag;
+        }
+        return raw;
+      });
+    }
+
+    function bruteForceKNN(
+      query: Float32Array,
+      entries: Array<{ id: string; vector: Float32Array }>,
+      k: number,
+      metric: DistanceMetric,
+    ): Set<string> {
+      const calc = createDistanceCalculator(metric);
+      return new Set(
+        entries
+          .map(({ id, vector }) => ({ id, distance: calc.calculate(query, vector) }))
+          .sort((a, b) => a.distance - b.distance)
+          .slice(0, k)
+          .map((d) => d.id),
+      );
+    }
+
+    it('should preserve recall across a persist (export → import) cycle', async () => {
+      const metric: DistanceMetric = 'cosine';
+      const dim = 16;
+      const n = 60;
+      const k = 5;
+      const efSearch = 30;
+
+      const vectors = generateVectors(n, dim, 9001);
+      const entries = vectors.map((v, i) => ({ id: `v${i}`, vector: v }));
+
+      const original = new HNSWIndex(metric, { m: 8, efConstruction: 50, seed: 42 });
+      for (const { id, vector } of entries) {
+        const mag = Math.sqrt(Array.from(vector).reduce((s, x) => s + x * x, 0));
+        await original.addVector({ id, vector, magnitude: mag, timestamp: Date.now() });
+      }
+
+      // Simulate "close and reopen" by exporting state and importing into a new instance
+      const state = original.exportState();
+      const reopened = new HNSWIndex(metric, { m: 8, efConstruction: 50, seed: 42 });
+      reopened.importState(state);
+
+      const queries = generateVectors(10, dim, 9002);
+      let totalRecallOriginal = 0;
+      let totalRecallReopened = 0;
+
+      for (const query of queries) {
+        const groundTruth = bruteForceKNN(query, entries, k, metric);
+
+        const origResults = await original.search(query, k, efSearch);
+        const reopenedResults = await reopened.search(query, k, efSearch);
+
+        totalRecallOriginal +=
+          origResults.filter((r) => groundTruth.has(r.id)).length / k;
+        totalRecallReopened +=
+          reopenedResults.filter((r) => groundTruth.has(r.id)).length / k;
+      }
+
+      const recallOriginal = totalRecallOriginal / queries.length;
+      const recallReopened = totalRecallReopened / queries.length;
+
+      // Recall should be identical because the graph topology is preserved
+      expect(recallReopened).toBe(recallOriginal);
+      expect(recallReopened).toBeGreaterThanOrEqual(0.7);
+    });
+
+    it('should not return deleted vectors after persist → mutate → re-persist cycle', async () => {
+      const metric: DistanceMetric = 'cosine';
+      const dim = 8;
+
+      const vectors = generateVectors(20, dim, 8001);
+
+      const index = new HNSWIndex(metric, { m: 4, efConstruction: 30, seed: 7 });
+      for (let i = 0; i < 20; i++) {
+        const vector = vectors[i]!;
+        const mag = Math.sqrt(Array.from(vector).reduce((s, x) => s + x * x, 0));
+        await index.addVector({
+          id: `v${i}`,
+          vector,
+          magnitude: mag,
+          timestamp: Date.now(),
+        });
+      }
+
+      // First persist (simulated close/reopen)
+      const state1 = index.exportState();
+      const reopened = new HNSWIndex(metric, { m: 4, efConstruction: 30, seed: 7 });
+      reopened.importState(state1);
+
+      // Delete some vectors from the reopened index
+      const deleted = new Set<string>();
+      for (let i = 0; i < 20; i += 4) {
+        await reopened.removeVector(`v${i}`);
+        deleted.add(`v${i}`);
+      }
+
+      // Second persist
+      const state2 = reopened.exportState();
+      const finalIndex = new HNSWIndex(metric, { m: 4, efConstruction: 30, seed: 7 });
+      finalIndex.importState(state2);
+
+      const query = vectors[0]!;
+      const results = await finalIndex.search(query, 10, 30);
+
+      for (const result of results) {
+        expect(deleted.has(result.id)).toBe(false);
+      }
+    });
+
+    it('should rebuild correctly after repeated insert→persist→delete→persist cycles', async () => {
+      const metric: DistanceMetric = 'cosine';
+      const dim = 8;
+      const cycles = 3;
+
+      const allVectors = generateVectors(30, dim, 7001);
+
+      let liveIndex = new HNSWIndex(metric, { m: 4, efConstruction: 30, seed: 99 });
+      const liveIds = new Set<string>();
+
+      for (let cycle = 0; cycle < cycles; cycle++) {
+        // Insert a batch
+        const batchStart = cycle * 10;
+        for (let i = batchStart; i < batchStart + 10; i++) {
+          const vector = allVectors[i]!;
+          const mag = Math.sqrt(Array.from(vector).reduce((s, x) => s + x * x, 0));
+          await liveIndex.addVector({
+            id: `v${i}`,
+            vector,
+            magnitude: mag,
+            timestamp: Date.now(),
+          });
+          liveIds.add(`v${i}`);
+        }
+
+        // Persist (export/import = close/reopen)
+        const state = liveIndex.exportState();
+        liveIndex = new HNSWIndex(metric, { m: 4, efConstruction: 30, seed: 99 });
+        liveIndex.importState(state);
+
+        // Delete the first half of the current batch
+        for (let i = batchStart; i < batchStart + 5; i++) {
+          await liveIndex.removeVector(`v${i}`);
+          liveIds.delete(`v${i}`);
+        }
+
+        // Persist again
+        const state2 = liveIndex.exportState();
+        liveIndex = new HNSWIndex(metric, { m: 4, efConstruction: 30, seed: 99 });
+        liveIndex.importState(state2);
+      }
+
+      // Index should contain exactly the live IDs
+      expect(liveIndex.size()).toBe(liveIds.size);
+
+      // Search should only return live IDs
+      const query = allVectors[0]!;
+      const results = await liveIndex.search(query, liveIndex.size(), 50);
+      for (const result of results) {
+        expect(liveIds.has(result.id)).toBe(true);
+      }
+    });
+
+    it('should preserve size correctly after insert→persist→rebuild (clear+reinsert) cycle', async () => {
+      const metric: DistanceMetric = 'cosine';
+      const dim = 8;
+
+      const vectors = generateVectors(15, dim, 6001);
+      const entries = vectors.map((v, i) => ({ id: `v${i}`, vector: v }));
+
+      const index = new HNSWIndex(metric, { m: 4, efConstruction: 30, seed: 11 });
+      for (const { id, vector } of entries) {
+        const mag = Math.sqrt(Array.from(vector).reduce((s, x) => s + x * x, 0));
+        await index.addVector({ id, vector, magnitude: mag, timestamp: Date.now() });
+      }
+
+      // Persist
+      const state = index.exportState();
+      const loaded = new HNSWIndex(metric, { m: 4, efConstruction: 30, seed: 11 });
+      loaded.importState(state);
+
+      expect(loaded.size()).toBe(15);
+
+      // Rebuild: clear and re-insert from persisted state
+      loaded.clear();
+      expect(loaded.size()).toBe(0);
+
+      for (const node of state.nodes) {
+        const vector = new Float32Array(node.vector);
+        const mag = Math.sqrt(Array.from(vector).reduce((s, x) => s + x * x, 0));
+        await loaded.addVector({
+          id: node.id,
+          vector,
+          magnitude: mag,
+          timestamp: Date.now(),
+        });
+      }
+
+      expect(loaded.size()).toBe(15);
+
+      // Search should still work
+      const results = await loaded.search(vectors[0]!, 3, 30);
+      expect(results.length).toBeGreaterThan(0);
     });
   });
 });

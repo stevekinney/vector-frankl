@@ -13,3 +13,10 @@ export {
   QuickBenchmark,
   type BenchmarkRunnerOptions,
 } from './runner.js';
+export {
+  runHNSWRecallBenchmarks,
+  RecallBenchmarkFailureError,
+  DEFAULT_RECALL_FIXTURES,
+  type RecallFixture,
+  type RecallResult,
+} from './hnsw-recall-benchmark.js';
