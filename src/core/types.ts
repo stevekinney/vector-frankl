@@ -382,6 +382,23 @@ export interface ScanCapabilities {
  * Each adapter manages vector persistence for a single logical database.
  * Access tracking (lastAccessed / accessCount) is the adapter's responsibility
  * — update on get/getMany so callers don't need a wrapper layer.
+ *
+ * ## Validation contract
+ *
+ * **Adapters are a low-level interface. They do not validate inputs.**
+ * Input validation (vector IDs, dimensions, metadata safety, batch sizes,
+ * serialized payload integrity) is guaranteed only through the high-level APIs:
+ * `VectorDB` and `VectorFrankl`. Those classes run every user-supplied value
+ * through `InputValidator` before it ever reaches an adapter.
+ *
+ * Callers that bypass `VectorDB`/`VectorFrankl` and drive an adapter directly
+ * are responsible for their own validation. Passing an empty string ID, an
+ * oversized vector, or malformed metadata to an adapter method is undefined
+ * behaviour — the adapter may store it, corrupt state, or surface a cryptic
+ * storage-engine error instead of a clear validation message.
+ *
+ * This is an intentional design decision: one clear validation boundary rather
+ * than duplicated partial checks spread across every adapter implementation.
  */
 export interface StorageAdapter {
   // Lifecycle
