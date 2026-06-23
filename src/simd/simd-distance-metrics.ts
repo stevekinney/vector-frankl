@@ -196,8 +196,9 @@ export class SIMDDistanceMetrics {
   distanceToScore(distance: number, metric: DistanceMetric): number {
     switch (metric) {
       case 'cosine':
-        // Cosine distance is in range [0, 2], convert to similarity [0, 1]
-        return 1 - distance / 2;
+        // Cosine distance is in range [0, 2], convert to similarity [0, 1].
+        // Clamp to [0, 1] to guard against floating-point drift with unit vectors.
+        return Math.min(1, Math.max(0, 1 - distance / 2));
 
       case 'dot':
         // Dot product is negative distance, convert back

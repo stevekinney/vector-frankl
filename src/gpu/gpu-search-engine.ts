@@ -468,8 +468,8 @@ export class GPUSearchEngine {
   private distanceToScore(distance: number, metric: DistanceMetric): number {
     switch (metric) {
       case 'cosine':
-        // cosineDistance returns 1 - cos_sim; score = cos_sim in [0,1] for unit vecs
-        return 1 - distance;
+        // Clamp to [0, 1] to guard against floating-point drift with unit vectors.
+        return Math.min(1, Math.max(0, 1 - distance / 2));
       case 'dot':
         return -distance;
       case 'euclidean':

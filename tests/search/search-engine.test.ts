@@ -5,7 +5,7 @@ import {
   SearchAbortedError,
   SearchTimeoutError,
 } from '@/core/errors.js';
-import type { StorageAdapter, VectorData, VectorAbortSignal } from '@/core/types.js';
+import type { SearchResult, StorageAdapter, VectorData, VectorAbortSignal } from '@/core/types.js';
 import { SearchEngine } from '@/search/search-engine.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
@@ -1035,7 +1035,7 @@ describe('SearchEngine', () => {
       // First batch succeeds.
       const first = await gen.next();
       expect(first.done).toBe(false);
-      expect((first.value as VectorData[]).length).toBeLessThanOrEqual(5);
+      expect((first.value as SearchResult[]).length).toBeLessThanOrEqual(5);
 
       // Abort before requesting the next batch.
       signal.abort();

@@ -5,6 +5,24 @@
 import type { DistanceMetric, VectorData } from '../core/types.js';
 import { createDistanceCalculator } from '../search/distance-metrics.js';
 
+/**
+ * Normalize a vector to unit length. Returns a new Float32Array.
+ * If the magnitude is 0, returns a zero vector.
+ */
+function normalizeVector(vector: Float32Array): Float32Array {
+  let mag = 0;
+  for (let i = 0; i < vector.length; i++) {
+    mag += vector[i]! * vector[i]!;
+  }
+  mag = Math.sqrt(mag);
+  if (mag === 0) return new Float32Array(vector.length);
+  const out = new Float32Array(vector.length);
+  for (let i = 0; i < vector.length; i++) {
+    out[i] = vector[i]! / mag;
+  }
+  return out;
+}
+
 // Worker message types
 interface WorkerTask {
   taskId: string;
@@ -26,8 +44,9 @@ function distanceToScore(
 ): number {
   switch (metric) {
     case 'cosine':
-      // Cosine distance is in range [0, 2], convert to similarity [0, 1]
-      return 1 - distance / 2;
+      // Cosine distance is in range [0, 2], convert to similarity [0, 1].
+      // Clamp to [0, 1] to guard against floating-point drift with unit vectors.
+      return Math.min(1, Math.max(0, 1 - distance / 2));
     case 'dot':
       // Dot product is negative distance, convert back
       return -distance;
@@ -123,6 +142,11 @@ async function performSimilaritySearch(data: {
   const { vectors, queryVector, k, metric, filter } = data;
 
   const calculator = createDistanceCalculator(metric);
+  const requiresNormalized = calculator.getMetricInfo().requiresNormalized === true;
+
+  // Normalize query once for metrics that require unit vectors (e.g. cosine).
+  const processedQuery = requiresNormalized ? normalizeVector(queryVector) : queryVector;
+
   const results: Array<{
     id: string;
     distance: number;
@@ -136,8 +160,13 @@ async function performSimilaritySearch(data: {
       continue;
     }
 
-    const distance = calculator.calculate(queryVector, vector.vector);
-    const score = distanceToScore(distance, metric, queryVector.length);
+    // Normalize candidate vector when the metric requires unit vectors.
+    const processedVector = requiresNormalized
+      ? normalizeVector(vector.vector)
+      : vector.vector;
+
+    const distance = calculator.calculate(processedQuery, processedVector);
+    const score = distanceToScore(distance, metric, processedQuery.length);
 
     const result: {
       id: string;
@@ -170,15 +199,20 @@ async function performBatchSimilarity(data: {
 }): Promise<number[][]> {
   const { vectors, queries, metric } = data;
   const calculator = createDistanceCalculator(metric);
+  const requiresNormalized = calculator.getMetricInfo().requiresNormalized === true;
 
   const results: number[][] = [];
 
   for (const query of queries) {
     const similarities: number[] = [];
+    const processedQuery = requiresNormalized ? normalizeVector(query) : query;
 
     for (const vector of vectors) {
-      const distance = calculator.calculate(query, vector.vector);
-      const score = distanceToScore(distance, metric, query.length);
+      const processedVector = requiresNormalized
+        ? normalizeVector(vector.vector)
+        : vector.vector;
+      const distance = calculator.calculate(processedQuery, processedVector);
+      const score = distanceToScore(distance, metric, processedQuery.length);
       similarities.push(score);
     }
 
@@ -308,6 +342,7 @@ async function performSharedSimilaritySearch(data: {
   } = data;
 
   const calculator = createDistanceCalculator(metric);
+  const requiresNormalized = calculator.getMetricInfo().requiresNormalized === true;
   const results: Array<{ index: number; distance: number; score: number }> = [];
 
   // Determine data layout
@@ -315,21 +350,24 @@ async function performSharedSimilaritySearch(data: {
   const sharedArray = new Float32Array(sharedBuffer, dataOffset);
 
   // Get query vector (either provided directly or from shared buffer)
-  let query: Float32Array;
+  let rawQuery: Float32Array;
   if (queryVector) {
-    query = queryVector;
+    rawQuery = queryVector;
   } else if (queryOffset !== undefined) {
-    query = new Float32Array(sharedBuffer, queryOffset, dimension);
+    rawQuery = new Float32Array(sharedBuffer, queryOffset, dimension);
   } else {
     throw new Error('No query vector provided');
   }
+
+  // Normalize query once for metrics that require unit vectors (e.g. cosine).
+  const query = requiresNormalized ? normalizeVector(rawQuery) : rawQuery;
 
   // Check if data is quantized (basic check)
   const isQuantized =
     layout && sharedBuffer.byteLength < layout.vectorCount * dimension * 4;
 
   for (let i = startIdx; i < endIdx; i++) {
-    let vector: Float32Array;
+    let rawVector: Float32Array;
 
     if (isQuantized) {
       // Handle quantized data
@@ -338,13 +376,14 @@ async function performSharedSimilaritySearch(data: {
         dataOffset + i * dimension,
         dimension,
       );
-      vector = dequantizeVector(quantizedData);
+      rawVector = dequantizeVector(quantizedData);
     } else {
       // Handle regular float32 data
       const vectorStart = i * dimension;
-      vector = sharedArray.slice(vectorStart, vectorStart + dimension);
+      rawVector = sharedArray.slice(vectorStart, vectorStart + dimension);
     }
 
+    const vector = requiresNormalized ? normalizeVector(rawVector) : rawVector;
     const distance = calculator.calculate(query, vector);
     const score = distanceToScore(distance, metric, dimension);
 
