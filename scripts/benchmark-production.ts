@@ -21,6 +21,7 @@ import {
   evaluateTarget,
   type ProductionTarget,
 } from '../src/benchmarks/production-targets.js';
+import { MemoryStorageAdapter } from '../src/storage/adapters/memory-adapter.js';
 
 // ── CLI argument parsing ──────────────────────────────────────────────────────
 
@@ -117,7 +118,9 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
 
   switch (target.name) {
     case 'Single Vector Insert Throughput': {
-      const db = new VectorDB(`prod-bench-insert-single-${Date.now()}`, dimensions);
+      const db = new VectorDB(`prod-bench-insert-single-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       // Pre-populate
       const batch = Array.from({ length: Math.min(size, 200) }, (_, i) => ({
@@ -136,7 +139,9 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
     }
 
     case 'Batch Insert Throughput': {
-      const db = new VectorDB(`prod-bench-insert-batch-${Date.now()}`, dimensions);
+      const db = new VectorDB(`prod-bench-insert-batch-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       const ops = await measureOpsPerSec(async () => {
         const batchItems = Array.from({ length: 100 }, (_, i) => ({
@@ -150,7 +155,9 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
     }
 
     case 'Large Dataset Single Insert Throughput': {
-      const db = new VectorDB(`prod-bench-large-insert-${Date.now()}`, dimensions);
+      const db = new VectorDB(`prod-bench-large-insert-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       const init = Array.from({ length: Math.min(size, 500) }, (_, i) => ({
         id: `init-${i}`,
@@ -175,6 +182,7 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
     case 'Search Latency (k=10, cosine, large dataset)': {
       const db = new VectorDB(`prod-bench-search-${Date.now()}`, dimensions, {
         distanceMetric: 'cosine',
+        storage: new MemoryStorageAdapter(),
       });
       await db.init();
       const populate = Array.from({ length: Math.min(size, 1000) }, (_, i) => ({
@@ -196,6 +204,7 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
     case 'Filtered Search Latency (k=10)': {
       const db = new VectorDB(`prod-bench-filter-search-${Date.now()}`, dimensions, {
         distanceMetric: 'cosine',
+        storage: new MemoryStorageAdapter(),
       });
       await db.init();
       const populate = Array.from({ length: Math.min(size, 500) }, (_, i) => ({
@@ -218,6 +227,7 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
       // then measure what the actual search returns.
       const db = new VectorDB(`prod-bench-recall-${Date.now()}`, dimensions, {
         distanceMetric: 'cosine',
+        storage: new MemoryStorageAdapter(),
       });
       await db.init();
       const vectors = Array.from({ length: Math.min(size, 500) }, (_, i) => ({
@@ -258,7 +268,9 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
     case 'Memory per 1,000 Vectors (384D)':
     case 'Memory per 10,000 Vectors (384D)': {
       if (typeof process === 'undefined' || !process.memoryUsage) return 0;
-      const db = new VectorDB(`prod-bench-memory-${Date.now()}`, dimensions);
+      const db = new VectorDB(`prod-bench-memory-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       if (typeof globalThis.gc === 'function') globalThis.gc();
       const before = process.memoryUsage();
@@ -277,6 +289,7 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
     case 'HNSW Index Rebuild (1,000 vectors, 256D)': {
       const db = new VectorDB(`prod-bench-rebuild-${Date.now()}`, dimensions, {
         useIndex: true,
+        storage: new MemoryStorageAdapter(),
       });
       await db.init();
       const populate = Array.from({ length: Math.min(size, 500) }, (_, i) => ({
@@ -296,7 +309,9 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
     }
 
     case 'Vector Retrieval Throughput': {
-      const db = new VectorDB(`prod-bench-get-${Date.now()}`, dimensions);
+      const db = new VectorDB(`prod-bench-get-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       const populate = Array.from({ length: Math.min(size, 500) }, (_, i) => ({
         id: `get-${i}`,
@@ -360,6 +375,7 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
           const db = new VectorDB(
             `prod-bench-startup-${Date.now()}-${Math.random()}`,
             dimensions,
+            { storage: new MemoryStorageAdapter() },
           );
           await db.init();
           // Add a small dataset so search is meaningful

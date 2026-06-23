@@ -29,6 +29,7 @@ import type {
   TargetUnit,
 } from '../src/benchmarks/production-targets.js';
 import { VectorDB } from '../src/api/database.js';
+import { MemoryStorageAdapter } from '../src/storage/adapters/memory-adapter.js';
 
 // ── CLI arguments ─────────────────────────────────────────────────────────────
 
@@ -179,7 +180,9 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
 
   switch (entry.name) {
     case 'Single Vector Insert Throughput': {
-      const db = new VectorDB(`vb-insert-${Date.now()}`, dimensions);
+      const db = new VectorDB(`vb-insert-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       const seed = Array.from({ length: Math.min(size, 100) }, (_, i) => ({
         id: `seed-${i}`,
@@ -197,7 +200,9 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
     }
 
     case 'Batch Insert Throughput': {
-      const db = new VectorDB(`vb-batch-${Date.now()}`, dimensions);
+      const db = new VectorDB(`vb-batch-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       const ops = await measureOpsPerSec(async () => {
         const items = Array.from({ length: 50 }, (_, i) => ({
@@ -212,7 +217,9 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
 
     case 'Large Dataset Single Insert Throughput': {
       if (options.fast) return null;
-      const db = new VectorDB(`vb-large-${Date.now()}`, dimensions);
+      const db = new VectorDB(`vb-large-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       const seed = Array.from({ length: Math.min(size, 200) }, (_, i) => ({
         id: `ls-${i}`,
@@ -236,6 +243,7 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
     case 'Search Latency (k=10, cosine)': {
       const db = new VectorDB(`vb-search-${Date.now()}`, dimensions, {
         distanceMetric: 'cosine',
+        storage: new MemoryStorageAdapter(),
       });
       await db.init();
       const populate = Array.from({ length: Math.min(size, 500) }, (_, i) => ({
@@ -254,6 +262,7 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
       if (options.fast) return null;
       const db = new VectorDB(`vb-lsearch-${Date.now()}`, dimensions, {
         distanceMetric: 'cosine',
+        storage: new MemoryStorageAdapter(),
       });
       await db.init();
       const populate = Array.from({ length: Math.min(size, 500) }, (_, i) => ({
@@ -275,6 +284,7 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
     case 'Filtered Search Latency (k=10)': {
       const db = new VectorDB(`vb-filter-${Date.now()}`, dimensions, {
         distanceMetric: 'cosine',
+        storage: new MemoryStorageAdapter(),
       });
       await db.init();
       const populate = Array.from({ length: Math.min(size, 300) }, (_, i) => ({
@@ -295,6 +305,7 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
     case 'Search Recall@10': {
       const db = new VectorDB(`vb-recall-${Date.now()}`, dimensions, {
         distanceMetric: 'cosine',
+        storage: new MemoryStorageAdapter(),
       });
       await db.init();
       const vectors = Array.from({ length: Math.min(size, 200) }, (_, i) => ({
@@ -334,7 +345,9 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
     case 'Memory per 10,000 Vectors (384D)': {
       if (options.fast || typeof process === 'undefined' || !process.memoryUsage)
         return null;
-      const db = new VectorDB(`vb-mem-${Date.now()}`, dimensions);
+      const db = new VectorDB(`vb-mem-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       if (typeof globalThis.gc === 'function') globalThis.gc();
       const before = process.memoryUsage();
@@ -350,7 +363,10 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
     }
 
     case 'HNSW Index Rebuild (1,000 vectors, 256D)': {
-      const db = new VectorDB(`vb-rebuild-${Date.now()}`, dimensions, { useIndex: true });
+      const db = new VectorDB(`vb-rebuild-${Date.now()}`, dimensions, {
+        useIndex: true,
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       const populate = Array.from({ length: Math.min(size, 200) }, (_, i) => ({
         id: `rb-${i}`,
@@ -369,7 +385,9 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
     }
 
     case 'Vector Retrieval Throughput': {
-      const db = new VectorDB(`vb-get-${Date.now()}`, dimensions);
+      const db = new VectorDB(`vb-get-${Date.now()}`, dimensions, {
+        storage: new MemoryStorageAdapter(),
+      });
       await db.init();
       const count = Math.min(size, 300);
       const populate = Array.from({ length: count }, (_, i) => ({
@@ -424,8 +442,9 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
       const ops = await measureOpsPerSec(
         async () => {
           const db = new VectorDB(
-            `vb-startup-${Date.now()}-${Math.random()}`,
+            `vb-startup-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`,
             dimensions,
+            { storage: new MemoryStorageAdapter() },
           );
           await db.init();
           const init = Array.from({ length: 10 }, (_, i) => ({
