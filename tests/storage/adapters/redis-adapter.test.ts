@@ -131,7 +131,9 @@ if (!integrationMode) {
   // gets a unique prefix to ensure isolation between concurrent test runs.
   runStorageAdapterTests('RedisStorageAdapter (integration)', async () => {
     const prefix = `vf-test-${Date.now()}-${Math.floor(Math.random() * 0xffff).toString(16)}`;
-    return new RedisStorageAdapter({ url: integrationUrl, prefix });
+    // integrationUrl is guaranteed defined here: this branch only runs when
+    // integrationMode (Boolean(integrationUrl)) is true.
+    return new RedisStorageAdapter({ url: integrationUrl!, prefix });
   });
 }
 

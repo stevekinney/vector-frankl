@@ -830,55 +830,84 @@ describe('InputValidator', () => {
       );
     });
 
-    test('validates maxResults as a positive integer', () => {
-      expect(InputValidator.validateSearchOptions({ maxResults: 100 })).toEqual({
-        maxResults: 100,
+    test('rejects maxResults as it is not a SearchOptions key', () => {
+      expect(() => InputValidator.validateSearchOptions({ maxResults: 100 })).toThrow(
+        'Unknown search option: "maxResults"',
+      );
+    });
+
+    test('throws when batchSize is supplied (not a SearchOptions key)', () => {
+      expect(() => InputValidator.validateSearchOptions({ batchSize: 500 })).toThrow(
+        'Unknown search option: "batchSize"',
+      );
+    });
+
+    test('throws when maxResults is supplied (not a SearchOptions key)', () => {
+      expect(() => InputValidator.validateSearchOptions({ maxResults: 100 })).toThrow(
+        'Unknown search option: "maxResults"',
+      );
+    });
+
+    test('rejects unknown option keys', () => {
+      expect(() =>
+        InputValidator.validateSearchOptions({ customOption: 'anything' }),
+      ).toThrow('Unknown search option: "customOption"');
+    });
+
+    test('error message for unknown key lists accepted keys', () => {
+      expect(() => InputValidator.validateSearchOptions({ foo: 'bar' })).toThrow(
+        /Accepted keys are:/,
+      );
+    });
+
+    test('validates timeout as a positive finite number', () => {
+      expect(InputValidator.validateSearchOptions({ timeout: 5000 })).toEqual({
+        timeout: 5000,
+      });
+      expect(InputValidator.validateSearchOptions({ timeout: 0.5 })).toEqual({
+        timeout: 0.5,
       });
     });
 
-    test('throws when maxResults is not a positive integer', () => {
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 0 })).toThrow(
-        'maxResults must be a positive integer',
+    test('throws when timeout is not a positive finite number', () => {
+      expect(() => InputValidator.validateSearchOptions({ timeout: 0 })).toThrow(
+        'timeout must be a positive finite number',
       );
-      expect(() => InputValidator.validateSearchOptions({ maxResults: -5 })).toThrow(
-        'maxResults must be a positive integer',
+      expect(() => InputValidator.validateSearchOptions({ timeout: -1 })).toThrow(
+        'timeout must be a positive finite number',
       );
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 3.14 })).toThrow(
-        'maxResults must be a positive integer',
+      expect(() => InputValidator.validateSearchOptions({ timeout: Infinity })).toThrow(
+        'timeout must be a positive finite number',
       );
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 'ten' })).toThrow(
-        'maxResults must be a positive integer',
-      );
-    });
-
-    test('throws when maxResults exceeds 50,000', () => {
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 50001 })).toThrow(
-        'maxResults cannot exceed 50,000',
+      expect(() => InputValidator.validateSearchOptions({ timeout: 'fast' })).toThrow(
+        'timeout must be a positive finite number',
       );
     });
 
-    test('validates batchSize as a positive integer', () => {
-      expect(InputValidator.validateSearchOptions({ batchSize: 500 })).toEqual({
-        batchSize: 500,
-      });
+    test('validates signal as an object with an aborted boolean', () => {
+      const signal = { aborted: false };
+      expect(InputValidator.validateSearchOptions({ signal })).toEqual({ signal });
     });
 
-    test('throws when batchSize is not a positive integer', () => {
-      expect(() => InputValidator.validateSearchOptions({ batchSize: 0 })).toThrow(
-        'batchSize must be a positive integer',
+    test('throws when signal lacks the aborted property', () => {
+      expect(() => InputValidator.validateSearchOptions({ signal: {} })).toThrow(
+        'signal must be an object with an aborted boolean property',
       );
     });
 
-    test('throws when batchSize exceeds 50,000', () => {
-      expect(() => InputValidator.validateSearchOptions({ batchSize: 50001 })).toThrow(
-        'batchSize cannot exceed 50,000',
+    test('throws when signal is not an object', () => {
+      expect(() => InputValidator.validateSearchOptions({ signal: null })).toThrow(
+        'signal must be an object with an aborted boolean property',
+      );
+      expect(() => InputValidator.validateSearchOptions({ signal: 'abort' })).toThrow(
+        'signal must be an object with an aborted boolean property',
       );
     });
 
-    test('passes through unknown options without validation', () => {
-      const options = { customOption: 'anything', includeMetadata: true };
-      const result = InputValidator.validateSearchOptions(options);
-      expect(result).toEqual({ customOption: 'anything', includeMetadata: true });
+    test('throws when signal.aborted is not a boolean', () => {
+      expect(() =>
+        InputValidator.validateSearchOptions({ signal: { aborted: 1 } }),
+      ).toThrow('signal must be an object with an aborted boolean property');
     });
 
     test('validates multiple options together', () => {
@@ -886,8 +915,7 @@ describe('InputValidator', () => {
         filter: { category: 'AI' },
         includeMetadata: true,
         includeVector: false,
-        maxResults: 50,
-        batchSize: 100,
+        timeout: 3000,
       };
       const result = InputValidator.validateSearchOptions(options);
       expect(result).toEqual(options);

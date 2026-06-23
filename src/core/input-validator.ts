@@ -369,7 +369,22 @@ export class InputValidator {
   }
 
   /**
-   * Validate search options
+   * The exhaustive set of keys that `SearchOptions` accepts.
+   * Any key absent from this set is rejected at runtime.
+   */
+  private static readonly KNOWN_SEARCH_OPTION_KEYS: ReadonlySet<string> = new Set([
+    'filter',
+    'includeMetadata',
+    'includeVector',
+    'timeout',
+    'signal',
+  ]);
+
+  /**
+   * Validate search options against the closed `SearchOptions` contract.
+   *
+   * Unknown keys are rejected so callers cannot silently pass unvalidated
+   * options that change behavior in unpredictable ways.
    */
   static validateSearchOptions(options: unknown): Record<string, unknown> {
     if (options === null || options === undefined) {
@@ -383,8 +398,13 @@ export class InputValidator {
     const opts = options as Record<string, unknown>;
     const validated: Record<string, unknown> = {};
 
-    // Validate each known option
     for (const [key, value] of Object.entries(opts)) {
+      if (!this.KNOWN_SEARCH_OPTION_KEYS.has(key)) {
+        throw new Error(
+          `Unknown search option: "${key}". Accepted keys are: ${[...this.KNOWN_SEARCH_OPTION_KEYS].join(', ')}`,
+        );
+      }
+
       switch (key) {
         case 'filter':
           validated[key] = this.validateMetadata(value);
@@ -396,19 +416,22 @@ export class InputValidator {
           }
           validated[key] = value;
           break;
-        case 'maxResults':
-        case 'batchSize':
-          if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
-            throw new Error(`${key} must be a positive integer`);
-          }
-          if (value > 50000) {
-            throw new Error(`${key} cannot exceed 50,000`);
+        case 'timeout':
+          if (typeof value !== 'number' || !isFinite(value) || value <= 0) {
+            throw new Error('timeout must be a positive finite number');
           }
           validated[key] = value;
           break;
-        default:
-          // Allow unknown options but don't validate them
+        case 'signal':
+          if (
+            value === null ||
+            typeof value !== 'object' ||
+            typeof (value as Record<string, unknown>)['aborted'] !== 'boolean'
+          ) {
+            throw new Error('signal must be an object with an aborted boolean property');
+          }
           validated[key] = value;
+          break;
       }
     }
 
