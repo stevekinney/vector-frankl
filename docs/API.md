@@ -8,7 +8,7 @@
 - [Distance Metrics](#distance-metrics)
 - [Compression](#compression)
 - [Search Engine](#search-engine)
-- [Storage Management](#storage-management)
+- [Storage Quota Monitor](#storage-quota-monitor)
 - [Worker Pool](#worker-pool)
 - [Performance Acceleration](#performance-acceleration)
 - [Debug & Profiling](#debug--profiling)
@@ -18,40 +18,43 @@
 
 The simple API provides a straightforward interface for single-collection vector databases.
 
+Import via:
+
+```typescript
+import { VectorDB } from 'vector-frankl';
+```
+
 ### Constructor
 
 ```typescript
-new VectorDB(name: string, dimension: number, config?: VectorDBConfig)
+new VectorDB(name: string, dimension: number, options?: VectorDBOptions)
 ```
 
 #### Parameters
 
 - `name`: Unique identifier for the database
 - `dimension`: Vector dimension (must be consistent for all vectors)
-- `config`: Optional configuration object
+- `options`: Optional configuration object
 
-#### Config Options
+#### Options
 
 ```typescript
-interface VectorDBConfig {
-  distanceMetric?: 'cosine' | 'euclidean' | 'manhattan' | 'hamming' | 'jaccard';
+interface VectorDBOptions {
+  distanceMetric?: DistanceMetric;
   useIndex?: boolean;
   indexConfig?: {
-    m?: number; // HNSW M parameter (default: 16)
-    efConstruction?: number; // HNSW construction parameter (default: 200)
-    seed?: number; // Random seed for reproducibility
+    m?: number; // HNSW M parameter
+    efConstruction?: number; // HNSW construction parameter
+    maxLevel?: number;
   };
-  compression?: {
-    enabled?: boolean;
-    strategy?: 'scalar' | 'product' | 'binary' | 'none';
-    options?: Record<string, unknown>;
+  useWorkers?: boolean;
+  autoEviction?: boolean;
+  quotaConfig?: {
+    safetyMargin?: number;
+    checkInterval?: number;
   };
-  eviction?: {
-    enabled?: boolean;
-    policy?: 'lru' | 'lfu' | 'ttl' | 'score' | 'hybrid';
-    maxVectors?: number;
-    maxMemoryMB?: number;
-  };
+  storage?: StorageAdapter;
+  storageFactory?: StorageAdapterFactory;
 }
 ```
 
@@ -59,7 +62,7 @@ interface VectorDBConfig {
 
 #### init()
 
-Initialize the database and create IndexedDB stores.
+Initialize the database and create storage.
 
 ```typescript
 await db.init(): Promise<void>
@@ -72,7 +75,7 @@ Add a single vector with optional metadata.
 ```typescript
 await db.addVector(
   id: string,
-  vector: VectorInput,
+  vector: VectorFormat,
   metadata?: Record<string, unknown>
 ): Promise<void>
 ```
@@ -80,7 +83,7 @@ await db.addVector(
 **Parameters:**
 
 - `id`: Unique identifier for the vector
-- `vector`: Vector data (Float32Array, Float64Array, number[], etc.)
+- `vector`: Vector data (`Float32Array`, `Float64Array`, `Int8Array`, `Uint8Array`, or `number[]`)
 - `metadata`: Optional metadata object
 
 **Example:**
@@ -95,35 +98,36 @@ await db.addVector('doc1', embedding, {
 
 #### addBatch()
 
-Add multiple vectors in a single transaction.
+Add multiple vectors in batches.
 
 ```typescript
 await db.addBatch(
-  vectors: VectorData[],
+  vectors: Array<{
+    id: string;
+    vector: VectorFormat;
+    metadata?: Record<string, unknown>;
+  }>,
   options?: BatchOptions
-): Promise<BatchResult>
+): Promise<void>
 ```
 
-**Parameters:**
+**BatchOptions:**
 
 ```typescript
-interface VectorData {
-  id: string;
-  vector: VectorInput;
-  metadata?: Record<string, unknown>;
-}
-
 interface BatchOptions {
-  onProgress?: (progress: BatchProgress) => void;
   batchSize?: number;
-  continueOnError?: boolean;
+  onProgress?: (progress: BatchProgress) => void;
+  abortSignal?: VectorAbortSignal;
+  parallel?: boolean;
 }
 
 interface BatchProgress {
-  completed: number;
   total: number;
+  completed: number;
+  failed: number;
   percentage: number;
-  errors: number;
+  currentBatch: number;
+  totalBatches: number;
 }
 ```
 
@@ -136,7 +140,7 @@ const vectors = [
 ];
 
 await db.addBatch(vectors, {
-  onProgress: (p) => console.log(`${p.percentage}% complete`),
+  onProgress: (p) => process.stdout.write(`${p.percentage}% complete\n`),
   batchSize: 1000,
 });
 ```
@@ -146,18 +150,22 @@ await db.addBatch(vectors, {
 Retrieve a vector by ID.
 
 ```typescript
-await db.getVector(id: string): Promise<VectorRecord | null>
+await db.getVector(id: string): Promise<VectorData | null>
 ```
 
-**Returns:**
+**VectorData:**
 
 ```typescript
-interface VectorRecord {
+interface VectorData {
   id: string;
   vector: Float32Array;
   metadata?: Record<string, unknown>;
   magnitude: number;
   timestamp: number;
+  format?: string;
+  normalized?: boolean;
+  lastAccessed?: number;
+  accessCount?: number;
 }
 ```
 
@@ -167,8 +175,8 @@ Search for similar vectors.
 
 ```typescript
 await db.search(
-  query: VectorInput,
-  k: number,
+  queryVector: VectorFormat,
+  k?: number,
   options?: SearchOptions
 ): Promise<SearchResult[]>
 ```
@@ -178,17 +186,19 @@ await db.search(
 ```typescript
 interface SearchOptions {
   filter?: MetadataFilter;
-  distanceMetric?: DistanceMetric;
-  includeMetadata?: boolean;
   includeVector?: boolean;
-  threshold?: number;
+  includeMetadata?: boolean;
+  timeout?: number;
+  signal?: VectorAbortSignal;
 }
 
 interface SearchResult {
   id: string;
   score: number;
+  distance?: number;
   vector?: Float32Array;
   metadata?: Record<string, unknown>;
+  highlights?: Record<string, unknown>;
 }
 ```
 
@@ -196,10 +206,32 @@ interface SearchResult {
 
 ```typescript
 const results = await db.search(queryVector, 10, {
-  filter: { category: 'education', year: { $gte: 2023 } },
+  filter: { category: 'education' },
   includeMetadata: true,
-  threshold: 0.8,
 });
+```
+
+#### searchRange()
+
+Search for vectors within a distance threshold.
+
+```typescript
+await db.searchRange(
+  queryVector: VectorFormat,
+  maxDistance: number,
+  options?: SearchOptions & { maxResults?: number }
+): Promise<SearchResult[]>
+```
+
+#### searchStream()
+
+Stream search results as an async generator.
+
+```typescript
+db.searchStream(
+  queryVector: VectorFormat,
+  options?: SearchOptions & { batchSize?: number; maxResults?: number; progressive?: boolean }
+): AsyncGenerator<SearchResult[], void, unknown>
 ```
 
 #### deleteVector()
@@ -207,7 +239,7 @@ const results = await db.search(queryVector, 10, {
 Delete a single vector.
 
 ```typescript
-await db.deleteVector(id: string): Promise<boolean>
+await db.deleteVector(id: string): Promise<void>
 ```
 
 #### deleteMany()
@@ -218,7 +250,19 @@ Delete multiple vectors.
 await db.deleteMany(ids: string[]): Promise<number>
 ```
 
-**Returns:** Number of vectors deleted
+**Returns:** Number of vectors deleted.
+
+#### updateVector()
+
+Update a vector's data.
+
+```typescript
+await db.updateVector(
+  id: string,
+  vector: VectorFormat,
+  options?: { updateMagnitude?: boolean; updateTimestamp?: boolean }
+): Promise<void>
+```
 
 #### updateMetadata()
 
@@ -228,13 +272,28 @@ Update vector metadata.
 await db.updateMetadata(
   id: string,
   metadata: Record<string, unknown>,
-  merge?: boolean
+  options?: { merge?: boolean; updateTimestamp?: boolean }
 ): Promise<void>
 ```
 
-**Parameters:**
+#### updateBatch()
 
-- `merge`: If true, merges with existing metadata; if false, replaces it
+Update multiple vectors.
+
+```typescript
+await db.updateBatch(
+  updates: Array<{
+    id: string;
+    vector?: VectorFormat;
+    metadata?: Record<string, unknown>;
+  }>,
+  options?: BatchOptions
+): Promise<{
+  succeeded: number;
+  failed: number;
+  errors: Array<{ id: string; error: Error }>;
+}>
+```
 
 #### exists()
 
@@ -244,25 +303,99 @@ Check if a vector exists.
 await db.exists(id: string): Promise<boolean>
 ```
 
+#### getMany()
+
+Get multiple vectors by IDs.
+
+```typescript
+await db.getMany(ids: string[]): Promise<VectorData[]>
+```
+
+#### getAllVectors()
+
+Get all vectors (use with caution on large datasets).
+
+```typescript
+await db.getAllVectors(): Promise<VectorData[]>
+```
+
 #### getStats()
 
 Get database statistics.
 
 ```typescript
-await db.getStats(): Promise<DatabaseStats>
-```
-
-**Returns:**
-
-```typescript
-interface DatabaseStats {
+await db.getStats(): Promise<{
   vectorCount: number;
   dimension: number;
-  distanceMetric: string;
-  indexType?: string;
-  storageUsage?: number;
-  memoryUsage?: number;
+  initialized: boolean;
+}>
+```
+
+#### getStorageQuota()
+
+Get current storage quota information.
+
+```typescript
+await db.getStorageQuota(): Promise<{
+  usage: number;
+  quota: number;
+  usageRatio: number;
+  available: number;
+  breakdown?: {
+    totalUsage: number;
+    vectorDatabases: Array<{
+      name: string;
+      estimatedSize: number;
+      vectorCount: number;
+    }>;
+    otherOriginData: number;
+  };
+} | null>
+```
+
+#### getIndexStats()
+
+Get index statistics.
+
+```typescript
+db.getIndexStats(): {
+  enabled: boolean;
+  nodeCount: number;
+  levels?: number[];
+  avgConnections?: number;
 }
+```
+
+#### setDistanceMetric()
+
+Set the distance metric for search.
+
+```typescript
+db.setDistanceMetric(metric: DistanceMetric): void
+```
+
+#### setIndexing()
+
+Enable or disable HNSW indexing.
+
+```typescript
+await db.setIndexing(enabled: boolean): Promise<void>
+```
+
+#### rebuildIndex()
+
+Rebuild the search index.
+
+```typescript
+await db.rebuildIndex(): Promise<void>
+```
+
+#### evictVectors()
+
+Manually trigger eviction.
+
+```typescript
+await db.evictVectors(config?: Partial<EvictionConfig>): Promise<EvictionResult>
 ```
 
 #### clear()
@@ -292,6 +425,12 @@ await db.delete(): Promise<void>
 ## VectorFrankl (Namespace API)
 
 The namespace API provides multi-collection support with isolated storage.
+
+Import via:
+
+```typescript
+import { VectorFrankl } from 'vector-frankl';
+```
 
 ### Constructor
 
@@ -323,20 +462,25 @@ Create a new namespace.
 await vf.createNamespace(
   name: string,
   config: NamespaceConfig
-): Promise<VectorDB>
+): Promise<VectorNamespace>
 ```
 
-**Parameters:**
+**NamespaceConfig:**
 
 ```typescript
 interface NamespaceConfig {
   dimension: number;
   distanceMetric?: DistanceMetric;
+  indexStrategy?: IndexStrategy;
+  compression?: CompressionStrategy;
+  compressionConfig?: {
+    level?: number;
+    targetRatio?: number;
+    maxPrecisionLoss?: number;
+    validateQuality?: boolean;
+    autoSelect?: boolean;
+  };
   description?: string;
-  useIndex?: boolean;
-  indexConfig?: IndexConfig;
-  compression?: CompressionConfig;
-  eviction?: EvictionConfig;
 }
 ```
 
@@ -347,8 +491,7 @@ const products = await vf.createNamespace('products', {
   dimension: 384,
   distanceMetric: 'cosine',
   description: 'Product embeddings',
-  useIndex: true,
-  indexConfig: { m: 32, efConstruction: 400 },
+  indexStrategy: 'hnsw',
 });
 ```
 
@@ -357,7 +500,7 @@ const products = await vf.createNamespace('products', {
 Get an existing namespace.
 
 ```typescript
-await vf.getNamespace(name: string): Promise<VectorDB>
+await vf.getNamespace(name: string): Promise<VectorNamespace>
 ```
 
 #### listNamespaces()
@@ -368,16 +511,31 @@ List all namespaces.
 await vf.listNamespaces(): Promise<NamespaceInfo[]>
 ```
 
-**Returns:**
+**NamespaceInfo:**
 
 ```typescript
 interface NamespaceInfo {
   name: string;
   config: NamespaceConfig;
-  stats: DatabaseStats;
+  stats: NamespaceStats;
   created: number;
-  lastModified: number;
+  modified: number;
 }
+
+interface NamespaceStats {
+  vectorCount: number;
+  storageSize: number;
+  lastAccessed?: number;
+  indexSize?: number;
+}
+```
+
+#### namespaceExists()
+
+Check if a namespace exists.
+
+```typescript
+await vf.namespaceExists(name: string): Promise<boolean>
 ```
 
 #### deleteNamespace()
@@ -393,7 +551,7 @@ await vf.deleteNamespace(name: string): Promise<void>
 Find namespaces matching a pattern.
 
 ```typescript
-await vf.findNamespaces(pattern: RegExp): Promise<NamespaceInfo[]>
+await vf.findNamespaces(pattern: string | RegExp): Promise<NamespaceInfo[]>
 ```
 
 #### getTotalStorageUsage()
@@ -412,32 +570,44 @@ Delete all namespaces.
 await vf.deleteAll(): Promise<void>
 ```
 
+#### close()
+
+Close all connections.
+
+```typescript
+await vf.close(): Promise<void>
+```
+
 ## Vector Operations
 
 Utility functions for vector manipulation.
 
-### normalize()
+```typescript
+import { VectorOperations } from 'vector-frankl';
+```
+
+### normalizeSync()
 
 Normalize a vector to unit length.
 
 ```typescript
-VectorOperations.normalizeSync(vector: VectorInput): Float32Array
+VectorOperations.normalizeSync(vector: VectorFormat): Float32Array
 ```
 
-### magnitude()
+### magnitudeSync()
 
 Calculate vector magnitude.
 
 ```typescript
-VectorOperations.magnitudeSync(vector: VectorInput): number
+VectorOperations.magnitudeSync(vector: VectorFormat): number
 ```
 
-### dotProduct()
+### dotProductSync()
 
 Calculate dot product of two vectors.
 
 ```typescript
-VectorOperations.dotProductSync(a: VectorInput, b: VectorInput): number
+VectorOperations.dotProductSync(a: VectorFormat, b: VectorFormat): number
 ```
 
 ### randomUnit()
@@ -448,31 +618,35 @@ Generate a random unit vector.
 VectorOperations.randomUnit(dimension: number): Float32Array
 ```
 
-### add()
+### addSync()
 
 Add two vectors.
 
 ```typescript
-VectorOperations.addSync(a: VectorInput, b: VectorInput): Float32Array
+VectorOperations.addSync(a: VectorFormat, b: VectorFormat): Float32Array
 ```
 
-### subtract()
+### subtractSync()
 
 Subtract vector b from vector a.
 
 ```typescript
-VectorOperations.subtractSync(a: VectorInput, b: VectorInput): Float32Array
+VectorOperations.subtractSync(a: VectorFormat, b: VectorFormat): Float32Array
 ```
 
-### scale()
+### scaleSync()
 
 Scale a vector by a scalar.
 
 ```typescript
-VectorOperations.scaleSync(vector: VectorInput, scalar: number): Float32Array
+VectorOperations.scaleSync(vector: VectorFormat, scalar: number): Float32Array
 ```
 
 ## Distance Metrics
+
+```typescript
+import { DistanceMetrics, registerCustomMetric } from 'vector-frankl';
+```
 
 ### Built-in Metrics
 
@@ -521,22 +695,21 @@ DistanceMetrics.jaccardDistance(a: Float32Array, b: Float32Array): number
 Register custom distance metrics.
 
 ```typescript
-DistanceMetrics.register(
+registerCustomMetric(
   name: string,
   metric: (a: Float32Array, b: Float32Array) => number
 ): void
 ```
 
-**Example:**
+## Compression
 
 ```typescript
-DistanceMetrics.register('custom', (a, b) => {
-  // Custom distance calculation
-  return customDistance;
-});
+import {
+  CompressionManager,
+  compressVector,
+  decompressVector,
+} from 'vector-frankl/compression';
 ```
-
-## Compression
 
 ### CompressionManager
 
@@ -558,7 +731,6 @@ Compress a single vector.
 ```typescript
 const compressed = await compressVector(vector, {
   strategy: 'scalar',
-  precision: 8,
 });
 ```
 
@@ -577,10 +749,7 @@ const vector = await decompressVector(compressed);
 Reduce precision to 8-bit integers.
 
 ```typescript
-const compressed = await compressVector(vector, {
-  strategy: 'scalar',
-  precision: 8,
-});
+const compressed = await compressVector(vector, { strategy: 'scalar' });
 ```
 
 #### Product Quantization
@@ -588,11 +757,7 @@ const compressed = await compressVector(vector, {
 Divide vectors into subvectors and quantize separately.
 
 ```typescript
-const compressed = await compressVector(vector, {
-  strategy: 'product',
-  numSubvectors: 8,
-  codebookSize: 256,
-});
+const compressed = await compressVector(vector, { strategy: 'product' });
 ```
 
 #### Binary Quantization
@@ -600,70 +765,53 @@ const compressed = await compressVector(vector, {
 Convert to binary representation.
 
 ```typescript
-const compressed = await compressVector(vector, {
-  strategy: 'binary',
-});
+const compressed = await compressVector(vector, { strategy: 'binary' });
 ```
 
 ## Search Engine
 
-### SearchEngine
-
-Advanced search capabilities.
-
 ```typescript
-const engine = new SearchEngine(db, {
-  useIndex: true,
-  cacheSize: 1000,
-  prefetch: true,
-});
+import { SearchEngine } from 'vector-frankl';
 ```
 
-### Methods
+The `SearchEngine` is used internally by `VectorDB`. For advanced use, it can be instantiated directly.
 
-#### buildIndex()
-
-Build search index from existing vectors.
-
-```typescript
-await engine.buildIndex(options?: BuildOptions): Promise<void>
-```
-
-#### search()
+### search()
 
 Perform optimized search.
 
 ```typescript
 await engine.search(
-  query: VectorInput,
+  query: Float32Array,
   k: number,
   options?: SearchOptions
 ): Promise<SearchResult[]>
 ```
 
-#### searchRange()
+### searchRange()
 
 Find vectors within a distance range.
 
 ```typescript
 await engine.searchRange(
-  query: VectorInput,
-  minDistance: number,
+  query: Float32Array,
   maxDistance: number,
-  options?: SearchOptions
+  options?: SearchOptions & { maxResults?: number }
 ): Promise<SearchResult[]>
 ```
 
-## Storage Management
-
-### StorageManager
-
-Monitor and manage IndexedDB storage.
+## Storage Quota Monitor
 
 ```typescript
-const storage = new StorageManager(db, {
-  quotaSafetyMargin: 0.15,
-  checkInterval: 1000,
+import { StorageQuotaMonitor } from 'vector-frankl';
+```
+
+Monitor IndexedDB storage quota.
+
+```typescript
+const monitor = StorageQuotaMonitor.getInstance({
+  safetyMargin: 0.15,
+  initialCheckInterval: 1000,
 });
 ```
 
@@ -674,30 +822,51 @@ const storage = new StorageManager(db, {
 Check storage quota status.
 
 ```typescript
-await storage.checkQuota(): Promise<QuotaStatus>
+await monitor.checkQuota(): Promise<void>
 ```
 
-**Returns:**
+#### forceCheck()
+
+Force an immediate quota check and return the estimate.
 
 ```typescript
-interface QuotaStatus {
+await monitor.forceCheck(): Promise<QuotaEstimate | null>
+```
+
+**QuotaEstimate:**
+
+```typescript
+interface QuotaEstimate {
   usage: number;
   quota: number;
+  usageRatio: number;
   available: number;
-  percentUsed: number;
-  needsEviction: boolean;
 }
 ```
 
-#### enableAutoEviction()
+#### addListener()
 
-Enable automatic eviction when approaching quota.
+Add a quota warning listener.
 
 ```typescript
-storage.enableAutoEviction({
-  policy: 'lru',
-  targetUsagePercent: 0.8,
+monitor.addListener((warning: QuotaWarning) => {
+  // handle quota warning, e.g. trigger eviction or notify the user
+  void warning.message;
 });
+```
+
+**QuotaWarning:**
+
+```typescript
+interface QuotaWarning {
+  type: 'warning' | 'critical' | 'emergency';
+  usage: number;
+  quota: number;
+  usageRatio: number;
+  availableBytes: number;
+  estimatedTimeToFull?: number;
+  message: string;
+}
 ```
 
 #### getStorageBreakdown()
@@ -705,12 +874,28 @@ storage.enableAutoEviction({
 Get detailed storage usage.
 
 ```typescript
-await storage.getStorageBreakdown(): Promise<StorageBreakdown>
+await monitor.getStorageBreakdown(): Promise<StorageBreakdown>
+```
+
+**StorageBreakdown:**
+
+```typescript
+interface StorageBreakdown {
+  totalUsage: number;
+  vectorDatabases: Array<{
+    name: string;
+    estimatedSize: number;
+    vectorCount: number;
+  }>;
+  otherOriginData: number;
+}
 ```
 
 ## Worker Pool
 
-### WorkerPool
+```typescript
+import { WorkerPool } from 'vector-frankl/workers';
+```
 
 Parallel processing using Web Workers.
 
@@ -718,34 +903,63 @@ Parallel processing using Web Workers.
 const pool = new WorkerPool({
   maxWorkers: 4,
   workerScript: 'vector-worker.js',
-  fallbackToMain: true,
+  timeout: 30000,
 });
+```
+
+### PoolConfig
+
+```typescript
+interface PoolConfig {
+  maxWorkers?: number;
+  workerScript?: string;
+  timeout?: number;
+  retries?: number;
+  sharedMemoryConfig?: {
+    maxPoolSize?: number;
+    enableOptimizations?: boolean;
+    chunkSize?: number;
+  };
+}
 ```
 
 ### Methods
 
-#### parallelSearch()
+#### init()
+
+Initialize the worker pool.
+
+```typescript
+await pool.init(): Promise<void>
+```
+
+#### execute()
+
+Execute a task in the worker pool.
+
+```typescript
+await pool.execute<T>(task: WorkerTask): Promise<T>
+```
+
+#### parallelSimilaritySearch()
 
 Perform parallel similarity search.
 
 ```typescript
-await pool.parallelSearch(
-  vectors: VectorRecord[],
-  queries: VectorInput[],
+await pool.parallelSimilaritySearch(
+  vectors: VectorData[],
+  queryVector: Float32Array,
   k: number,
-  metric: DistanceMetric
-): Promise<SearchResult[][]>
+  metric?: DistanceMetric
+): Promise<SearchResult[]>
 ```
 
-#### parallelCompress()
+#### terminate()
 
-Compress vectors in parallel.
+Terminate all workers.
 
 ```typescript
-await pool.parallelCompress(
-  vectors: VectorInput[],
-  strategy: CompressionStrategy
-): Promise<CompressedVector[]>
+await pool.terminate(): Promise<void>
 ```
 
 ### SharedMemoryManager
@@ -789,9 +1003,9 @@ Allocate a shared buffer sized for a given number of vectors.
 
 ```typescript
 const { buffer, layout } = memory.allocateVectorBuffer(
-  vectorCount,   // number of vectors
-  dimension,     // vector dimension
-  bytesPerElement // default: 4 (Float32)
+  vectorCount, // number of vectors
+  dimension, // vector dimension
+  bytesPerElement, // default: 4 (Float32)
 );
 ```
 
@@ -809,9 +1023,9 @@ Similarity search over shared-memory buffers. This is an **experimental** method
 
 ```typescript
 const results = await memory.sharedMemoryBatchSearch(
-  vectors,  // Float32Array[]
-  queries,  // Float32Array[]
-  k,        // top-k results per query
+  vectors, // Float32Array[]
+  queries, // Float32Array[]
+  k, // top-k results per query
   'cosine', // DistanceMetric
   { chunkSize: 1000, normalize: false },
 );
@@ -834,124 +1048,151 @@ memory.cleanup(60_000); // evict blocks idle for more than 60 seconds
 
 ## Performance Acceleration
 
-### SIMD Operations
-
-Automatic SIMD acceleration when available.
-
-```typescript
-const simd = new SIMDOperations();
-
-if (simd.isSupported()) {
-  const similarity = simd.dotProduct(vectorA, vectorB);
-  const normalized = simd.normalize(vector);
-}
-```
-
 ### WebGPU Acceleration
 
 GPU-accelerated vector operations.
 
 ```typescript
+import { GPUSearchEngine } from 'vector-frankl/gpu';
+
 const gpu = new GPUSearchEngine({
-  device: await navigator.gpu.requestDevice(),
-  workgroupSize: 64,
+  gpuThreshold: 1000,
+  enableFallback: true,
+  batchSize: 1024,
+  enableProfiling: false,
 });
 
-const results = await gpu.search(query, vectors, k);
+await gpu.init();
+
+const { results, stats } = await gpu.search(vectors, queryVector, k, 'cosine');
 ```
 
-### WebAssembly
-
-High-performance WASM operations.
+**GPUSearchEngine.search() signature:**
 
 ```typescript
-const wasm = new WASMOperations();
-await wasm.initialize();
+await gpu.search(
+  vectors: VectorData[],
+  queryVector: Float32Array,
+  k: number,
+  metric?: DistanceMetric,
+  options?: SearchOptions
+): Promise<{ results: SearchResult[]; stats: GPUSearchStats }>
+```
 
-const distances = await wasm.batchDistance(queries, vectors);
+**GPUSearchConfig:**
+
+```typescript
+interface GPUSearchConfig {
+  gpuThreshold?: number;
+  enableFallback?: boolean;
+  batchSize?: number;
+  enableProfiling?: boolean;
+  webGPUConfig?: {
+    powerPreference?: 'low-power' | 'high-performance';
+    debug?: boolean;
+    maxBufferSize?: number;
+  };
+}
 ```
 
 ## Debug & Profiling
 
-### Debug Manager
+```typescript
+import { getDebug, debugManager, withProfiling } from 'vector-frankl/debug';
+```
 
-Enable debugging and profiling.
+### Enable Debugging
 
 ```typescript
-import { debug } from 'vector-frankl';
-
-debug.manager.enable({
+debugManager.enable({
   profile: true,
   traceLevel: 'detailed',
   memoryTracking: true,
-  logOperations: true,
 });
 ```
 
 ### Performance Profiling
 
 ```typescript
-import { withProfiling } from 'vector-frankl';
-
-const profiledSearch = withProfiling('vector-search', async (query, k) => {
-  return await db.search(query, k);
-});
+const profiledSearch = withProfiling(
+  'vector-search',
+  async (query: Float32Array, k: number) => {
+    return await db.search(query, k);
+  },
+);
 
 const results = await profiledSearch(queryVector, 10);
 ```
 
 ### Debug Console
 
-Export debug information.
-
 ```typescript
-// Export as JSON
-const report = await debug.console.export('json');
-
-// Export as CSV
-await debug.console.exportToFile('performance.csv', 'csv');
+const debug = getDebug();
 
 // Get summary
-const summary = debug.console.getSummary();
+const summary = debug.profiler.getSummary();
+
+// Export debug information
+const report = debug.manager.exportReport();
 ```
 
 ## Error Types
 
-### VectorDBError
+### VectorDatabaseError
 
-Base error class for all vector database errors.
+Abstract base error class for all vector database errors.
 
 ```typescript
-class VectorDBError extends Error {
-  code: string;
-  context?: Record<string, unknown>;
-  timestamp: number;
+import { VectorDatabaseError, isVectorDatabaseError } from 'vector-frankl';
+
+abstract class VectorDatabaseError extends Error {
+  readonly code: string;
+  readonly timestamp: Date;
+  readonly context?: Record<string, unknown>;
 }
+```
+
+### Concrete Error Classes
+
+```typescript
+import {
+  DimensionMismatchError,
+  QuotaExceededError,
+  VectorNotFoundError,
+  InvalidFormatError,
+  NamespaceExistsError,
+  NamespaceNotFoundError,
+  DatabaseInitializationError,
+  TransactionError,
+  BatchOperationError,
+  IndexError,
+  BrowserSupportError,
+} from 'vector-frankl';
 ```
 
 ### Error Codes
 
 - `DIMENSION_MISMATCH`: Vector dimension doesn't match database dimension
 - `VECTOR_NOT_FOUND`: Requested vector ID not found
-- `INVALID_VECTOR_FORMAT`: Unsupported vector format
+- `INVALID_FORMAT`: Unsupported vector format
 - `QUOTA_EXCEEDED`: Storage quota exceeded
-- `INDEX_BUILD_FAILED`: Failed to build search index
-- `INVALID_METRIC`: Unknown distance metric
-- `COMPRESSION_FAILED`: Vector compression failed
+- `INDEX_ERROR`: Index operation failed
 - `NAMESPACE_EXISTS`: Namespace already exists
 - `NAMESPACE_NOT_FOUND`: Namespace not found
-- `INVALID_INPUT`: Invalid input validation failed
-- `MEMORY_LIMIT_EXCEEDED`: Vector size exceeds memory limit
-- `REGEX_TIMEOUT`: Regular expression execution timeout
-- `WASM_VALIDATION_FAILED`: WASM module validation failed
+- `DATABASE_INIT_FAILED`: Database initialization failed
+- `TRANSACTION_FAILED`: Database transaction failed
+- `BATCH_OPERATION_FAILED`: Batch operation partially or fully failed
+- `BROWSER_NOT_SUPPORTED`: Required browser feature not available
 
 ### Error Handling
 
 ```typescript
+import { isVectorDatabaseError, VectorDatabaseError } from 'vector-frankl';
+
 try {
   await db.addVector('id', vector);
 } catch (error) {
-  if (error instanceof VectorDBError) {
+  if (isVectorDatabaseError(error)) {
     console.error(`Error ${error.code}:`, error.message);
     console.error('Context:', error.context);
   }
@@ -963,27 +1204,37 @@ try {
 ### Filter Syntax
 
 ```typescript
-interface MetadataFilter {
-  // Exact match
-  field: value;
+type MetadataFilter = SimpleFilter | AndFilter | OrFilter | NotFilter;
 
-  // Comparison operators
-  field: {
-    $eq?: any; // Equal
-    $ne?: any; // Not equal
-    $gt?: any; // Greater than
-    $gte?: any; // Greater than or equal
-    $lt?: any; // Less than
-    $lte?: any; // Less than or equal
-    $in?: any[]; // In array
-    $nin?: any[]; // Not in array
-    $regex?: string | RegExp; // Pattern match (ReDoS protected)
-  };
+interface SimpleFilter {
+  [field: string]: FilterValue | FilterOperator;
+}
 
-  // Logical operators
-  $and?: MetadataFilter[];
-  $or?: MetadataFilter[];
-  $not?: MetadataFilter;
+interface AndFilter {
+  $and: MetadataFilter[];
+}
+
+interface OrFilter {
+  $or: MetadataFilter[];
+}
+
+interface NotFilter {
+  $not: MetadataFilter;
+}
+
+type FilterValue = string | number | boolean | null | undefined;
+
+interface FilterOperator {
+  $eq?: FilterValue;
+  $ne?: FilterValue;
+  $gt?: number;
+  $gte?: number;
+  $lt?: number;
+  $lte?: number;
+  $in?: FilterValue[];
+  $nin?: FilterValue[];
+  $contains?: string;
+  $between?: [number, number];
 }
 ```
 
@@ -991,37 +1242,33 @@ interface MetadataFilter {
 
 ```typescript
 // Simple equality
-{ category: 'education' }
+const f1: MetadataFilter = { category: 'education' };
 
 // Range query
-{ year: { $gte: 2023, $lte: 2024 } }
+const f2: MetadataFilter = { year: { $gte: 2023, $lte: 2024 } };
 
 // Array membership
-{ tags: { $in: ['AI', 'ML'] } }
-
-// Pattern matching (ReDoS protected)
-{ title: { $regex: /^Introduction/ } }
+const f3: MetadataFilter = { tags: { $in: ['AI', 'ML'] } };
 
 // Complex query
-{
+const f4: MetadataFilter = {
   $and: [
     { category: 'education' },
-    { $or: [
-      { year: 2024 },
-      { featured: true }
-    ] }
-  ]
-}
+    {
+      $or: [{ year: 2024 }, { featured: true }],
+    },
+  ],
+};
 ```
 
 ## Type Definitions
 
-### VectorInput
+### VectorFormat
 
 Supported vector input types:
 
 ```typescript
-type VectorInput = Float32Array | Float64Array | Int8Array | Uint8Array | number[];
+type VectorFormat = Float32Array | Float64Array | Int8Array | Uint8Array | number[];
 ```
 
 ### DistanceMetric
@@ -1035,7 +1282,15 @@ type DistanceMetric =
   | 'manhattan'
   | 'hamming'
   | 'jaccard'
-  | string; // Custom registered metric
+  | 'dot';
+```
+
+### IndexStrategy
+
+Available index strategies:
+
+```typescript
+type IndexStrategy = 'auto' | 'brute' | 'kdtree' | 'hnsw';
 ```
 
 ### CompressionStrategy
@@ -1048,13 +1303,15 @@ type CompressionStrategy = 'none' | 'scalar' | 'product' | 'binary';
 
 ### EvictionPolicy
 
-Eviction policies:
+Eviction policies (used within `EvictionConfig`):
 
 ```typescript
-type EvictionPolicy =
-  | 'lru' // Least Recently Used
-  | 'lfu' // Least Frequently Used
-  | 'ttl' // Time To Live
-  | 'score' // Score-based
-  | 'hybrid'; // Combined strategy
+interface EvictionConfig {
+  strategy: 'lru' | 'lfu' | 'ttl' | 'score' | 'hybrid';
+  targetBytes?: number;
+  maxVectors?: number;
+  ttlHours?: number;
+  preservePermanent?: boolean;
+  batchSize?: number;
+}
 ```
