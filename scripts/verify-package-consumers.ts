@@ -461,7 +461,10 @@ function err(msg: string): void {
   console.error(msg);
 }
 
-async function sh(args: string[], cwd: string): Promise<{ ok: boolean; output: string }> {
+async function sh(
+  args: string[],
+  cwd: string,
+): Promise<{ ok: boolean; output: string; stdout: string; stderr: string }> {
   const proc = Bun.spawn(args, {
     cwd,
     stdout: 'pipe',
@@ -473,7 +476,7 @@ async function sh(args: string[], cwd: string): Promise<{ ok: boolean; output: s
     proc.exited,
   ]);
   const output = [stdout.trim(), stderr.trim()].filter(Boolean).join('\n');
-  return { ok: exitCode === 0, output };
+  return { ok: exitCode === 0, output, stdout, stderr };
 }
 
 async function pack(repoRoot: string): Promise<string> {
@@ -515,17 +518,29 @@ async function pack(repoRoot: string): Promise<string> {
     throw new Error(`Pack failed:\n${packResult.output}`);
   }
 
-  // npm pack --json prints a JSON array; extract the filename from it.
+  // npm pack --json prints a JSON array to stdout, but npm may also emit
+  // lifecycle banners or notices (e.g. a "> husky" prepare line, deprecation
+  // warnings) interleaved on stdout/stderr in CI. Parse only stdout, and slice
+  // out the JSON array (first '[' … last ']') so banner noise can't corrupt it.
   let tarballFilename: string | undefined;
-  try {
-    const parsed = JSON.parse(packResult.output) as Array<{ filename: string }>;
-    tarballFilename = parsed[0]?.filename;
-  } catch {
-    // Fallback: last non-empty line of output
-    tarballFilename = packResult.output
+  const jsonStart = packResult.stdout.indexOf('[');
+  const jsonEnd = packResult.stdout.lastIndexOf(']');
+  if (jsonStart !== -1 && jsonEnd > jsonStart) {
+    const jsonSlice = packResult.stdout.slice(jsonStart, jsonEnd + 1);
+    try {
+      const parsed = JSON.parse(jsonSlice) as Array<{ filename: string }>;
+      tarballFilename = parsed[0]?.filename;
+    } catch {
+      // Fall through to the line-based fallback below.
+    }
+  }
+
+  if (!tarballFilename) {
+    // Fallback: the last stdout line that looks like a packed tarball.
+    tarballFilename = packResult.stdout
       .split('\n')
       .map((l) => l.trim())
-      .filter(Boolean)
+      .filter((l) => l.endsWith('.tgz'))
       .at(-1);
   }
 
