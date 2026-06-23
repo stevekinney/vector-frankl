@@ -113,6 +113,14 @@ export { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';
 export { IndexedDatabaseStorageAdapter } from './storage/adapters/indexed-database-adapter.js';
 export { OPFSStorageAdapter } from './storage/adapters/opfs-adapter.js';
 
+// Storage adapter resolution
+export {
+  resolveStorageAdapter,
+  isIndexedDBAvailable,
+  type ResolveStorageAdapterOptions,
+  type StorageBackend,
+} from './storage/resolve-storage-adapter.js';
+
 // Storage management utilities
 export {
   StorageQuotaMonitor,
