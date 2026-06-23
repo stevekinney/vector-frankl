@@ -49,7 +49,7 @@ test.describe('WebGPU Capability Detection', () => {
 
       if (available) {
         try {
-          const adapter = await navigator.gpu.requestAdapter();
+          const adapter = await navigator.gpu!.requestAdapter();
           adapterOk = adapter !== null;
           reason = adapterOk ? 'adapter obtained' : 'requestAdapter returned null';
         } catch (err) {
@@ -88,7 +88,7 @@ test.describe('WebGPU Real-Browser Tests', () => {
         return false;
       }
       try {
-        const adapter = await navigator.gpu.requestAdapter();
+        const adapter = await navigator.gpu!.requestAdapter();
         return adapter !== null;
       } catch {
         return false;
@@ -103,15 +103,15 @@ test.describe('WebGPU Real-Browser Tests', () => {
   test('requestAdapter returns a non-null GPUAdapter', async ({ page }) => {
     const result = await page.evaluate(async () => {
       try {
-        const adapter = await navigator.gpu.requestAdapter();
+        const adapter = await navigator.gpu!.requestAdapter();
         if (!adapter) return { ok: false, error: 'requestAdapter returned null' };
 
-        const info = await adapter.requestAdapterInfo?.();
+        const info = await (adapter as unknown as { requestAdapterInfo?: () => Promise<unknown> }).requestAdapterInfo?.();
         return {
           ok: true,
           hasLimits: typeof (adapter as any).limits === 'object',
           hasFeatures: typeof (adapter as any).features === 'object',
-          vendorDefined: typeof info?.vendor === 'string',
+          vendorDefined: typeof (info as { vendor?: unknown })?.vendor === 'string',
         };
       } catch (err) {
         return { ok: false, error: (err as Error).message };
@@ -126,7 +126,7 @@ test.describe('WebGPU Real-Browser Tests', () => {
   test('requestDevice returns a functional GPUDevice', async ({ page }) => {
     const result = await page.evaluate(async () => {
       try {
-        const adapter = await navigator.gpu.requestAdapter();
+        const adapter = await navigator.gpu!.requestAdapter();
         if (!adapter) return { ok: false, error: 'No adapter' };
 
         const device = await adapter.requestDevice();
@@ -158,7 +158,7 @@ test.describe('WebGPU Real-Browser Tests', () => {
   test('GPUBuffer allocation and read-back round-trip', async ({ page }) => {
     const result = await page.evaluate(async () => {
       try {
-        const adapter = await navigator.gpu.requestAdapter();
+        const adapter = await navigator.gpu!.requestAdapter();
         if (!adapter) return { ok: false, error: 'No adapter' };
         const device = await adapter.requestDevice();
 
@@ -212,7 +212,7 @@ test.describe('WebGPU Real-Browser Tests', () => {
 
     const result = await page.evaluate(async (wgsl) => {
       try {
-        const adapter = await navigator.gpu.requestAdapter();
+        const adapter = await navigator.gpu!.requestAdapter();
         if (!adapter) return { ok: false, error: 'No adapter' };
         const device = await adapter.requestDevice();
 
@@ -232,7 +232,7 @@ test.describe('WebGPU Real-Browser Tests', () => {
         });
 
         const shaderModule = device.createShaderModule({ code: wgsl });
-        const pipeline = await device.createComputePipelineAsync({
+        const pipeline = await (device as any).createComputePipelineAsync({
           layout: 'auto',
           compute: { module: shaderModule, entryPoint: 'main' },
         });
@@ -275,11 +275,11 @@ test.describe('WebGPU Real-Browser Tests', () => {
   test('GPUDevice limits expose maxStorageBufferBindingSize', async ({ page }) => {
     const result = await page.evaluate(async () => {
       try {
-        const adapter = await navigator.gpu.requestAdapter();
+        const adapter = await navigator.gpu!.requestAdapter();
         if (!adapter) return { ok: false, error: 'No adapter' };
         const device = await adapter.requestDevice();
 
-        const maxSize = device.limits.maxStorageBufferBindingSize;
+        const maxSize = (device as unknown as { limits: { maxStorageBufferBindingSize: number } }).limits.maxStorageBufferBindingSize;
         device.destroy();
 
         return { ok: true, maxSize };
@@ -298,7 +298,7 @@ test.describe('WebGPU Real-Browser Tests', () => {
     // detect capabilities before configuring shader dispatch sizes.
     const result = await page.evaluate(async () => {
       try {
-        const adapter = await navigator.gpu.requestAdapter();
+        const adapter = await navigator.gpu!.requestAdapter();
         if (!adapter) return { ok: false, error: 'No adapter' };
 
         // 'timestamp-query' is optional; ask for it and confirm device still initializes.
@@ -310,7 +310,7 @@ test.describe('WebGPU Real-Browser Tests', () => {
         );
 
         const deviceHasFeature = hasTimestampQuery
-          ? (device.features?.has('timestamp-query') ?? false)
+          ? ((device as unknown as { features?: { has(n: string): boolean } }).features?.has('timestamp-query') ?? false)
           : true; // If we didn't ask for it, the device is still valid.
 
         device.destroy();
