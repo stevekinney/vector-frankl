@@ -378,3 +378,26 @@ describe('WASMOperations', () => {
     });
   });
 });
+
+describe('acceleration: WASMOperations classification', () => {
+  it('init() is the correct initialization method (not initialize())', async () => {
+    const ops = new WASMOperations();
+    expect(typeof ops.init).toBe('function');
+    expect(typeof (ops as unknown as Record<string, unknown>)['initialize']).not.toBe(
+      'function',
+    );
+    await ops.init();
+  });
+
+  it('scalar fallback is always available regardless of WASM availability', () => {
+    const ops = new WASMOperations({ enableWASM: false });
+    const caps = ops.getCapabilities();
+    expect(caps.scalarAvailable).toBe(true);
+  });
+
+  it('SIMD fallback is available when enabled', () => {
+    const ops = new WASMOperations({ enableSIMDFallback: true });
+    const caps = ops.getCapabilities();
+    expect(typeof caps.simdAvailable).toBe('boolean');
+  });
+});

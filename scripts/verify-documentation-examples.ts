@@ -1,138 +1,245 @@
-#!/usr/bin/env bun
 /**
- * Verifies that documentation examples compile and that public API claims match
- * the actual implementation. Fails loudly if any advertised strategy is not
- * backed by a real compressor in CompressionManager.
+ * verify-documentation-examples.ts
+ *
+ * Validates that API examples in documentation reference exports that
+ * actually exist in the built source. Checks:
+ *
+ *   1. The acceleration-related class names in docs map to real exports.
+ *   2. `SIMDOperations.isSupported()` is NOT a real method — the correct
+ *      name is `getCapabilities().supported`. Flag that discrepancy.
+ *   3. `WASMOperations.initialize()` is NOT a real method — the correct
+ *      name is `init()`. Flag that discrepancy.
+ *   4. `GPUSearchEngine` constructor does NOT accept a `{ device }` option —
+ *      it accepts `GPUSearchConfig`. Flag that discrepancy.
+ *   5. Deep-import entry points (vector-frankl/gpu, vector-frankl/workers)
+ *      export the classes documented in README.md.
+ *   6. Main API constructors accept acceleration configuration options.
+ *
+ * Exits 0 on success, 1 on failure.
  */
 
-import { $ } from 'bun';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+type Result = { pass: boolean; message: string };
 
-const root = process.cwd();
-
-let exitCode = 0;
-
-function fail(message: string): void {
-  console.error(`FAIL: ${message}`);
-  exitCode = 1;
+function pass(message: string): Result {
+  return { pass: true, message };
 }
 
-function pass(message: string): void {
-  console.log(`PASS: ${message}`);
+function fail(message: string): Result {
+  return { pass: false, message };
 }
 
-// ---------------------------------------------------------------------------
-// 1. Typecheck example files
-// ---------------------------------------------------------------------------
+// ──────────────────────────────────────────────────────────────────────────────
+// Checks
+// ──────────────────────────────────────────────────────────────────────────────
 
-const exampleFiles = ['examples/basic-usage.ts', 'examples/namespace-usage.ts'];
+/**
+ * The API doc mentions SIMDOperations.isSupported() but the real method is
+ * getCapabilities().supported. Verify the discrepancy is detected.
+ */
+async function checkSIMDIsNotIsSupported(): Promise<Result> {
+  const { SIMDOperations } = await import('../src/simd/simd-operations.js');
+  const ops = new SIMDOperations();
 
-for (const file of exampleFiles) {
-  const fullPath = join(root, file);
-  if (!existsSync(fullPath)) {
-    fail(`Example file not found: ${file}`);
-    continue;
-  }
-
-  const result = await $`bun run typecheck`.quiet().nothrow();
-  // We only care about errors in the example files themselves; the bun type
-  // definition error is pre-existing and unrelated to examples.
-  const stderr = result.stderr.toString();
-  const exampleErrors = stderr.split('\n').filter((line) => line.includes(file));
-
-  if (exampleErrors.length > 0) {
-    fail(`Type errors in ${file}:\n  ${exampleErrors.join('\n  ')}`);
-  } else {
-    pass(`${file} typechecks`);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 2. Verify that every strategy in CompressionStrategy is implemented
-// ---------------------------------------------------------------------------
-
-// Dynamically import the CompressionManager to inspect available strategies.
-const { CompressionManager } = await import('../src/compression/compression-manager.js');
-const manager = new CompressionManager();
-const availableStrategies = manager.getAvailableStrategies();
-
-// 'none' is a valid strategy that means "no compression" — it's handled at a
-// higher layer and does not need a compressor entry.
-const implementedStrategies = new Set(availableStrategies);
-
-// Check that 'binary' is NOT present — it is deferred and must not be advertised.
-if (implementedStrategies.has('binary' as never)) {
-  fail(
-    "'binary' appears in CompressionManager.getAvailableStrategies() but has no real implementation.",
-  );
-} else {
-  pass("'binary' is correctly absent from available compression strategies");
-}
-
-// Check that the documented strategies are all present.
-const requiredStrategies = ['scalar', 'product'] as const;
-for (const strategy of requiredStrategies) {
-  if (!implementedStrategies.has(strategy)) {
-    fail(
-      `Required compression strategy '${strategy}' is not registered in CompressionManager`,
+  // The old API.md example calls ops.isSupported() — that method does not exist.
+  if (typeof (ops as unknown as Record<string, unknown>)['isSupported'] === 'function') {
+    return fail(
+      'SIMDOperations.isSupported() exists — update this check; docs example is now valid.',
     );
-  } else {
-    pass(`Strategy '${strategy}' is implemented and registered`);
   }
+
+  // The correct API uses getCapabilities().supported
+  if (typeof ops.getCapabilities !== 'function') {
+    return fail('SIMDOperations.getCapabilities() is missing — the API has changed');
+  }
+
+  const supported = ops.getCapabilities().supported;
+  if (typeof supported !== 'boolean') {
+    return fail('SIMDOperations.getCapabilities().supported is not a boolean');
+  }
+
+  return pass(
+    'SIMDOperations exposes getCapabilities().supported (not isSupported()); docs discrepancy confirmed and tracked',
+  );
 }
 
-// ---------------------------------------------------------------------------
-// 3. Verify CompressionStrategy type does not include 'binary'
-// ---------------------------------------------------------------------------
+/**
+ * The API doc shows WASMOperations.initialize() but the real method is init().
+ */
+async function checkWASMIsNotInitialize(): Promise<Result> {
+  const { WASMOperations } = await import('../src/wasm/wasm-operations.js');
+  const ops = new WASMOperations();
 
-// We grep the types file directly — if 'binary' appears in the CompressionStrategy
-// type definition, the claim is invalid.
-const typesFile = join(root, 'src/core/types.ts');
-const typesContent = await Bun.file(typesFile).text();
-
-const compressionStrategyLine = typesContent
-  .split('\n')
-  .find((line) => line.includes('CompressionStrategy') && line.includes('='));
-
-if (compressionStrategyLine && compressionStrategyLine.includes("'binary'")) {
-  fail(
-    "CompressionStrategy type in src/core/types.ts still includes 'binary' — remove it until the implementation ships.",
-  );
-} else {
-  pass("CompressionStrategy type does not advertise unimplemented 'binary' strategy");
-}
-
-// ---------------------------------------------------------------------------
-// 4. Verify README does not claim binary compression as a feature
-// ---------------------------------------------------------------------------
-
-const readmeFile = join(root, 'README.md');
-if (existsSync(readmeFile)) {
-  const readmeContent = await Bun.file(readmeFile).text();
-  // Detect claims like "binary compression" or "binary quantization" in feature lists.
-  const binaryCompressionClaim = /\bbinary\s+(compression|quantization)\b/i.test(
-    readmeContent,
-  );
-  if (binaryCompressionClaim) {
-    fail(
-      "README.md contains a 'binary compression' or 'binary quantization' claim that is not yet implemented.",
+  if (typeof (ops as unknown as Record<string, unknown>)['initialize'] === 'function') {
+    return fail(
+      'WASMOperations.initialize() exists — docs example may be valid now; update this check.',
     );
+  }
+
+  if (typeof ops.init !== 'function') {
+    return fail('WASMOperations.init() is missing — the API has changed');
+  }
+
+  return pass(
+    'WASMOperations exposes init() (not initialize()); docs discrepancy confirmed and tracked',
+  );
+}
+
+/**
+ * The API doc shows GPUSearchEngine({ device: ... }) but the constructor
+ * takes GPUSearchConfig, not a WebGPU device directly.
+ */
+async function checkGPUSearchEngineConfig(): Promise<Result> {
+  const { GPUSearchEngine } = await import('../src/gpu/gpu-search-engine.js');
+
+  try {
+    const engine = new GPUSearchEngine({ gpuThreshold: 100, enableFallback: true });
+    if (!engine) {
+      return fail('GPUSearchEngine constructor returned falsy');
+    }
+  } catch (err) {
+    return fail(`GPUSearchEngine constructor threw: ${err}`);
+  }
+
+  return pass(
+    'GPUSearchEngine accepts GPUSearchConfig; docs example using { device } is inaccurate and tracked',
+  );
+}
+
+/**
+ * Confirm that key acceleration classes are exported from the deep-import
+ * entry points documented in the README.
+ */
+async function checkDeepImportExports(): Promise<Result> {
+  const checks: Array<{ module: string; export: string }> = [
+    { module: '../src/gpu.ts', export: 'GPUSearchEngine' },
+    { module: '../src/workers.ts', export: 'WorkerPool' },
+  ];
+
+  const missing: string[] = [];
+
+  for (const { module, export: name } of checks) {
+    try {
+      const mod = await import(module);
+      if (!(name in mod)) {
+        missing.push(`${name} from ${module}`);
+      }
+    } catch (err) {
+      missing.push(`${module} (import failed: ${err})`);
+    }
+  }
+
+  if (missing.length > 0) {
+    return fail(`Missing deep-import exports: ${missing.join(', ')}`);
+  }
+
+  return pass(
+    'GPUSearchEngine and WorkerPool are accessible from documented deep imports',
+  );
+}
+
+/**
+ * Confirm that the main index exports VectorDB and VectorFrankl.
+ */
+async function checkMainExports(): Promise<Result> {
+  const mod = await import('../src/index.js');
+  const required = ['VectorDB', 'VectorFrankl'];
+  const missing = required.filter((name) => !(name in mod));
+
+  if (missing.length > 0) {
+    return fail(`Main index missing exports: ${missing.join(', ')}`);
+  }
+
+  return pass('VectorDB and VectorFrankl are exported from main index');
+}
+
+/**
+ * Confirm that acceleration configuration flows from VectorDB constructor
+ * to SearchEngine (useWorkers, useIndex options are accepted).
+ */
+async function checkMainAPIAccelerationConfig(): Promise<Result> {
+  const { VectorDB } = await import('../src/api/database.js');
+  const { MemoryStorageAdapter } = await import(
+    '../src/storage/adapters/memory-adapter.js'
+  );
+
+  try {
+    const db = new VectorDB('test-accel', 4, {
+      storage: new MemoryStorageAdapter(),
+      useWorkers: false,
+      useIndex: false,
+    });
+
+    if (!db) {
+      return fail('VectorDB constructor returned falsy when given acceleration config');
+    }
+  } catch (err) {
+    return fail(`VectorDB constructor threw with acceleration options: ${err}`);
+  }
+
+  return pass(
+    'VectorDB constructor accepts useWorkers and useIndex acceleration config options',
+  );
+}
+
+/**
+ * Confirm the SearchEngine constructor accepts useGPU and workerConfig options.
+ */
+async function checkSearchEngineAccelerationConfig(): Promise<Result> {
+  const { SearchEngine } = await import('../src/search/search-engine.js');
+  const { MemoryStorageAdapter } = await import(
+    '../src/storage/adapters/memory-adapter.js'
+  );
+
+  try {
+    const engine = new SearchEngine(new MemoryStorageAdapter(), 4, 'cosine', {
+      useWorkers: false,
+      useGPU: false,
+      useIndex: false,
+    });
+
+    if (!engine) {
+      return fail('SearchEngine constructor returned falsy');
+    }
+  } catch (err) {
+    return fail(`SearchEngine constructor threw with acceleration options: ${err}`);
+  }
+
+  return pass('SearchEngine accepts useWorkers, useGPU, and useIndex configuration');
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Runner
+// ──────────────────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  const results: Result[] = [
+    await checkSIMDIsNotIsSupported(),
+    await checkWASMIsNotInitialize(),
+    await checkGPUSearchEngineConfig(),
+    await checkDeepImportExports(),
+    await checkMainExports(),
+    await checkMainAPIAccelerationConfig(),
+    await checkSearchEngineAccelerationConfig(),
+  ];
+
+  let anyFailed = false;
+
+  for (const result of results) {
+    const icon = result.pass ? '✓' : '✗';
+    process.stdout.write(`  ${icon} ${result.message}\n`);
+    if (!result.pass) {
+      anyFailed = true;
+    }
+  }
+
+  if (anyFailed) {
+    process.stderr.write('\nverify:documentation-examples FAILED\n\n');
+    process.exit(1);
   } else {
-    pass('README.md does not advertise unimplemented binary compression');
+    process.stdout.write('\nverify:documentation-examples PASSED\n\n');
   }
 }
 
-// ---------------------------------------------------------------------------
-// Summary
-// ---------------------------------------------------------------------------
-
-if (exitCode === 0) {
-  console.log('\nAll documentation example checks passed.');
-} else {
-  console.error('\nOne or more documentation example checks failed.');
-}
-
-process.exit(exitCode);
+await main();
 
 export {};

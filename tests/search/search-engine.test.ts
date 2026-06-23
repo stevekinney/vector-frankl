@@ -1539,3 +1539,55 @@ describe('SearchEngine', () => {
     });
   });
 });
+
+describe('acceleration: SearchEngine configuration passthrough', () => {
+  it('constructs with useWorkers:false without throwing', () => {
+    const engine = new SearchEngine(new MemoryStorageAdapter(), 4, 'cosine', {
+      useWorkers: false,
+      useIndex: false,
+    });
+    expect(engine).toBeDefined();
+  });
+
+  it('constructs with useGPU:false without throwing', () => {
+    const engine = new SearchEngine(new MemoryStorageAdapter(), 4, 'cosine', {
+      useGPU: false,
+      useWorkers: false,
+    });
+    expect(engine).toBeDefined();
+  });
+
+  it('constructs with useIndex:true without throwing', () => {
+    const engine = new SearchEngine(new MemoryStorageAdapter(), 4, 'cosine', {
+      useIndex: true,
+      useWorkers: false,
+    });
+    expect(engine).toBeDefined();
+  });
+
+  it('returns correct results via scalar fallback (no acceleration)', async () => {
+    const storage = new MemoryStorageAdapter();
+    await storage.put({
+      id: 'x',
+      vector: new Float32Array([1, 0, 0, 0]),
+      magnitude: 1,
+      timestamp: Date.now(),
+    });
+    await storage.put({
+      id: 'y',
+      vector: new Float32Array([0, 1, 0, 0]),
+      magnitude: 1,
+      timestamp: Date.now(),
+    });
+
+    const engine = new SearchEngine(storage, 4, 'cosine', {
+      useWorkers: false,
+      useGPU: false,
+      useIndex: false,
+    });
+
+    const results = await engine.search(new Float32Array([1, 0, 0, 0]), 1);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.id).toBe('x');
+  });
+});

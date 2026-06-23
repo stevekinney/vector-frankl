@@ -338,3 +338,33 @@ describe('WASMManager', () => {
     });
   });
 });
+
+describe('acceleration: WebAssembly classification', () => {
+  it('isAvailable() returns false without a compiled .wasm module', async () => {
+    // No modulePath supplied → WASMManager never sets isInitialized = true
+    const manager = new WASMManager({ enableWASM: true });
+    await manager.init();
+    expect(manager.isAvailable()).toBe(false);
+    await manager.cleanup();
+  });
+
+  it('enableWASM:false skips init and remains unavailable', async () => {
+    const manager = new WASMManager({ enableWASM: false });
+    await manager.init();
+    expect(manager.isAvailable()).toBe(false);
+  });
+
+  it('rejects vector operations when no backend is loaded', async () => {
+    const manager = new WASMManager({ enableWASM: true });
+    const a = new Float32Array([1, 2]);
+    const b = new Float32Array([3, 4]);
+    let threw = false;
+    try {
+      await manager.dotProduct(a, b);
+    } catch (err) {
+      threw = true;
+      expect((err as Error).message).toContain('WebAssembly not available');
+    }
+    expect(threw).toBe(true);
+  });
+});

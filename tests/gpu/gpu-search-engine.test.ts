@@ -1105,3 +1105,36 @@ describe('GPUSearchEngine', () => {
     });
   });
 });
+
+describe('acceleration: WebGPU classification', () => {
+  it('GPUSearchEngine constructs with GPUSearchConfig (not a WebGPU device)', () => {
+    const engine = new GPUSearchEngine({ gpuThreshold: 500, enableFallback: true });
+    expect(engine).toBeDefined();
+  });
+
+  it('isGPUReady() returns false when navigator.gpu is absent', () => {
+    const engine = new GPUSearchEngine({ enableFallback: true });
+    if (typeof navigator === 'undefined' || !('gpu' in navigator)) {
+      expect(engine.isGPUReady()).toBe(false);
+    }
+  });
+
+  it('init() does not throw when WebGPU is unavailable and fallback is enabled', async () => {
+    const engine = new GPUSearchEngine({ enableFallback: true });
+    await engine.init();
+    // After init with no GPU, engine is still usable via CPU fallback
+    expect(engine).toBeDefined();
+  });
+
+  it('search() falls back to CPU when GPU is unavailable', async () => {
+    const engine = new GPUSearchEngine({ enableFallback: true, gpuThreshold: 1 });
+    const vectors = [
+      { id: 'a', vector: new Float32Array([1, 0, 0, 0]), magnitude: 1, timestamp: 0 },
+      { id: 'b', vector: new Float32Array([0, 1, 0, 0]), magnitude: 1, timestamp: 0 },
+    ];
+    const query = new Float32Array([1, 0, 0, 0]);
+    const { results } = await engine.search(vectors, query, 1, 'cosine');
+    expect(results).toBeInstanceOf(Array);
+    expect(results.length).toBeGreaterThanOrEqual(1);
+  });
+});
