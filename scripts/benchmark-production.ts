@@ -89,7 +89,17 @@ function generateRandomVector(dimension: number): number[] {
 /** Monotonic suffix for startup-benchmark database names (validator-safe). */
 let startupRunCounter = 0;
 
-/** Time `fn` over `iterations` calls and return average ops/sec. */
+/**
+ * Time `fn` over `iterations` calls and return ops/sec from the *median*
+ * duration.
+ *
+ * The mean of a handful of samples is dominated by a single outlier — one GC
+ * pause or a CI scheduler hiccup in any iteration can halve the reported
+ * throughput, which is exactly the run-to-run flakiness the benchmark gate
+ * must not produce. The median of the per-iteration durations ignores a lone
+ * slow sample, so the measurement is stable across noisy shared runners while
+ * still moving for a genuine, sustained regression.
+ */
 async function measureOpsPerSec(
   fn: () => Promise<void> | void,
   warmup = 2,
@@ -106,8 +116,14 @@ async function measureOpsPerSec(
     durations.push(performance.now() - start);
   }
 
-  const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
-  return avg > 0 ? 1000 / avg : 0;
+  durations.sort((a, b) => a - b);
+  const mid = Math.floor(durations.length / 2);
+  const median =
+    durations.length % 2 === 0
+      ? ((durations[mid - 1] ?? 0) + (durations[mid] ?? 0)) / 2
+      : (durations[mid] ?? 0);
+
+  return median > 0 ? 1000 / median : 0;
 }
 
 // ── Individual benchmark implementations ─────────────────────────────────────
@@ -167,6 +183,10 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
         vector: generateRandomVector(dimensions),
       }));
       await db.addBatch(init);
+      // Single un-batched inserts are the noisiest measurement, so use a wider
+      // median window (2 warmups, 9 iterations) to stay stable under
+      // shared-runner load. Keep in sync with the gate copy in
+      // scripts/verify-benchmarks.ts.
       const ops = await measureOpsPerSec(
         async () => {
           await db.addVector(
@@ -174,8 +194,8 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
             generateRandomVector(dimensions),
           );
         },
-        1,
-        3,
+        2,
+        9,
       );
       await db.delete();
       return ops;

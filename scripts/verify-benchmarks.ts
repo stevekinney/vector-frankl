@@ -115,6 +115,14 @@ function generateRandomVector(dimension: number): number[] {
   return Array.from({ length: dimension }, () => Math.random() * 2 - 1);
 }
 
+/**
+ * Time `fn` over `iterations` calls and return ops/sec from the *median*
+ * duration. The median ignores a lone slow sample (a GC pause or CI
+ * scheduler hiccup), so the measurement stays stable across noisy shared
+ * runners while still moving for a genuine, sustained regression. Must stay
+ * behaviourally identical to the copy in scripts/benchmark-production.ts that
+ * captures the baselines this gate compares against.
+ */
 async function measureOpsPerSec(
   fn: () => Promise<void> | void,
   warmup = 2,
@@ -129,8 +137,13 @@ async function measureOpsPerSec(
     await fn();
     durations.push(performance.now() - start);
   }
-  const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
-  return avg > 0 ? 1000 / avg : 0;
+  durations.sort((a, b) => a - b);
+  const mid = Math.floor(durations.length / 2);
+  const median =
+    durations.length % 2 === 0
+      ? ((durations[mid - 1] ?? 0) + (durations[mid] ?? 0)) / 2
+      : (durations[mid] ?? 0);
+  return median > 0 ? 1000 / median : 0;
 }
 
 function evaluateBaseline(
@@ -226,6 +239,10 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
         vector: generateRandomVector(dimensions),
       }));
       await db.addBatch(seed);
+      // Single un-batched inserts are the noisiest measurement in the gate, so
+      // use a wider median window (2 warmups, 9 iterations) to stay stable
+      // under shared-runner load. Keep in sync with the baseline-capture copy
+      // in scripts/benchmark-production.ts.
       const ops = await measureOpsPerSec(
         async () => {
           await db.addVector(
@@ -233,8 +250,8 @@ async function runBaseline(entry: BaselineEntry): Promise<number | null> {
             generateRandomVector(dimensions),
           );
         },
-        1,
-        3,
+        2,
+        9,
       );
       await db.delete();
       return ops;
