@@ -44,6 +44,8 @@ export type {
   MetadataFilter,
   FilterOperator,
   FilterValue,
+  FilterTypeString,
+  RegexFilter,
   SimpleFilter,
   AndFilter,
   OrFilter,

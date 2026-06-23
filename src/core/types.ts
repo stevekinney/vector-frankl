@@ -216,6 +216,19 @@ export interface NotFilter {
 
 export type FilterValue = string | number | boolean | null | undefined;
 
+export type FilterTypeString =
+  | 'null'
+  | 'boolean'
+  | 'number'
+  | 'string'
+  | 'array'
+  | 'object';
+
+export type RegexFilter =
+  | string
+  | RegExp
+  | { pattern: string; flags?: string };
+
 export interface FilterOperator {
   $eq?: FilterValue;
   $ne?: FilterValue;
@@ -225,8 +238,30 @@ export interface FilterOperator {
   $lte?: number;
   $in?: FilterValue[];
   $nin?: FilterValue[];
+  /** Test whether a string field contains the given substring. */
   $contains?: string;
+  /** Test whether a numeric field falls within [min, max] (inclusive). */
   $between?: [number, number];
+  /** Test whether a field exists (true) or is absent (false). */
+  $exists?: boolean;
+  /** Test whether a field's JavaScript type matches the given type string. */
+  $type?: FilterTypeString;
+  /**
+   * Test whether a string field matches a regex pattern.
+   * Accepts a pattern string, a RegExp literal, or an object
+   * with `pattern` and optional `flags` strings.
+   * Patterns are validated against ReDoS heuristics before execution.
+   */
+  $regex?: RegexFilter;
+  /** Test whether an array field has exactly the given length. */
+  $size?: number;
+  /** Test whether an array field contains all of the given values. */
+  $all?: FilterValue[];
+  /**
+   * Test whether at least one element of an array field matches the
+   * given sub-filter or value.
+   */
+  $elemMatch?: MetadataFilter | FilterValue;
 }
 
 /**
