@@ -70,6 +70,7 @@ export type {
 
 // Errors
 export {
+  ErrorCode,
   VectorDatabaseError,
   DimensionMismatchError,
   QuotaExceededError,
@@ -84,7 +85,9 @@ export {
   IndexError,
   BrowserSupportError,
   isVectorDatabaseError,
+  sanitizeContext,
 } from './core/errors.js';
+export type { ErrorCodeValue } from './core/errors.js';
 
 // Vector utilities
 export { VectorOperations } from './vectors/operations.js';

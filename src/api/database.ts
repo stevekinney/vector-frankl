@@ -306,6 +306,13 @@ export class VectorDB {
     maxDistance: number,
     options?: SearchOptions & { maxResults?: number },
   ): Promise<SearchResult[]> {
+    // Validate inputs
+    InputValidator.validateDistance(maxDistance);
+    const validatedOptions = InputValidator.validateSearchOptions(options);
+
+    // Validate vector format and dimension
+    VectorFormatHandler.validate(queryVector, this.dimension);
+
     await this.ensureInitialized();
 
     // Validate dimension
@@ -317,7 +324,7 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    return this.searchEngine.searchRange(query, maxDistance, options);
+    return this.searchEngine.searchRange(query, maxDistance, validatedOptions as SearchOptions & { maxResults?: number });
   }
 
   /**
@@ -331,6 +338,9 @@ export class VectorDB {
       progressive?: boolean;
     },
   ): AsyncGenerator<SearchResult[], void, unknown> {
+    // Validate vector format and dimension
+    VectorFormatHandler.validate(queryVector, this.dimension);
+
     await this.ensureInitialized();
 
     // Validate dimension
@@ -636,8 +646,11 @@ export class VectorDB {
    * Check if a vector exists
    */
   async exists(id: string): Promise<boolean> {
+    // Validate input
+    const validatedId = InputValidator.validateVectorId(id);
+
     await this.ensureInitialized();
-    return this.storage.exists(id);
+    return this.storage.exists(validatedId);
   }
 
   /**
@@ -721,8 +734,12 @@ export class VectorDB {
       updateTimestamp?: boolean;
     },
   ): Promise<void> {
+    // Validate inputs
+    const validatedId = InputValidator.validateVectorId(id);
+    const validatedMetadata = InputValidator.validateMetadata(metadata);
+
     await this.ensureInitialized();
-    await this.storage.updateMetadata(id, metadata, options);
+    await this.storage.updateMetadata(validatedId, validatedMetadata, options);
 
     await this.searchEngine.rebuildIndex({ loadFromCache: false });
   }
@@ -746,13 +763,15 @@ export class VectorDB {
 
     // Validate and convert vectors
     const processedUpdates = updates.map((update) => {
+      const validatedId = InputValidator.validateVectorId(update.id);
       const processed: {
         id: string;
         vector?: Float32Array;
         metadata?: Record<string, unknown>;
-      } = { id: update.id };
+      } = { id: validatedId };
 
       if (update.vector) {
+        VectorFormatHandler.validate(update.vector, this.dimension);
         if (update.vector.length !== this.dimension) {
           throw new DimensionMismatchError(this.dimension, update.vector.length);
         }
@@ -760,7 +779,7 @@ export class VectorDB {
       }
 
       if (update.metadata !== undefined) {
-        processed.metadata = update.metadata;
+        processed.metadata = InputValidator.validateMetadata(update.metadata);
       }
 
       return processed;
