@@ -10,6 +10,10 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import {
+  LMDB_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
+import {
   calculateMagnitude,
   jsonToVectorData,
   vectorDataToJson,
@@ -54,6 +58,9 @@ interface LmdbStorageAdapterOptions {
 // ---------------------------------------------------------------------------
 
 export class LmdbStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = LMDB_ADAPTER_CAPABILITIES;
+
   private readonly directory: string;
   private readonly mapSize: number | undefined;
   private database: LmdbDatabase | null = null;

@@ -230,20 +230,37 @@ const frankl = new VectorFrankl('my-vectors', {
 await frankl.init();
 ```
 
-Available adapters:
+### Storage Adapter Support Matrix
 
-| Adapter                         | Backend                    | Environment       |
-| ------------------------------- | -------------------------- | ----------------- |
-| `IndexedDatabaseStorageAdapter` | IndexedDB                  | Browser           |
-| `MemoryStorageAdapter`          | In-memory `Map`            | Any               |
-| `OPFSStorageAdapter`            | Origin Private File System | Browser           |
-| `ChromeStorageAdapter`          | `chrome.storage`           | Chrome extensions |
-| `SQLiteStorageAdapter`          | `bun:sqlite`               | Bun               |
-| `FileSystemStorageAdapter`      | File system (JSON files)   | Bun               |
-| `LevelStorageAdapter`           | LevelDB via `level`        | Bun / Node        |
-| `LmdbStorageAdapter`            | LMDB via `lmdb`            | Bun / Node        |
-| `RedisStorageAdapter`           | `Bun.RedisClient`          | Bun               |
-| `S3StorageAdapter`              | `Bun.s3`                   | Bun               |
+Every adapter carries a `static capabilities` property that declares its support guarantees. Three tiers apply:
+
+- **production-supported**: stable API, recommended for production use.
+- **experimental**: functional but subject to change; use with caution in production.
+- **internal-only**: for testing and ephemeral use only; not intended for production.
+
+| Adapter                         | Tier                 | Backend                    | Runtime           | Persist | Txn | Batch Atomic | Quota |
+| ------------------------------- | -------------------- | -------------------------- | ----------------- | ------- | --- | ------------ | ----- |
+| `IndexedDatabaseStorageAdapter` | production-supported | IndexedDB                  | Browser           | ✓       | ✓   | —            | ✓     |
+| `SQLiteStorageAdapter`          | production-supported | `bun:sqlite`               | Bun               | ✓       | ✓   | ✓            | —     |
+| `OPFSStorageAdapter`            | experimental         | Origin Private File System | Browser           | ✓       | —   | —            | ✓     |
+| `ChromeStorageAdapter`          | experimental         | `chrome.storage`           | Chrome extensions | ✓       | —   | —            | —     |
+| `FileSystemStorageAdapter`      | experimental         | File system (JSON/binary)  | Bun / Node        | ✓       | —   | —            | —     |
+| `LevelStorageAdapter`           | experimental         | LevelDB via `level`        | Bun / Node        | ✓       | —   | ✓            | —     |
+| `LmdbStorageAdapter`            | experimental         | LMDB via `lmdb`            | Bun / Node        | ✓       | ✓   | ✓            | —     |
+| `RedisStorageAdapter`           | experimental         | `Bun.RedisClient`          | Bun               | ✓       | —   | —            | —     |
+| `S3StorageAdapter`              | experimental         | `Bun.s3`                   | Bun               | ✓       | —   | —            | —     |
+| `MemoryStorageAdapter`          | internal-only        | In-memory `Map`            | Any               | —       | —   | —            | —     |
+
+Capability metadata is queryable at runtime:
+
+```typescript
+import { ADAPTER_SUPPORT_MATRIX } from 'vector-frankl/storage/adapters/adapter-capabilities';
+
+const caps = ADAPTER_SUPPORT_MATRIX['SQLiteStorageAdapter'];
+// caps.tier         → 'production-supported'
+// caps.transactions → true
+// caps.runtimes     → ['bun']
+```
 
 ## 🔧 Advanced Features
 

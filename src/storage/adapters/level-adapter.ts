@@ -10,6 +10,10 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import {
+  LEVEL_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
+import {
   calculateMagnitude,
   jsonToVectorData,
   vectorDataToJson,
@@ -53,6 +57,9 @@ export interface LevelStorageAdapterOptions {
 // ---------------------------------------------------------------------------
 
 export class LevelStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = LEVEL_ADAPTER_CAPABILITIES;
+
   private readonly directory: string;
   private database: LevelDatabase | null = null;
 

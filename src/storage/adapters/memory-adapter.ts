@@ -1,6 +1,5 @@
 import { VectorNotFoundError } from '@/core/errors.js';
 import type {
-  AdapterCapabilities,
   BatchOptions,
   BatchProgress,
   ScanCapabilities,
@@ -8,6 +7,10 @@ import type {
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import {
+  MEMORY_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
 import { calculateMagnitude } from './serialization.js';
 
 interface MemoryStorageAdapterOptions {
@@ -23,6 +26,9 @@ interface MemoryStorageAdapterOptions {
  * array. This avoids building a full-dataset array just to discard most of it.
  */
 export class MemoryStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = MEMORY_ADAPTER_CAPABILITIES;
+
   private readonly store = new Map<string, VectorData>();
   private readonly cloneOnRead: boolean;
   private readonly cloneOnWrite: boolean;
@@ -31,12 +37,11 @@ export class MemoryStorageAdapter implements StorageAdapter {
    * Capabilities reported to the search engine.
    *
    * `metadataIndexing: true` because `filteredScan()` evaluates the predicate
-   * inline as the Map is iterated—no full materialization required.
+   * inline as the Map is iterated — no full materialization required.
    */
   readonly capabilities: AdapterCapabilities = {
+    ...MEMORY_ADAPTER_CAPABILITIES,
     metadataIndexing: true,
-    persistence: false,
-    transactions: false,
   };
 
   constructor(options: MemoryStorageAdapterOptions = {}) {

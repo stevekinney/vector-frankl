@@ -10,6 +10,10 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import {
+  FILE_SYSTEM_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
+import {
   binaryToVectorData,
   calculateMagnitude,
   jsonToVectorData,
@@ -46,6 +50,9 @@ function encodeVectorId(id: string): string {
 // ---------------------------------------------------------------------------
 
 export class FileSystemStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = FILE_SYSTEM_ADAPTER_CAPABILITIES;
+
   private readonly directory: string;
   private readonly vectorsDirectory: string;
   private readonly format: 'binary' | 'json';

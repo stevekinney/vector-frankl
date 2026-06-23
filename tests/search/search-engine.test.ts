@@ -1120,9 +1120,14 @@ describe('SearchEngine', () => {
       let getAllCalls = 0;
       const minimalAdapter: StorageAdapter = {
         capabilities: {
+          tier: 'internal-only',
+          runtimes: ['any'],
           metadataIndexing: false,
           persistence: false,
           transactions: false,
+          batchAtomicity: false,
+          quotaReporting: false,
+          concurrentWriters: false,
         } satisfies AdapterCapabilities,
         async init() {},
         async close() {},

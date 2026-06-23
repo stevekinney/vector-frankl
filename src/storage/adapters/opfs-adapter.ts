@@ -8,6 +8,10 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import {
+  OPFS_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
+import {
   type SerializedVectorData,
   binaryToVectorData,
   calculateMagnitude,
@@ -110,6 +114,9 @@ function idToFilename(id: string): string {
  * constraints described there.
  */
 export class OPFSStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = OPFS_ADAPTER_CAPABILITIES;
+
   private readonly directory: string;
   private readonly format: 'binary' | 'json';
   private rootHandle: FileSystemDirectoryHandle | undefined;

@@ -5,6 +5,14 @@
 /**
  * Supported vector formats
  */
+/**
+ * Capability flags reported by a storage adapter.
+ *
+ * The authoritative definition lives in `./storage/adapters/adapter-capabilities`
+ * alongside the per-adapter constants; re-exported here for convenience.
+ */
+import type { AdapterCapabilities } from '@/storage/adapters/adapter-capabilities.js';
+
 export type VectorFormat =
   | Float32Array
   | Float64Array
@@ -386,25 +394,7 @@ export interface ScanCapabilities {
   /** Human-readable explanation when `nativeStreaming` is false. */
   limitationReason?: string;
 }
-
-/**
- * Capability flags reported by a storage adapter.
- *
- * - `metadataIndexing`: the adapter can evaluate a metadata predicate without
- *   materializing the full dataset into memory (e.g. via a database index or a
- *   cursor scan). Adapters that set this to `true` MUST implement
- *   `filteredScan()`.
- * - `persistence`: data survives process restarts.
- * - `transactions`: all writes within a batch are atomic.
- */
-export interface AdapterCapabilities {
-  /** Whether the adapter supports filtered scanning without full materialization. */
-  metadataIndexing: boolean;
-  /** Whether data is durable across process restarts. */
-  persistence: boolean;
-  /** Whether batch writes are atomic. */
-  transactions: boolean;
-}
+export type { AdapterCapabilities };
 
 /**
  * Storage adapter interface for pluggable storage backends.

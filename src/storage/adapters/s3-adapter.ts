@@ -8,6 +8,10 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import {
+  S3_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
+import {
   calculateMagnitude,
   jsonToVectorData,
   vectorDataToJson,
@@ -98,6 +102,9 @@ export interface S3StorageAdapterOptions {
  * ```
  */
 export class S3StorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = S3_ADAPTER_CAPABILITIES;
+
   /**
    * Discriminant flag marking this adapter as single-writer only.
    *

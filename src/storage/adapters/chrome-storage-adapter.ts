@@ -13,6 +13,10 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import {
+  CHROME_STORAGE_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
+import {
   type SerializedVectorData,
   calculateMagnitude,
   serializableToVectorData,
@@ -94,6 +98,9 @@ function estimateSerializedBytes(value: unknown): number {
  * per-item quota constraints described there.
  */
 export class ChromeStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = CHROME_STORAGE_ADAPTER_CAPABILITIES;
+
   private readonly prefix: string;
   private readonly area: 'local' | 'session';
 
