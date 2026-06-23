@@ -728,4 +728,54 @@ describe('SharedMemoryManager', () => {
       }
     });
   });
+
+    describe('Worker buffer memory limit regression tests', () => {
+      it('rejects allocation exceeding the configured pool memory limit', () => {
+        if (typeof SharedArrayBuffer === 'undefined') {
+          return;
+        }
+
+        // Configure a tight 1 MB pool to verify the guard fires before allocation
+        const tightManager = new SharedMemoryManager({
+          maxPoolSize: 1 * 1024 * 1024, // 1 MB
+          enableStats: true,
+        });
+
+        // Requesting ~2 MB should exceed the 1 MB pool limit — rejected before SharedArrayBuffer is created
+        expect(() => {
+          tightManager.allocateVectorBuffer(1, 500_000); // 500k × 4 bytes = ~2 MB
+        }).toThrow('would exceed the pool memory limit');
+      });
+
+      it('rejects sequential allocations that cumulatively exceed the pool limit', () => {
+        if (typeof SharedArrayBuffer === 'undefined') {
+          return;
+        }
+
+        const tightManager = new SharedMemoryManager({
+          maxPoolSize: 2 * 1024 * 1024, // 2 MB
+          enableStats: true,
+        });
+
+        // First ~1 MB allocation fits
+        tightManager.allocateVectorBuffer(1, 250_000); // 250k × 4 bytes ≈ 1 MB
+
+        // Second ~1.5 MB allocation pushes total over 2 MB limit
+        expect(() => {
+          tightManager.allocateVectorBuffer(1, 375_000); // 375k × 4 bytes ≈ 1.5 MB
+        }).toThrow('would exceed the pool memory limit');
+      });
+
+      it('rejects allocation when the request alone exceeds the pool size', () => {
+        if (typeof SharedArrayBuffer === 'undefined') {
+          return;
+        }
+
+        // 1-byte pool (a nonsensically small limit) — any vector allocation must fail
+        const microManager = new SharedMemoryManager({ maxPoolSize: 1 });
+        expect(() => {
+          microManager.allocateVectorBuffer(1, 1); // 1×1×4 + header > 1 byte
+        }).toThrow('would exceed the pool memory limit');
+      });
+    });
 });

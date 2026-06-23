@@ -292,4 +292,49 @@ describe('WASMManager', () => {
       }
     });
   });
+
+  describe('WebAssembly memory size limit regression tests', () => {
+    it('rejects allocation exceeding the configured maxMemory limit', () => {
+      // 1 MB max; requesting > 1 MB must throw before WebAssembly.Memory.grow() is called
+      const limitedWasm = new WASMManager({
+        maxMemory: 1 * 1024 * 1024, // 1 MB
+      });
+
+      // 1,000,000 floats × 4 bytes = 4 MB — well over the 1 MB limit
+      expect(() => limitedWasm.allocateVector(1_000_000)).toThrow(
+        'exceeds the maximum allowed memory',
+      );
+    });
+
+    it('rejects Number.MAX_SAFE_INTEGER allocation before attempting memory growth', () => {
+      const wasm = new WASMManager({ maxMemory: 64 * 1024 * 1024 }); // 64 MB
+
+      // This would require petabytes of WASM memory if not caught early
+      expect(() => wasm.allocateVector(Number.MAX_SAFE_INTEGER)).toThrow(
+        'exceeds the maximum allowed memory',
+      );
+    });
+
+    it('accepts allocation within the configured maxMemory limit', () => {
+      // 64 MB default; 100-element vector = 400 bytes — always within limit
+      const wasm = new WASMManager({ maxMemory: 64 * 1024 * 1024 });
+
+      // Should not throw — 400 bytes is far below 64 MB
+      expect(() => wasm.allocateVector(100)).not.toThrow();
+    });
+
+    it('respects custom maxMemory passed to WASMManager configuration', () => {
+      const smallWasm = new WASMManager({
+        maxMemory: 4096, // 4 KB — tiny limit for testing
+      });
+
+      // 2000 floats × 4 bytes = 8000 bytes > 4096 bytes limit
+      expect(() => smallWasm.allocateVector(2000)).toThrow(
+        'exceeds the maximum allowed memory',
+      );
+
+      // 100 floats × 4 bytes = 400 bytes < 4096 bytes limit
+      expect(() => smallWasm.allocateVector(100)).not.toThrow();
+    });
+  });
 });

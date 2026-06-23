@@ -921,4 +921,108 @@ describe('InputValidator', () => {
       expect(result).toEqual(options);
     });
   });
+
+  describe('Memory exhaustion regression tests', () => {
+    describe('vector dimension limit', () => {
+      test('rejects dimension exceeding 100,000 to prevent memory exhaustion', () => {
+        // A 100,001-dimension Float32Array would consume > 400 KB; reject before allocation
+        expect(() => InputValidator.validateDimension(100_001)).toThrow(
+          'Dimension cannot exceed 100,000',
+        );
+      });
+
+      test('rejects extreme dimension values that would exhaust memory', () => {
+        expect(() => InputValidator.validateDimension(Number.MAX_SAFE_INTEGER)).toThrow();
+        expect(() => InputValidator.validateDimension(1_000_000)).toThrow(
+          'Dimension cannot exceed 100,000',
+        );
+      });
+
+      test('accepts the maximum safe dimension of 100,000', () => {
+        expect(InputValidator.validateDimension(100_000)).toBe(100_000);
+      });
+    });
+
+    describe('batch size limit', () => {
+      test('rejects batch exceeding 1000 items to prevent memory exhaustion', () => {
+        const oversizedBatch = new Array(1001).fill(1);
+        expect(() =>
+          InputValidator.validateBatchData(oversizedBatch, (item) => item),
+        ).toThrow('Batch operation cannot exceed 1000 items');
+      });
+
+      test('rejects batch of 10,000 items with default limit', () => {
+        const hugeBatch = new Array(10_000).fill(1);
+        expect(() =>
+          InputValidator.validateBatchData(hugeBatch, (item) => item),
+        ).toThrow('Batch operation cannot exceed 1000 items');
+      });
+
+      test('rejects batch exceeding a custom limit', () => {
+        const batch = new Array(101).fill(1);
+        expect(() =>
+          InputValidator.validateBatchData(batch, (item) => item, 100),
+        ).toThrow('Batch operation cannot exceed 100 items');
+      });
+    });
+
+    describe('metadata size limit', () => {
+      test('rejects metadata with more than 1,000 properties to prevent memory exhaustion', () => {
+        const oversized: Record<string, string> = {};
+        for (let i = 0; i <= 1000; i++) {
+          oversized[`key${i}`] = 'v';
+        }
+        expect(() => InputValidator.validateMetadata(oversized)).toThrow(
+          'Metadata cannot have more than 1000 properties',
+        );
+      });
+
+      test('rejects metadata string values exceeding 10,000 characters', () => {
+        const longValue = 'x'.repeat(10_001);
+        expect(() => InputValidator.validateMetadata({ field: longValue })).toThrow(
+          'String value cannot exceed 10000 characters',
+        );
+      });
+
+      test('rejects metadata arrays exceeding 10,000 elements', () => {
+        const largeArray = new Array(10_001).fill(0);
+        expect(() => InputValidator.validateMetadata({ items: largeArray })).toThrow(
+          'Array cannot exceed 10000 elements',
+        );
+      });
+
+      test('rejects deeply nested metadata exceeding depth 10 to prevent stack exhaustion', () => {
+        let nested: Record<string, unknown> = { leaf: 'value' };
+        for (let i = 0; i < 10; i++) {
+          nested = { child: nested };
+        }
+        expect(() => InputValidator.validateMetadata(nested)).toThrow(
+          'Metadata object depth cannot exceed 10',
+        );
+      });
+    });
+
+    describe('search options limit', () => {
+      test('rejects maxResults exceeding 50,000 to prevent memory exhaustion', () => {
+        expect(() =>
+          InputValidator.validateSearchOptions({ maxResults: 50_001 }),
+        ).toThrow('maxResults cannot exceed 50,000');
+      });
+
+      test('rejects batchSize exceeding 50,000 to prevent memory exhaustion', () => {
+        expect(() =>
+          InputValidator.validateSearchOptions({ batchSize: 50_001 }),
+        ).toThrow('batchSize cannot exceed 50,000');
+      });
+    });
+
+    describe('vector ID count limit', () => {
+      test('rejects more than 10,000 vector IDs at once to prevent memory exhaustion', () => {
+        const ids = Array.from({ length: 10_001 }, (_, i) => `id-${i}`);
+        expect(() => InputValidator.validateVectorIds(ids)).toThrow(
+          'Cannot process more than 10,000 vector IDs at once',
+        );
+      });
+    });
+  });
 });

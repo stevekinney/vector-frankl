@@ -91,6 +91,16 @@ export class SharedMemoryManager {
     const dataSize = vectorCount * dimension * bytesPerElement;
     const totalSize = headerSize + dataSize;
 
+    // Reject allocations that would exceed the configured pool memory limit.
+    // This guard fires before any SharedArrayBuffer is created, preventing
+    // memory exhaustion from oversized worker buffer requests.
+    const currentAllocated = this.memoryPool.reduce((sum, b) => sum + b.size, 0);
+    if (currentAllocated + totalSize > this.config.maxPoolSize) {
+      throw new Error(
+        `Allocation of ${totalSize} bytes would exceed the pool memory limit of ${this.config.maxPoolSize} bytes`,
+      );
+    }
+
     // Try to find existing block from pool
     let block = this.findAvailableBlock(totalSize);
 

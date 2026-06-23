@@ -1038,4 +1038,56 @@ describe('GPUSearchEngine', () => {
       await engine.cleanup();
     });
   });
+
+  describe('GPU buffer memory limit regression tests', () => {
+    it('rejects a vector batch whose total buffer size exceeds the configured GPU limit', async () => {
+      mockWebGPU();
+
+      // Set a very small maxBufferSize (64 bytes) — far smaller than any real vector batch
+      const limitedEngine = new GPUSearchEngine({
+        gpuThreshold: 1,
+        enableFallback: false, // no fallback so the rejection propagates
+        webGPUConfig: { maxBufferSize: 64 },
+      });
+      await limitedEngine.init();
+
+      // 100 vectors × 4 dimensions × 4 bytes = 1600 bytes > 64 byte limit
+      const oversizedVectors = Array.from({ length: 100 }, (_, i) => ({
+        id: `v${i}`,
+        vector: new Float32Array([1, 0, 0, 0]),
+        metadata: {},
+        magnitude: 1,
+        timestamp: Date.now(),
+      }));
+
+      expect(
+        limitedEngine.search(oversizedVectors, new Float32Array([1, 0, 0, 0]), 5, 'cosine'),
+      ).rejects.toThrow('exceeds the configured limit');
+
+      await limitedEngine.cleanup();
+    });
+
+    it('accepts a vector batch within the configured GPU buffer limit', async () => {
+      mockWebGPU();
+
+      // 256 MB is ample for a small test batch
+      const engine = new GPUSearchEngine({
+        gpuThreshold: 1,
+        enableFallback: false,
+        webGPUConfig: { maxBufferSize: 256 * 1024 * 1024 },
+      });
+      await engine.init();
+
+      const smallVectors = [
+        { id: 'v1', vector: new Float32Array([1, 0]), metadata: {}, magnitude: 1, timestamp: Date.now() },
+        { id: 'v2', vector: new Float32Array([0, 1]), metadata: {}, magnitude: 1, timestamp: Date.now() },
+      ];
+
+      // Should not throw — total size (2×2×4=16 bytes) is well within 256 MB
+      const { results } = await engine.search(smallVectors, new Float32Array([1, 0]), 2, 'cosine');
+      expect(Array.isArray(results)).toBe(true);
+
+      await engine.cleanup();
+    });
+  });
 });

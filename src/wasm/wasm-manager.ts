@@ -91,9 +91,13 @@ export class WASMManager {
     }
 
     this.capabilities = this.detectCapabilities();
+    // WebAssembly memory pages are 64 KiB each.
+    // Ensure maximum is at least 1 page and that initial does not exceed maximum.
+    const maximumPages = Math.max(1, Math.floor(this.config.maxMemory / 65536));
+    const initialPages = Math.min(256, maximumPages); // 256 pages = 16 MB default initial
     this.memory = new WebAssembly.Memory({
-      initial: 256, // 16MB
-      maximum: Math.floor(this.config.maxMemory / 65536), // Convert to pages
+      initial: initialPages,
+      maximum: maximumPages,
     });
   }
 
@@ -286,6 +290,15 @@ export class WASMManager {
     }
 
     const byteLength = length * 4; // Float32 = 4 bytes
+
+    // Reject before attempting memory growth to prevent exhaustion attacks.
+    // WebAssembly memory pages are 64 KiB each; the configured maxMemory caps growth.
+    if (byteLength > this.config.maxMemory) {
+      throw new Error(
+        `WASM allocation of ${byteLength} bytes exceeds the maximum allowed memory of ${this.config.maxMemory} bytes`,
+      );
+    }
+
     const currentPages = this.memory.buffer.byteLength / 65536;
     const requiredPages = Math.ceil(byteLength / 65536);
 

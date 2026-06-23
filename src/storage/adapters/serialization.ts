@@ -5,6 +5,12 @@ import type { VectorData } from '@/core/types.js';
 // Shared serialization utilities used by multiple storage adapters
 // ---------------------------------------------------------------------------
 
+/** Maximum allowed binary/JSON payload size in bytes (prevents memory exhaustion during deserialization). */
+const MAX_BINARY_PAYLOAD_BYTES = 512 * 1024 * 1024; // 512 MB
+
+/** Maximum allowed vector dimension encoded in a serialized header (prevents huge allocations from crafted input). */
+const MAX_VECTOR_DIMENSION = 100_000;
+
 /**
  * Intermediate JSON-safe representation of a VectorData record.
  * Float32Array is stored as a plain number array for JSON.stringify().
@@ -97,6 +103,9 @@ export function serializableToVectorData(serialized: SerializedVectorData): Vect
   return result;
 }
 
+/** Maximum allowed JSON payload size in bytes (prevents memory exhaustion during deserialization). */
+const MAX_JSON_PAYLOAD_BYTES = 512 * 1024 * 1024; // 512 MB
+
 /** Serialize a VectorData record to a JSON string. */
 export function vectorDataToJson(data: VectorData): string {
   return JSON.stringify(vectorDataToSerializable(data));
@@ -104,6 +113,11 @@ export function vectorDataToJson(data: VectorData): string {
 
 /** Deserialize a JSON string into a VectorData record. */
 export function jsonToVectorData(json: string): VectorData {
+  if (json.length > MAX_JSON_PAYLOAD_BYTES) {
+    throw new Error(
+      `Serialized JSON payload of ${json.length} bytes exceeds the maximum allowed size of ${MAX_JSON_PAYLOAD_BYTES} bytes`,
+    );
+  }
   const parsed = JSON.parse(json) as SerializedVectorData;
   return serializableToVectorData(parsed);
 }
@@ -306,6 +320,14 @@ export function vectorDataToBinary(data: VectorData): ArrayBuffer {
  * Throws `StorageFormatError` when the version is unsupported.
  */
 export function binaryToVectorData(buffer: ArrayBuffer): VectorData {
+  // ---- Memory-exhaustion guard -------------------------------------------
+  // Reject oversized payloads before any allocation from the buffer contents.
+  if (buffer.byteLength > MAX_BINARY_PAYLOAD_BYTES) {
+    throw new Error(
+      `Binary payload of ${buffer.byteLength} bytes exceeds the maximum allowed size of ${MAX_BINARY_PAYLOAD_BYTES} bytes`,
+    );
+  }
+
   const bytes = new Uint8Array(buffer);
   const view = new DataView(buffer);
 
@@ -335,6 +357,14 @@ export function binaryToVectorData(buffer: ArrayBuffer): VectorData {
   // ---- Field lengths -----------------------------------------------------
   const vectorLength = view.getUint32(OFFSET_VECTOR_LENGTH, true);
   const metaLength = view.getUint32(OFFSET_META_LENGTH, true);
+
+  // Reject an implausible vector length encoded in the header before computing
+  // any allocation size — guards against memory-exhaustion from crafted input.
+  if (vectorLength > MAX_VECTOR_DIMENSION) {
+    throw new Error(
+      `Binary payload claims vector length ${vectorLength} which exceeds the maximum allowed dimension of ${MAX_VECTOR_DIMENSION}`,
+    );
+  }
 
   const expectedSize =
     HEADER_SIZE + vectorLength * Float32Array.BYTES_PER_ELEMENT + metaLength;
@@ -483,6 +513,13 @@ export function legacyVectorDataToBinary(data: VectorData): ArrayBuffer {
  * @deprecated Prefer `binaryToVectorData` which validates integrity headers.
  */
 export function legacyBinaryToVectorData(buffer: ArrayBuffer): VectorData {
+  // Reject oversized payloads before any allocation from the buffer contents
+  if (buffer.byteLength > MAX_BINARY_PAYLOAD_BYTES) {
+    throw new Error(
+      `Binary payload of ${buffer.byteLength} bytes exceeds the maximum allowed size of ${MAX_BINARY_PAYLOAD_BYTES} bytes`,
+    );
+  }
+
   if (buffer.byteLength < 4) {
     throw new StorageCorruptionError(
       `Legacy buffer too small: ${buffer.byteLength} bytes`,
@@ -491,6 +528,14 @@ export function legacyBinaryToVectorData(buffer: ArrayBuffer): VectorData {
 
   const view = new DataView(buffer);
   const vectorLength = view.getUint32(0, true);
+
+  // Reject implausible vector lengths encoded in the binary header
+  if (vectorLength > 100_000) {
+    throw new Error(
+      `Binary payload claims vector length ${vectorLength} which exceeds the maximum allowed dimension of 100,000`,
+    );
+  }
+
   const vectorByteLength = vectorLength * Float32Array.BYTES_PER_ELEMENT;
 
   if (buffer.byteLength < 4 + vectorByteLength) {

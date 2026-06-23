@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { MetadataFilter } from '@/core/types.js';
-import { MetadataFilterCompiler, metadataQuery } from '@/search/metadata-filter.js';
+import { MetadataFilterCompiler, metadataQuery, MetadataRangeQuery } from '@/search/metadata-filter.js';
 
 describe('MetadataFilterCompiler', () => {
   describe('Field-level operators without $and wrapper', () => {
@@ -591,5 +591,113 @@ describe('MetadataRangeQuery', () => {
 
   it('should throw for invalid regex flags', () => {
     expect(() => metadataQuery().regex('name', 'foo', 'z')).toThrow('Invalid regex flags');
+  });
+  describe('ReDoS regression tests', () => {
+    // These tests verify that dangerous regex patterns are rejected
+    // BEFORE execution, so they cannot hang. Each assertion is a
+    // pre-execution rejection, not a timed gate.
+
+    it('rejects nested quantifier pattern (.*)+', () => {
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: '(.*)+' },
+      } as MetadataFilter);
+      // safeRegexTest catches the dangerous pattern and returns false
+      expect(matcher({ name: 'anything' })).toBe(false);
+    });
+
+    it('rejects nested quantifier pattern (.+)+', () => {
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: '(.+)+' },
+      } as MetadataFilter);
+      expect(matcher({ name: 'anything' })).toBe(false);
+    });
+
+    it('rejects nested quantifier pattern (.*)*', () => {
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: '(.*)*' },
+      } as MetadataFilter);
+      expect(matcher({ name: 'anything' })).toBe(false);
+    });
+
+    it('rejects nested quantifier pattern (.+)*', () => {
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: '(.+)*' },
+      } as MetadataFilter);
+      expect(matcher({ name: 'anything' })).toBe(false);
+    });
+
+    it('rejects alternation in quantified group (a|b)+', () => {
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: '(a|b)+' },
+      } as MetadataFilter);
+      expect(matcher({ name: 'aababab' })).toBe(false);
+    });
+
+    it('rejects alternation in quantified group (a|b)*', () => {
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: '(a|b)*' },
+      } as MetadataFilter);
+      expect(matcher({ name: 'aababab' })).toBe(false);
+    });
+
+    it('rejects overly complex pattern exceeding complexity threshold', () => {
+      // Many quantifiers and groups push complexity score > 20
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: '(a+)(b+)(c+)(d+)(e+)(f+)' },
+      } as MetadataFilter);
+      expect(matcher({ name: 'abcdef' })).toBe(false);
+    });
+
+    it('rejects regex patterns exceeding 1000 characters', () => {
+      const longPattern = 'a'.repeat(1001);
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: longPattern },
+      } as MetadataFilter);
+      expect(matcher({ name: 'a' })).toBe(false);
+    });
+
+    it('returns false (not hang) when input value exceeds 10,000 characters', () => {
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: '^test' },
+      } as MetadataFilter);
+      const longValue = 'x'.repeat(10_001);
+      // Must reject before executing the regex, not hang
+      expect(matcher({ name: longValue })).toBe(false);
+    });
+
+    it('rejects invalid regex flags', () => {
+      const matcher = MetadataFilterCompiler.compile({
+        name: { $regex: { pattern: '^test', flags: 'z' } } as unknown,
+      } as MetadataFilter);
+      expect(matcher({ name: 'test' })).toBe(false);
+    });
+
+    it('still matches safe patterns after dangerous ones are rejected', () => {
+      // Confirm the guard does not break valid patterns
+      const safeMatcher = MetadataFilterCompiler.compile({
+        name: { $regex: '^safe' },
+      } as MetadataFilter);
+      expect(safeMatcher({ name: 'safe-value' })).toBe(true);
+      expect(safeMatcher({ name: 'unsafe-value' })).toBe(false);
+    });
+
+    it('MetadataRangeQuery.regex rejects dangerous pattern before adding to filter', () => {
+      const query = new MetadataRangeQuery();
+      expect(() => query.regex('field', '(.*)+'))
+        .toThrow('Potentially dangerous regex pattern');
+    });
+
+    it('MetadataRangeQuery.regex rejects pattern exceeding 1000 characters', () => {
+      const query = new MetadataRangeQuery();
+      const longPattern = 'a'.repeat(1001);
+      expect(() => query.regex('field', longPattern))
+        .toThrow('Regex pattern too long');
+    });
+
+    it('MetadataRangeQuery.regex rejects invalid flags', () => {
+      const query = new MetadataRangeQuery();
+      expect(() => query.regex('field', '^test', 'z'))
+        .toThrow('Invalid regex flags');
+    });
   });
 });

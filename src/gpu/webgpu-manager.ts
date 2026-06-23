@@ -482,6 +482,14 @@ export class WebGPUManager {
     }
 
     const totalSize = vectors.length * vectors[0]!.length * 4; // 4 bytes per float
+
+    // Reject before GPU allocation to prevent memory exhaustion
+    if (totalSize > this.config.maxBufferSize) {
+      throw new Error(
+        `GPU buffer request of ${totalSize} bytes exceeds the configured limit of ${this.config.maxBufferSize} bytes`,
+      );
+    }
+
     const buffer = this.device.createBuffer({
       size: totalSize,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
