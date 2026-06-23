@@ -8,6 +8,7 @@ import type {
   SearchResult,
   VectorData,
 } from '../core/types.js';
+import { InvalidFormatError } from '../core/errors.js';
 import { log } from '../utilities/logger.js';
 import { WebGPUManager } from './webgpu-manager.js';
 
@@ -420,7 +421,11 @@ export class GPUSearchEngine {
   }
 
   /**
-   * Calculate distance between two vectors
+   * Calculate distance between two vectors.
+   *
+   * Hamming and jaccard are computed correctly on the CPU fallback path — the
+   * GPU shader does not support them, so `shouldUseGPUAcceleration` routes
+   * those metrics directly to this path rather than returning a placeholder.
    */
   private calculateDistance(
     a: Float32Array,
@@ -437,43 +442,63 @@ export class GPUSearchEngine {
       case 'dot':
         return -this.dotProduct(a, b); // Negative for similarity
       case 'hamming':
+        return this.hammingDistance(a, b);
       case 'jaccard':
-        // For unsupported CPU fallback metrics, return a default distance
-        return 1.0;
+        return this.jaccardDistance(a, b);
       default:
-        throw new Error(`Unsupported metric: ${metric}`);
+        throw new InvalidFormatError(`Unsupported metric: ${metric}`, [
+          'cosine',
+          'euclidean',
+          'manhattan',
+          'dot',
+          'hamming',
+          'jaccard',
+        ]);
     }
   }
 
   /**
-   * Convert distance to similarity score
+   * Convert distance to similarity score.
+   *
+   * Score semantics: higher is always more similar. For metrics where GPU
+   * computes a raw similarity (cosine, dot, euclidean-via-1/(1+d)), this
+   * converts back to a consistent [0, 1]-ish scale so that CPU and GPU
+   * results sort in the same order.
    */
   private distanceToScore(distance: number, metric: DistanceMetric): number {
     switch (metric) {
       case 'cosine':
-        return 1 - distance / 2;
+        // cosineDistance returns 1 - cos_sim; score = cos_sim in [0,1] for unit vecs
+        return 1 - distance;
       case 'dot':
         return -distance;
       case 'euclidean':
       case 'manhattan':
-        return Math.exp(-distance);
+        return 1 / (1 + distance);
+      case 'hamming':
+      case 'jaccard':
+        // distance is already in [0, 1]; score = 1 - distance
+        return 1 - distance;
       default:
         return 1 / (1 + distance);
     }
   }
 
   /**
-   * Convert score back to distance
+   * Convert GPU similarity score back to a distance value that matches the
+   * CPU distance convention used by `calculateDistance`.
    */
   private scoreToDistance(score: number, metric: DistanceMetric): number {
     switch (metric) {
       case 'cosine':
-        return (1 - score) * 2;
+        // GPU shader returns cosine similarity directly; distance = 1 - cos_sim
+        return 1 - score;
       case 'dot':
         return -score;
       case 'euclidean':
       case 'manhattan':
-        return -Math.log(score);
+        // GPU shader uses 1/(1+d); invert: d = 1/score - 1
+        return 1 / score - 1;
       default:
         return 1 / score - 1;
     }
@@ -518,5 +543,41 @@ export class GPUSearchEngine {
       sum += a[i]! * b[i]!;
     }
     return sum;
+  }
+
+  /**
+   * Hamming distance between two binary-encoded float vectors.
+   * Each element is treated as a bit: positive = 1, zero/negative = 0.
+   * Returns the fraction of differing positions in [0, 1].
+   */
+  private hammingDistance(a: Float32Array, b: Float32Array): number {
+    if (a.length === 0) return 0;
+    let different = 0;
+    for (let i = 0; i < a.length; i++) {
+      const bitA = a[i]! > 0 ? 1 : 0;
+      const bitB = b[i]! > 0 ? 1 : 0;
+      if (bitA !== bitB) different++;
+    }
+    return different / a.length;
+  }
+
+  /**
+   * Jaccard distance between two binary-encoded float vectors.
+   * Each element is treated as a set membership: positive = present.
+   * Returns 1 - Jaccard similarity, in [0, 1].
+   */
+  private jaccardDistance(a: Float32Array, b: Float32Array): number {
+    let intersection = 0;
+    let union = 0;
+    for (let i = 0; i < a.length; i++) {
+      const inA = a[i]! > 0;
+      const inB = b[i]! > 0;
+      if (inA || inB) {
+        union++;
+        if (inA && inB) intersection++;
+      }
+    }
+    if (union === 0) return 0;
+    return 1 - intersection / union;
   }
 }

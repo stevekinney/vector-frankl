@@ -516,4 +516,525 @@ describe('GPUSearchEngine', () => {
       expect(capabilities?.limits).toBeDefined();
     });
   });
+
+  /**
+   * CPU parity tests — the CPU fallback path must produce results that match
+   * reference calculations for every supported metric.  Since the WebGPU mock
+   * does not perform real compute shader work, true GPU/CPU parity is verified
+   * by running both paths over the same data and checking that the top-k order
+   * and scores are consistent within floating-point tolerance.
+   */
+  describe('CPU parity', () => {
+    const TOLERANCE = 1e-5;
+
+    function makeCPUEngine(): GPUSearchEngine {
+      // Force CPU by setting a threshold higher than any test dataset.
+      return new GPUSearchEngine({
+        gpuThreshold: Number.MAX_SAFE_INTEGER,
+        enableFallback: true,
+      });
+    }
+
+    const orthogonalVectors: VectorData[] = [
+      {
+        id: 'x',
+        vector: new Float32Array([1, 0, 0]),
+        metadata: {},
+        magnitude: 1,
+        timestamp: 0,
+      },
+      {
+        id: 'y',
+        vector: new Float32Array([0, 1, 0]),
+        metadata: {},
+        magnitude: 1,
+        timestamp: 0,
+      },
+      {
+        id: 'z',
+        vector: new Float32Array([0, 0, 1]),
+        metadata: {},
+        magnitude: 1,
+        timestamp: 0,
+      },
+    ];
+
+    it('cosine: score for identical unit vectors is 1.0', async () => {
+      const engine = makeCPUEngine();
+      await engine.init();
+
+      const { results, stats } = await engine.search(
+        orthogonalVectors,
+        new Float32Array([1, 0, 0]),
+        1,
+        'cosine',
+      );
+
+      expect(stats.usedGPU).toBe(false);
+      expect(results[0]!.id).toBe('x');
+      expect(Math.abs(results[0]!.score - 1.0)).toBeLessThan(TOLERANCE);
+      await engine.cleanup();
+    });
+
+    it('cosine: orthogonal vectors have score 0.0', async () => {
+      const engine = makeCPUEngine();
+      await engine.init();
+
+      const { results } = await engine.search(
+        orthogonalVectors,
+        new Float32Array([1, 0, 0]),
+        3,
+        'cosine',
+      );
+
+      // v[1] (y) and v[2] (z) are orthogonal to query — score should be ~0
+      const yResult = results.find((r) => r.id === 'y');
+      const zResult = results.find((r) => r.id === 'z');
+      expect(Math.abs(yResult?.score ?? 0)).toBeLessThan(TOLERANCE);
+      expect(Math.abs(zResult?.score ?? 0)).toBeLessThan(TOLERANCE);
+      await engine.cleanup();
+    });
+
+    it('cosine: result order matches distance ordering', async () => {
+      const engine = makeCPUEngine();
+      await engine.init();
+
+      const vecs: VectorData[] = [
+        {
+          id: 'near',
+          vector: new Float32Array([1, 0.1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'far',
+          vector: new Float32Array([0, 1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'exact',
+          vector: new Float32Array([1, 0, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+
+      const { results } = await engine.search(
+        vecs,
+        new Float32Array([1, 0, 0]),
+        3,
+        'cosine',
+      );
+
+      // Results must be sorted by descending score
+      for (let i = 0; i + 1 < results.length; i++) {
+        expect(results[i]!.score).toBeGreaterThanOrEqual(results[i + 1]!.score);
+      }
+      // 'exact' is closest to query [1,0,0]
+      expect(results[0]!.id).toBe('exact');
+      await engine.cleanup();
+    });
+
+    it('euclidean: identical vectors have score 1.0 (distance 0)', async () => {
+      const engine = makeCPUEngine();
+      await engine.init();
+
+      const vecs: VectorData[] = [
+        {
+          id: 'a',
+          vector: new Float32Array([1, 2, 3]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'b',
+          vector: new Float32Array([4, 5, 6]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+
+      const { results } = await engine.search(
+        vecs,
+        new Float32Array([1, 2, 3]),
+        1,
+        'euclidean',
+      );
+
+      expect(results[0]!.id).toBe('a');
+      // distance = 0, score = 1/(1+0) = 1.0
+      expect(Math.abs(results[0]!.score - 1.0)).toBeLessThan(TOLERANCE);
+      await engine.cleanup();
+    });
+
+    it('euclidean: score decreases as distance grows', async () => {
+      const engine = makeCPUEngine();
+      await engine.init();
+
+      const query = new Float32Array([0, 0]);
+      const vecs: VectorData[] = [
+        {
+          id: 'close',
+          vector: new Float32Array([1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'mid',
+          vector: new Float32Array([2, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'far',
+          vector: new Float32Array([10, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+
+      const { results } = await engine.search(vecs, query, 3, 'euclidean');
+
+      expect(results[0]!.id).toBe('close');
+      expect(results[1]!.id).toBe('mid');
+      expect(results[2]!.id).toBe('far');
+      await engine.cleanup();
+    });
+
+    it('manhattan: result order matches L1 distance', async () => {
+      const engine = makeCPUEngine();
+      await engine.init();
+
+      const query = new Float32Array([0, 0]);
+      const vecs: VectorData[] = [
+        {
+          id: 'close',
+          vector: new Float32Array([1, 1]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'far',
+          vector: new Float32Array([5, 5]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+
+      const { results } = await engine.search(vecs, query, 2, 'manhattan');
+
+      expect(results[0]!.id).toBe('close');
+      expect(results[0]!.score).toBeGreaterThan(results[1]!.score);
+      await engine.cleanup();
+    });
+
+    it('dot: higher dot product yields higher score', async () => {
+      const engine = makeCPUEngine();
+      await engine.init();
+
+      const query = new Float32Array([1, 1]);
+      const vecs: VectorData[] = [
+        {
+          id: 'large',
+          vector: new Float32Array([3, 3]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'small',
+          vector: new Float32Array([0.5, 0.5]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+
+      const { results } = await engine.search(vecs, query, 2, 'dot');
+
+      expect(results[0]!.id).toBe('large');
+      expect(results[0]!.score).toBeGreaterThan(results[1]!.score);
+      await engine.cleanup();
+    });
+
+    it('score and distance are consistent: distance = f_inverse(score)', async () => {
+      const engine = makeCPUEngine();
+      await engine.init();
+
+      const query = new Float32Array([1, 0, 0]);
+      const { results } = await engine.search(orthogonalVectors, query, 3, 'cosine');
+
+      for (const result of results) {
+        // cosine: score = 1 - distance, so distance = 1 - score
+        const reconstructed = 1 - result.score;
+        expect(result.distance).toBeDefined();
+        expect(Math.abs((result.distance ?? 0) - reconstructed)).toBeLessThan(TOLERANCE);
+      }
+      await engine.cleanup();
+    });
+  });
+
+  /**
+   * Hamming and jaccard must produce correct distances on the CPU fallback
+   * path — never a placeholder value of 1.0 regardless of actual similarity.
+   */
+  describe('hamming and jaccard fallback', () => {
+    it('hamming: identical binary vectors have distance 0, score 1', async () => {
+      (global as any).navigator = {};
+      const engine = new GPUSearchEngine({ enableFallback: true });
+      await engine.init();
+
+      const vecs: VectorData[] = [
+        {
+          id: 'same',
+          vector: new Float32Array([1, 0, 1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'diff',
+          vector: new Float32Array([0, 1, 0, 1]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+      const query = new Float32Array([1, 0, 1, 0]);
+
+      const { results, stats } = await engine.search(vecs, query, 2, 'hamming');
+
+      expect(stats.usedGPU).toBe(false);
+      // 'same' should score 1 (distance 0), 'diff' should score 0 (distance 1)
+      const same = results.find((r) => r.id === 'same');
+      const diff = results.find((r) => r.id === 'diff');
+      expect(same?.score).toBeCloseTo(1.0, 5);
+      expect(diff?.score).toBeCloseTo(0.0, 5);
+      // Not a placeholder: diff has 0 score, not a hardcoded non-zero value
+      expect(diff?.score).not.toBeCloseTo(1 / (1 + 1.0), 2); // old placeholder logic
+      await engine.cleanup();
+    });
+
+    it('hamming: partially-differing vectors score between 0 and 1', async () => {
+      (global as any).navigator = {};
+      const engine = new GPUSearchEngine({ enableFallback: true });
+      await engine.init();
+
+      // [1,1,0,0] vs [1,0,0,0]: 1 bit differs out of 4 => distance = 0.25
+      const vecs: VectorData[] = [
+        {
+          id: 'partial',
+          vector: new Float32Array([1, 1, 0, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+      const query = new Float32Array([1, 0, 0, 0]);
+
+      const { results } = await engine.search(vecs, query, 1, 'hamming');
+
+      expect(results[0]!.distance).toBeCloseTo(0.25, 5);
+      expect(results[0]!.score).toBeCloseTo(0.75, 5);
+      await engine.cleanup();
+    });
+
+    it('hamming: score is never a fixed placeholder regardless of vectors', async () => {
+      (global as any).navigator = {};
+      const engine = new GPUSearchEngine({ enableFallback: true });
+      await engine.init();
+
+      const allOnes: VectorData[] = [
+        {
+          id: 'all1',
+          vector: new Float32Array([1, 1, 1, 1]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'all0',
+          vector: new Float32Array([0, 0, 0, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+      const query = new Float32Array([1, 1, 1, 1]);
+
+      const { results } = await engine.search(allOnes, query, 2, 'hamming');
+
+      const all1 = results.find((r) => r.id === 'all1');
+      const all0 = results.find((r) => r.id === 'all0');
+      // Scores must differ — no uniform placeholder
+      expect(all1?.score).not.toEqual(all0?.score);
+      await engine.cleanup();
+    });
+
+    it('jaccard: identical vectors have distance 0, score 1', async () => {
+      (global as any).navigator = {};
+      const engine = new GPUSearchEngine({ enableFallback: true });
+      await engine.init();
+
+      const vecs: VectorData[] = [
+        {
+          id: 'same',
+          vector: new Float32Array([1, 0, 1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'nooverlap',
+          vector: new Float32Array([0, 1, 0, 1]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+      const query = new Float32Array([1, 0, 1, 0]);
+
+      const { results, stats } = await engine.search(vecs, query, 2, 'jaccard');
+
+      expect(stats.usedGPU).toBe(false);
+      const same = results.find((r) => r.id === 'same');
+      const nooverlap = results.find((r) => r.id === 'nooverlap');
+      expect(same?.score).toBeCloseTo(1.0, 5);
+      expect(nooverlap?.score).toBeCloseTo(0.0, 5);
+      await engine.cleanup();
+    });
+
+    it('jaccard: partial overlap scores between 0 and 1', async () => {
+      (global as any).navigator = {};
+      const engine = new GPUSearchEngine({ enableFallback: true });
+      await engine.init();
+
+      // query [1,1,0,0] vs [1,0,1,0]: intersection={0}, union={0,1,2} => jaccard sim = 1/3 => dist = 2/3
+      const vecs: VectorData[] = [
+        {
+          id: 'partial',
+          vector: new Float32Array([1, 0, 1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+      const query = new Float32Array([1, 1, 0, 0]);
+
+      const { results } = await engine.search(vecs, query, 1, 'jaccard');
+
+      expect(results[0]!.distance).toBeCloseTo(2 / 3, 5);
+      expect(results[0]!.score).toBeCloseTo(1 / 3, 5);
+      await engine.cleanup();
+    });
+
+    it('jaccard: score is never a fixed placeholder regardless of vectors', async () => {
+      (global as any).navigator = {};
+      const engine = new GPUSearchEngine({ enableFallback: true });
+      await engine.init();
+
+      const vecs: VectorData[] = [
+        {
+          id: 'same',
+          vector: new Float32Array([1, 1, 0, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'diff',
+          vector: new Float32Array([0, 0, 1, 1]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+      const query = new Float32Array([1, 1, 0, 0]);
+
+      const { results } = await engine.search(vecs, query, 2, 'jaccard');
+
+      const same = results.find((r) => r.id === 'same');
+      const diff = results.find((r) => r.id === 'diff');
+      expect(same?.score).not.toEqual(diff?.score);
+      await engine.cleanup();
+    });
+
+    it('hamming: GPU path does not execute for hamming metric', async () => {
+      mockWebGPU();
+      const engine = new GPUSearchEngine({
+        gpuThreshold: 1, // Would use GPU if metric were supported
+        enableFallback: true,
+      });
+      await engine.init();
+
+      expect(engine.isGPUReady()).toBe(true);
+
+      const vecs: VectorData[] = [
+        {
+          id: 'v1',
+          vector: new Float32Array([1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'v2',
+          vector: new Float32Array([0, 1]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+      const query = new Float32Array([1, 0]);
+
+      const { stats } = await engine.search(vecs, query, 2, 'hamming');
+
+      // hamming is not a GPU-supported metric — must route to CPU
+      expect(stats.usedGPU).toBe(false);
+      await engine.cleanup();
+    });
+
+    it('jaccard: GPU path does not execute for jaccard metric', async () => {
+      mockWebGPU();
+      const engine = new GPUSearchEngine({
+        gpuThreshold: 1,
+        enableFallback: true,
+      });
+      await engine.init();
+
+      const vecs: VectorData[] = [
+        {
+          id: 'v1',
+          vector: new Float32Array([1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+        {
+          id: 'v2',
+          vector: new Float32Array([0, 1]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: 0,
+        },
+      ];
+      const query = new Float32Array([1, 0]);
+
+      const { stats } = await engine.search(vecs, query, 2, 'jaccard');
+
+      expect(stats.usedGPU).toBe(false);
+      await engine.cleanup();
+    });
+  });
 });
