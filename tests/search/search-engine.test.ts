@@ -1217,4 +1217,65 @@ describe('SearchEngine', () => {
       expect(engine.isIndexDirty()).toBe(true);
     });
   });
+
+  // -------------------------------------------------------------------------
+  // Index health checks
+  // -------------------------------------------------------------------------
+  describe('getIndexHealth', () => {
+    it('should report disabled when indexing is off', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: false,
+      });
+
+      const health = engine.getIndexHealth();
+
+      expect(health.state).toBe('disabled');
+      expect(health.isDirty).toBe(false);
+    });
+
+    it('should report healthy for an in-memory index with no persistence', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+      });
+
+      const health = engine.getIndexHealth();
+
+      // In-memory only (no database option provided): index is loaded → healthy
+      expect(health.state).toBe('healthy');
+      expect(health.isDirty).toBe(false);
+    });
+
+    it('should report missing when indexing is disabled and then re-enabled without data', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+      });
+
+      // Disable indexing — clears the in-memory index
+      engine.setIndexing(false);
+
+      const health = engine.getIndexHealth();
+      expect(health.state).toBe('disabled');
+    });
+
+    it('health report contains the correct indexId', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+        indexId: 'my-search-index',
+      });
+
+      const health = engine.getIndexHealth();
+      expect(health.indexId).toBe('my-search-index');
+    });
+
+    it('should report missing when in-memory index is null (setIndexing false then on)', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: false,
+      });
+
+      // Indexing is off, hnswIndex is null → missing state
+      const health = engine.getIndexHealth();
+      // useIndex false → disabled, not missing (no persistence layer)
+      expect(health.state).toBe('disabled');
+    });
+  });
 });

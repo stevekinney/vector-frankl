@@ -111,7 +111,12 @@ export {
   metadataQuery,
 } from './search/metadata-filter.js';
 export { HNSWIndex } from './search/hnsw-index.js';
-export { IndexPersistence, IndexCache } from './search/index-persistence.js';
+export {
+  IndexPersistence,
+  IndexCache,
+  type IndexHealthState,
+  type IndexHealthReport,
+} from './search/index-persistence.js';
 
 // Storage adapters (universally usable)
 export { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';

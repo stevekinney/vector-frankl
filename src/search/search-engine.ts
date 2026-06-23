@@ -18,7 +18,7 @@ import { VectorOperations } from '@/vectors/operations.js';
 import { WorkerPool } from '@/workers/worker-pool.js';
 import { createDistanceCalculator, DistanceCalculator } from './distance-metrics.js';
 import { HNSWIndex } from './hnsw-index.js';
-import { IndexCache } from './index-persistence.js';
+import { IndexCache, type IndexHealthReport } from './index-persistence.js';
 import { MetadataFilterCompiler } from './metadata-filter.js';
 
 /**
@@ -869,19 +869,26 @@ export class SearchEngine {
       }
     }
 
-    // Clear existing index
-    this.hnswIndex.clear();
+    // Signal that a rebuild is in progress so health checks reflect it.
+    this.indexCache?.setRebuilding(this.indexId, true);
 
-    // Get all vectors from storage
-    const allVectors = await this.storage.getAll();
+    try {
+      // Clear existing index
+      this.hnswIndex.clear();
 
-    // Add each vector to the index
-    for (const vectorData of allVectors) {
-      await this.hnswIndex.addVector(vectorData);
+      // Get all vectors from storage
+      const allVectors = await this.storage.getAll();
+
+      // Add each vector to the index
+      for (const vectorData of allVectors) {
+        await this.hnswIndex.addVector(vectorData);
+      }
+
+      // Save rebuilt index
+      await this.saveIndex();
+    } finally {
+      this.indexCache?.setRebuilding(this.indexId, false);
     }
-
-    // Save rebuilt index
-    await this.saveIndex();
 
     // Index is now consistent with storage
     this.indexDirty = false;
@@ -923,6 +930,44 @@ export class SearchEngine {
   }
 
   /**
+   * Return a health report for the active index without performing a search.
+   *
+   * Consumers can use this to detect dirty, stale, missing, incompatible,
+   * rebuilding, disabled, or error states before deciding whether to run a
+   * search, trigger a rebuild, or surface a warning to end users.
+   *
+   * When no index cache is configured (i.e. no `database` was passed to the
+   * constructor), the state is either `disabled` (indexing off) or `healthy`
+   * (pure in-memory index with no persistence layer).
+   */
+  getIndexHealth(): IndexHealthReport {
+    if (!this.indexCache) {
+      // No persistence layer at all.
+      if (!this.useIndex) {
+        return {
+          indexId: this.indexId,
+          state: 'disabled',
+          isDirty: false,
+          lastAccess: undefined,
+          message: 'Indexing is disabled for this search engine instance.',
+        };
+      }
+      // In-memory only index — always healthy if present.
+      return {
+        indexId: this.indexId,
+        state: this.hnswIndex ? 'healthy' : 'missing',
+        isDirty: false,
+        lastAccess: undefined,
+        message: this.hnswIndex
+          ? 'In-memory index is loaded and ready (no persistence configured).'
+          : 'No in-memory index is present. Call rebuildIndex() to populate it.',
+      };
+    }
+
+    return this.indexCache.getHealthReport(this.indexId, this.useIndex);
+  }
+
+  /**
    * Get vector by ID (helper for index results)
    */
   private async getVectorById(id: string): Promise<Float32Array | undefined> {
@@ -943,7 +988,7 @@ export class SearchEngine {
     }
 
     const distanceMetric = this.distanceCalculator.getMetricInfo().name || 'cosine';
-    this.indexCache.putInCache(this.indexId, this.hnswIndex, distanceMetric, true);
+    await this.indexCache.putInCache(this.indexId, this.hnswIndex, distanceMetric, true);
     await this.indexCache.flushDirty();
   }
 
