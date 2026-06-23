@@ -81,6 +81,7 @@ export interface IndexedDatabaseCursor<T = unknown> {
 }
 
 export interface IndexedDatabaseTransaction {
+  readonly mode: IndexedDatabaseTransactionMode;
   oncomplete: ((event: unknown) => void) | null;
   onerror: ((event: unknown) => void) | null;
   onabort: ((event: unknown) => void) | null;

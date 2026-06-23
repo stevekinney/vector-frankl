@@ -49,9 +49,9 @@ export default defineConfig({
   ],
 
   webServer: {
-    command: 'bun run tests/end-to-end/server.ts',
+    command: 'bun run tests/end-to-end/build-for-browser.ts && bun run tests/end-to-end/server.ts',
     port: 8201,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     stdout: 'pipe',
     stderr: 'pipe',
   },
