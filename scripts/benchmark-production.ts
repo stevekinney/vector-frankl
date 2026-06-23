@@ -505,6 +505,12 @@ async function main(): Promise<void> {
     };
 
     existing.generatedAt = new Date().toISOString();
+    // Stamp the environment the baselines were actually measured on so the
+    // committed file never claims a reference machine it was not captured on.
+    const bunVersion =
+      typeof Bun !== 'undefined' ? `Bun ${Bun.version}` : 'unknown runtime';
+    const runnerHint = process.env['CI'] ? ' (GitHub Actions runner)' : '';
+    existing.environment.description = `${process.platform}/${process.arch}, ${bunVersion}, no GPU acceleration, no WASM SIMD override${runnerHint}`;
     for (const result of results) {
       if (result.measured <= 0) continue;
       const entry = existing.baselines.find((b) => b.name === result.name);
