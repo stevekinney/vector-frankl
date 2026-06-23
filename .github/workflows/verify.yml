@@ -104,3 +104,40 @@ jobs:
         run: bunx playwright test --project=chromium tests/end-to-end/basic-operations.e2e.ts
         env:
           CI: true
+
+  production-verification:
+    name: Production Verification Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: verify
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: '1.3.2'
+
+      - name: Cache Bun dependencies and install cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.bun
+            ~/.cache/bun
+            ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('**/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Create .env file
+        run: cp .env.example .env
+
+      - name: Build
+        run: bun run build
+
+      - name: Run production verification gate
+        run: bun run verify:production
