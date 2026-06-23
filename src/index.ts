@@ -77,6 +77,7 @@ export {
   InvalidFormatError,
   NamespaceExistsError,
   NamespaceNotFoundError,
+  NamespaceDeletionBlockedError,
   DatabaseInitializationError,
   TransactionError,
   BatchOperationError,

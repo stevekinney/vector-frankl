@@ -30,8 +30,6 @@ describe('VectorNamespace', () => {
   const config: NamespaceConfig = {
     dimension: 128,
     distanceMetric: 'cosine',
-    indexStrategy: 'brute',
-    compression: 'none',
     description: 'Test namespace',
   };
 
@@ -205,18 +203,13 @@ describe('VectorNamespace', () => {
       expect(stats.vectorCount).toBe(0);
     });
 
-    it('should provide config accessors', () => {
+    it('should provide distance metric accessor', () => {
       expect(namespace.getDistanceMetric()).toBe('cosine');
-      expect(namespace.getIndexStrategy()).toBe('brute');
-      expect(namespace.getCompressionStrategy()).toBe('none');
     });
 
-    it('should use defaults for missing config', () => {
+    it('should use default distance metric when not configured', () => {
       const minimalNamespace = new VectorNamespace('minimal', { dimension: 100 }, 'root');
-
       expect(minimalNamespace.getDistanceMetric()).toBe('cosine');
-      expect(minimalNamespace.getIndexStrategy()).toBe('auto');
-      expect(minimalNamespace.getCompressionStrategy()).toBe('none');
     });
   });
 

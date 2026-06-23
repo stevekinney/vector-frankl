@@ -111,20 +111,16 @@ export interface DatabaseConfig {
 }
 
 /**
- * Namespace configuration
+ * Namespace configuration.
+ *
+ * `indexStrategy`, `compression`, and `compressionConfig` were removed because
+ * they were never wired to the underlying VectorDB and had no effect on runtime
+ * behavior. Use the VectorDB constructor options directly when you need to
+ * control indexing or compression at the storage level.
  */
 export interface NamespaceConfig {
   dimension: number;
   distanceMetric?: DistanceMetric;
-  indexStrategy?: IndexStrategy;
-  compression?: CompressionStrategy;
-  compressionConfig?: {
-    level?: number;
-    targetRatio?: number;
-    maxPrecisionLoss?: number;
-    validateQuality?: boolean;
-    autoSelect?: boolean;
-  };
   description?: string;
 }
 

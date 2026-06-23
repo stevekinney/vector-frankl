@@ -1,4 +1,4 @@
-import { NamespaceNotFoundError } from '@/core/errors.js';
+import { NamespaceDeletionBlockedError, NamespaceNotFoundError } from '@/core/errors.js';
 import { InputValidator } from '@/core/input-validator.js';
 import type {
   NamespaceConfig,
@@ -170,6 +170,7 @@ export class NamespaceManager {
         databaseToDelete.onerror = () => reject(databaseToDelete.error);
         databaseToDelete.onblocked = () => {
           log.warn(`Delete blocked for namespace database: ${namespaceDatabaseName}`);
+          reject(new NamespaceDeletionBlockedError(name));
         };
       });
     }

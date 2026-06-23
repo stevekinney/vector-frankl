@@ -259,6 +259,22 @@ export class IndexError extends VectorDatabaseError {
 }
 
 /**
+ * Thrown when IndexedDB namespace deletion is blocked by an open connection
+ */
+export class NamespaceDeletionBlockedError extends VectorDatabaseError {
+  public readonly namespace: string;
+
+  constructor(namespace: string) {
+    super(
+      `Deletion of namespace '${namespace}' was blocked by an open connection`,
+      'NAMESPACE_DELETION_BLOCKED',
+      { namespace },
+    );
+    this.namespace = namespace;
+  }
+}
+
+/**
  * Thrown when browser features are not supported
  */
 export class BrowserSupportError extends VectorDatabaseError {
