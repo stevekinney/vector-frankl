@@ -18,7 +18,7 @@ A high-performance vector database built on IndexedDB for browser-based storage,
 
 The broader pattern here is moving vector search compute to the edge—the browser—which unlocks use cases where latency, privacy, cost, or offline access are constraints. The tradeoff is index size and embedding compute, but with quantized models and WebGPU acceleration, that ceiling keeps rising.
 
-- **Privacy-first semantic search:** All embeddings stay on the user's device. You could build a personal knowledge base, journal, or note-taking app where semantic search works entirely offline with zero data leaving the browser. No API calls, no cloud storage, no privacy policy needed.
+- **Local semantic search:** All embeddings stay on the user's device. You could build a personal knowledge base, journal, or note-taking app where semantic search works entirely offline with zero data leaving the browser. Note that data is stored as **plaintext** in IndexedDB—it is not transmitted to a server, but it is readable by any same-origin script and by the underlying OS. See the [Encryption at Rest](docs/SECURITY.md#encryption-at-rest) section before storing sensitive content.
 
 - **Offline-capable RAG:** Pair it with a small local model (like one running via WebLLM or ONNX Runtime Web) and you've got a fully client-side retrieval-augmented generation pipeline. Think a field technician querying a maintenance manual on a tablet with no connectivity.
 

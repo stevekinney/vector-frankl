@@ -5,6 +5,7 @@ Vector Frankl has been designed with security as a core principle. This document
 ## Table of Contents
 
 - [Security Features](#security-features)
+- [Encryption at Rest](#encryption-at-rest)
 - [Input Validation](#input-validation)
 - [ReDoS Protection](#redos-protection)
 - [Memory Safety](#memory-safety)
@@ -13,6 +14,36 @@ Vector Frankl has been designed with security as a core principle. This document
 - [Best Practices](#best-practices)
 - [Security Checklist](#security-checklist)
 - [Reporting Security Issues](#reporting-security-issues)
+
+## Encryption at Rest
+
+**Vector Frankl does not encrypt stored data.** All storage backends persist data as plaintext. The table below is the authoritative statement of encryption-at-rest behavior for every supported backend.
+
+| Backend                                  | Storage mechanism                | Encrypted at rest             | Notes                                                                                                                                         |
+| ---------------------------------------- | -------------------------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| IndexedDB                                | Browser-managed key/value store  | **No — plaintext**            | Accessible to any same-origin script; readable by the browser vendor and OS-level processes with device access                                |
+| OPFS (Origin Private File System)        | Browser-managed file system      | **No — plaintext**            | Scoped to origin but not encrypted; readable by browser internals and OS-level processes                                                      |
+| Chrome Storage (`chrome.storage`)        | Extension storage API            | **No — plaintext**            | Accessible to the extension and potentially to Chrome profile sync; subject to Google account access                                          |
+| File system (`FileSystemStorageAdapter`) | JSON files on disk               | **No — plaintext**            | Standard OS file permissions apply; no application-level encryption                                                                           |
+| SQLite (`SQLiteStorageAdapter`)          | `.db` file on disk               | **No — plaintext**            | Standard OS file permissions apply; readable by any process with file access                                                                  |
+| Redis (`RedisStorageAdapter`)            | In-memory + optional persistence | **No — plaintext**            | Data is plaintext in memory and in RDB/AOF files; requires transport-layer encryption (TLS) and authentication to be configured separately    |
+| S3 (`S3StorageAdapter`)                  | Object storage                   | **No — plaintext by default** | S3 server-side encryption (SSE-S3, SSE-KMS, SSE-C) must be enabled on the bucket independently; Vector Frankl does not configure or verify it |
+| In-memory (`MemoryStorageAdapter`)       | JavaScript `Map`                 | **No — plaintext**            | Process memory only; not persisted across restarts                                                                                            |
+| LevelDB (`LevelStorageAdapter`)          | LevelDB files on disk            | **No — plaintext**            | Standard OS file permissions apply                                                                                                            |
+| LMDB (`LmdbStorageAdapter`)              | LMDB memory-mapped files on disk | **No — plaintext**            | Standard OS file permissions apply                                                                                                            |
+
+### Privacy implications
+
+Because all backends store plaintext, the following threats are **out of scope** for Vector Frankl and must be addressed at the application or infrastructure layer:
+
+- **Physical device access.** Anyone who can read the underlying storage (disk, browser profile directory, Redis data directory) can read the stored vectors and metadata verbatim.
+- **Same-origin access.** In browser environments, any script running on the same origin as your app can open the same IndexedDB or OPFS store and read all data. Cross-site scripting (XSS) vulnerabilities on your origin therefore expose stored vectors.
+- **Server-side adapter credentials.** For Redis and S3 adapters, credentials (connection strings, access keys) must be protected separately. Vector Frankl does not manage, rotate, or restrict credential scope.
+- **Cloud provider access.** S3 data is accessible to your AWS account and any IAM principal with the appropriate permissions unless bucket policies explicitly restrict access.
+
+### Optional encryption
+
+Vector Frankl does not provide built-in encryption. If your application requires encryption at rest, you must implement it externally before passing data to any storage adapter—for example, encrypting vector payloads and metadata values with the Web Crypto API before insertion and decrypting after retrieval. Vector Frankl makes no assertions about the confidentiality of stored content.
 
 ## Security Features
 
@@ -543,6 +574,9 @@ class RateLimiter {
 - [ ] Storage quotas monitored
 - [ ] Rate limiting implemented
 - [ ] Security headers configured (for web deployment)
+- [ ] Storage backend encryption requirements assessed (Vector Frankl stores plaintext; apply external encryption if data is sensitive — see [Encryption at Rest](#encryption-at-rest))
+- [ ] For Redis: TLS and authentication configured at the infrastructure level
+- [ ] For S3: server-side encryption (SSE) enabled on the bucket independently of Vector Frankl
 
 ### Regular Security Tasks
 
