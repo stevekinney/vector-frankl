@@ -1,5 +1,10 @@
 /**
- * SIMD-accelerated distance metrics for high-performance vector similarity calculations
+ * Optimized JavaScript distance metrics for high-performance vector similarity calculations.
+ *
+ * Despite the "SIMD" naming retained for API compatibility, these metrics use
+ * loop-unrolled TypedArray JavaScript — not hardware SIMD instructions. The
+ * `simdAccelerated` flag on each calculator reflects JavaScript-level
+ * optimizations only, not real hardware SIMD.
  */
 
 import type { DistanceMetric } from '../core/types.js';
@@ -21,6 +26,11 @@ export interface SIMDDistanceCalculator {
   calculate: (a: Float32Array, b: Float32Array) => number;
   batchCalculate?: (vectors: Float32Array[], query: Float32Array) => Float32Array;
   requiresNormalized?: boolean;
+  /**
+   * Whether this calculator uses loop-unrolled TypedArray optimizations.
+   * This is JavaScript-level optimization only — not hardware SIMD instructions.
+   * No hardware SIMD path is active in the current implementation.
+   */
   simdAccelerated: boolean;
 }
 

@@ -1,13 +1,19 @@
 /**
- * SIMD-accelerated vector operations for high-performance computing
+ * Optimized JavaScript vector operations.
+ *
+ * Despite the "SIMD" naming retained for API compatibility, these operations
+ * are implemented as loop-unrolled TypedArray JavaScript — not hardware SIMD
+ * instructions. No real SIMD execution path (e.g. WebAssembly SIMD) is active.
+ * Capability detection reflects this accurately: `hasHardwareSIMD` is always
+ * `false` until a verified WASM SIMD module is wired in.
  */
 
 import { log } from '../utilities/logger.js';
 
 export interface SIMDConfig {
-  /** Enable SIMD optimizations */
+  /** Enable optimized JavaScript vector operations */
   enableSIMD?: boolean;
-  /** Vector size threshold for SIMD operations */
+  /** Vector size threshold for optimized operations */
   simdThreshold?: number;
   /** Enable performance profiling */
   enableProfiling?: boolean;
@@ -16,9 +22,22 @@ export interface SIMDConfig {
 }
 
 export interface SIMDCapabilities {
-  /** Whether SIMD is supported */
+  /**
+   * Whether optimized JavaScript operations are available.
+   * This reflects TypedArray loop-unrolling, NOT hardware SIMD instructions.
+   * Check `hasHardwareSIMD` for real hardware-level SIMD support.
+   */
   supported: boolean;
-  /** Available SIMD instruction sets */
+  /**
+   * Whether a real hardware SIMD execution path (e.g. WebAssembly SIMD) is
+   * active. This is `false` until a verified WASM SIMD module is loaded and
+   * executing real SIMD instructions.
+   */
+  hasHardwareSIMD: boolean;
+  /**
+   * Available JavaScript optimization strategies.
+   * Will NOT contain 'SIMD' entries unless `hasHardwareSIMD` is `true`.
+   */
   instructionSets: string[];
   /** Optimal vector chunk size */
   optimalChunkSize: number;
@@ -56,38 +75,48 @@ export class SIMDOperations {
   }
 
   /**
-   * Detect SIMD capabilities of the current environment
+   * Detect execution capabilities of the current environment.
+   *
+   * This method explicitly does NOT report hardware SIMD support unless a real
+   * WASM SIMD module is proven to be executing. TypedArray availability and
+   * basic WebAssembly support are JavaScript-level optimizations only.
    */
   private detectCapabilities(): SIMDCapabilities {
     const capabilities: SIMDCapabilities = {
       supported: false,
+      hasHardwareSIMD: false, // No real SIMD execution path is active
       instructionSets: [],
       optimalChunkSize: 4,
       maxBatchSize: 1000,
     };
 
-    // Check for various SIMD-like optimizations available in JavaScript
     try {
-      // TypedArray operations are heavily optimized in modern engines
+      // TypedArray operations are available in all modern JS engines.
+      // This enables loop-unrolling optimizations but is NOT hardware SIMD.
       capabilities.supported = true;
-      capabilities.instructionSets.push('TypedArray');
+      capabilities.instructionSets.push('TypedArray-optimized');
 
-      // Check for WebAssembly SIMD support
+      // Check for basic WebAssembly availability (not SIMD-specific).
+      // A valid minimal WASM module proves the runtime can execute WASM,
+      // but does NOT prove SIMD instruction support. We do not add a SIMD
+      // claim here because we have no WASM SIMD module to validate against.
       if (typeof WebAssembly !== 'undefined' && WebAssembly.validate) {
         try {
-          // Simple WebAssembly SIMD detection
-          const wasmSIMDTest = new Uint8Array([
+          const wasmMinimalTest = new Uint8Array([
             0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
           ]);
-          if (WebAssembly.validate(wasmSIMDTest)) {
-            capabilities.instructionSets.push('WebAssembly');
+          if (WebAssembly.validate(wasmMinimalTest)) {
+            capabilities.instructionSets.push('WebAssembly-available');
           }
         } catch {
-          // WebAssembly SIMD not supported
+          // Basic WebAssembly not available
         }
       }
 
-      // Determine optimal chunk size based on typical cache line sizes
+      // hasHardwareSIMD remains false: no WebAssembly SIMD module is loaded
+      // and executing real SIMD instructions. If a WASM SIMD module is ever
+      // integrated, set hasHardwareSIMD = true here after validating it.
+
       capabilities.optimalChunkSize = this.determineOptimalChunkSize();
       capabilities.maxBatchSize = Math.floor(
         (1024 * 1024) / (capabilities.optimalChunkSize * 4),
@@ -118,14 +147,20 @@ export class SIMDOperations {
   }
 
   /**
-   * Get SIMD capabilities
+   * Get execution capabilities.
+   * Note: `capabilities.hasHardwareSIMD` is always `false` — no hardware SIMD
+   * execution path is active. `capabilities.supported` reflects JavaScript-level
+   * loop-unrolling optimizations via TypedArrays only.
    */
   getCapabilities(): SIMDCapabilities {
     return { ...this.capabilities };
   }
 
   /**
-   * Check if SIMD optimizations are enabled
+   * Check if optimized JavaScript operations are enabled.
+   * Returns `true` when loop-unrolled TypedArray operations are active.
+   * This does NOT indicate hardware SIMD — use `getCapabilities().hasHardwareSIMD`
+   * to check for real SIMD instruction execution.
    */
   isSIMDEnabled(): boolean {
     return this.config.enableSIMD && this.capabilities.supported;
