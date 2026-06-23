@@ -38,6 +38,13 @@ export class SearchEngine {
   private useGPU = false;
   private gpuThreshold = 5000; // Use GPU for datasets larger than this
 
+  /**
+   * When true, the HNSW index may not reflect current storage state.
+   * Indexed search is suppressed until the index is explicitly rebuilt or cleared.
+   * Set by markIndexDirty() after a storage–index synchronization failure.
+   */
+  private indexDirty = false;
+
   constructor(
     private storage: StorageAdapter,
     dimension: number,
@@ -164,7 +171,12 @@ export class SearchEngine {
   }
 
   /**
-   * Search for k most similar vectors
+   * Search for k most similar vectors.
+   *
+   * When the HNSW index is marked dirty (due to a failed storage–index
+   * synchronization), this method silently falls back to brute-force search
+   * so that stale index state is never used. Call {@link rebuildIndex} to
+   * restore indexed performance.
    */
   async search(
     queryVector: Float32Array,
@@ -179,9 +191,15 @@ export class SearchEngine {
     // Reject immediately if the caller already aborted.
     this.throwIfAborted(options?.signal);
 
-    // Use HNSW index if available and no metadata filter
+    if (this.indexDirty) {
+      log.warn(
+        'Index is dirty due to a prior synchronization failure — using brute-force search until index is rebuilt',
+      );
+    }
+
+    // Use HNSW index if available, no metadata filter, and index is clean
     const coreSearch =
-      this.useIndex && this.hnswIndex && !options?.filter
+      this.useIndex && this.hnswIndex && !options?.filter && !this.indexDirty
         ? this.searchWithIndex(queryVector, k, options)
         : this.searchBruteForce(queryVector, k, options);
 
@@ -787,11 +805,33 @@ export class SearchEngine {
   }
 
   /**
+   * Mark the HNSW index as dirty.
+   *
+   * Call this after any operation where storage writes succeeded but the
+   * corresponding index mutation failed. While dirty, {@link search} falls
+   * back to brute-force so stale index state is never used. Call
+   * {@link rebuildIndex} to restore indexed performance.
+   */
+  markIndexDirty(): void {
+    this.indexDirty = true;
+    log.warn('Search index marked dirty — indexed search disabled until rebuild');
+  }
+
+  /**
+   * Returns true if the index is dirty and brute-force search is in use.
+   */
+  isIndexDirty(): boolean {
+    return this.indexDirty;
+  }
+
+  /**
    * Rebuild the index from storage, optionally loading a persisted snapshot first.
    *
    * When loading from cache, the cached index is validated against the current
    * storage vector count. If the counts differ (stale or incompatible index) the
    * index is rebuilt from scratch so results remain consistent.
+   *
+   * Clears the dirty flag on success so indexed search resumes.
    */
   async rebuildIndex(options: { loadFromCache?: boolean } = {}): Promise<void> {
     if (!this.useIndex || !this.hnswIndex) {
@@ -806,6 +846,7 @@ export class SearchEngine {
         const allVectors = await this.storage.getAll();
         if (cached.index.size() === allVectors.length) {
           this.hnswIndex = cached.index;
+          this.indexDirty = false;
           return;
         }
 
@@ -841,6 +882,9 @@ export class SearchEngine {
 
     // Save rebuilt index
     await this.saveIndex();
+
+    // Index is now consistent with storage
+    this.indexDirty = false;
   }
 
   /**

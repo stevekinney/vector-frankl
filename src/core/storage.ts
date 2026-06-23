@@ -264,7 +264,16 @@ export class VectorStorage implements StorageAdapter {
   }
 
   /**
-   * Delete multiple vectors by IDs
+   * Delete multiple vectors by IDs.
+   *
+   * **Atomicity model — single-transaction, best-effort:**
+   * All deletions run inside a single IndexedDB `readwrite` transaction. IDs
+   * that do not exist in storage are silently skipped (not counted). If a
+   * deletion fails for a known vector the error is recorded but the transaction
+   * is not aborted — other deletions in the same transaction still proceed.
+   * The returned count is the number of vectors actually removed. If _all_
+   * deletions fail a {@link BatchOperationError} is thrown. The caller is
+   * responsible for index consistency — see {@link VectorDB.deleteMany}.
    */
   async deleteMany(ids: string[]): Promise<number> {
     const result = await this.database.executeTransaction(
@@ -496,7 +505,17 @@ export class VectorStorage implements StorageAdapter {
   }
 
   /**
-   * Batch put vectors with progress reporting
+   * Batch put vectors with progress reporting.
+   *
+   * **Atomicity model — partial success:**
+   * Vectors are processed in sub-batches of `batchSize` (default 1000). Each
+   * sub-batch runs inside its own IndexedDB `readwrite` transaction, so
+   * individual write failures within a sub-batch do not roll back writes that
+   * already succeeded in earlier sub-batches. If any vector fails to write, a
+   * {@link BatchOperationError} is thrown after all sub-batches complete; the
+   * error carries `succeeded` and `failed` counts so callers can determine
+   * partial storage state. The caller is responsible for handling index
+   * consistency — see {@link VectorDB.addBatch} for the documented policy.
    */
   async putBatch(vectors: VectorData[], options: BatchOptions = {}): Promise<void> {
     const { batchSize = 1000, onProgress, abortSignal } = options;
@@ -679,7 +698,17 @@ export class VectorStorage implements StorageAdapter {
   }
 
   /**
-   * Update multiple vectors in a batch
+   * Update multiple vectors in a batch.
+   *
+   * **Atomicity model — partial success per chunk:**
+   * Updates are processed in sub-batches of `batchSize` (default 1000). Each
+   * sub-batch runs inside its own IndexedDB `readwrite` transaction. Individual
+   * update failures within a chunk are collected and returned in the error list
+   * but do not abort the chunk's transaction — other updates in the same chunk
+   * may still succeed. The returned object always carries `succeeded` and
+   * `failed` counts so callers can determine the final storage state. The
+   * caller is responsible for index consistency — see
+   * {@link VectorDB.updateBatch} for the documented policy.
    */
   async updateBatch(
     updates: Array<{

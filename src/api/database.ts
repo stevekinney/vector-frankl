@@ -188,7 +188,15 @@ export class VectorDB {
   }
 
   /**
-   * Add multiple vectors
+   * Add multiple vectors in a batch.
+   *
+   * **Atomicity model — partial success with index safety:**
+   * Storage writes use IndexedDB transactions and are best-effort within each
+   * sub-batch; if any write fails a {@link BatchOperationError} is thrown after
+   * the batch completes. Index updates are attempted after all storage writes
+   * succeed. If an index update fails mid-batch the index is marked dirty and
+   * all subsequent searches fall back to brute-force until
+   * {@link rebuildIndex} is called — stale index state is never used silently.
    */
   @debugMethod('database.addBatch', 'basic', {
     profileEnabled: true,
@@ -228,9 +236,19 @@ export class VectorDB {
 
     await this.storage.putBatch(preparedVectors, options);
 
-    // Add each vector to the HNSW index
-    for (const vectorData of preparedVectors) {
-      await this.searchEngine.addVectorToIndex(vectorData);
+    // Add each vector to the HNSW index.
+    // If any index update fails, mark the index dirty so future searches fall
+    // back to brute-force rather than returning stale index results.
+    try {
+      for (const vectorData of preparedVectors) {
+        await this.searchEngine.addVectorToIndex(vectorData);
+      }
+    } catch (error) {
+      this.searchEngine.markIndexDirty();
+      log.error('Index update failed during addBatch — index marked dirty', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 
@@ -324,7 +342,11 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    return this.searchEngine.searchRange(query, maxDistance, validatedOptions as SearchOptions & { maxResults?: number });
+    return this.searchEngine.searchRange(
+      query,
+      maxDistance,
+      validatedOptions as SearchOptions & { maxResults?: number },
+    );
   }
 
   /**
@@ -665,7 +687,16 @@ export class VectorDB {
   }
 
   /**
-   * Delete multiple vectors
+   * Delete multiple vectors.
+   *
+   * **Atomicity model — partial success with index safety:**
+   * Storage deletions run inside a single IndexedDB transaction. Vectors that
+   * cannot be deleted (e.g. they do not exist) are silently skipped; the
+   * returned count reflects only the vectors that were actually removed. Index
+   * entries for successfully deleted vectors are removed after the storage
+   * transaction commits. If any index removal fails the index is marked dirty
+   * and future indexed searches fall back to brute-force until
+   * {@link rebuildIndex} is called.
    */
   async deleteMany(ids: string[]): Promise<number> {
     const validatedIds = InputValidator.validateVectorIds(ids);
@@ -673,9 +704,19 @@ export class VectorDB {
     await this.ensureInitialized();
     const count = await this.storage.deleteMany(validatedIds);
 
-    // Remove each vector from the HNSW index
-    for (const id of validatedIds) {
-      await this.searchEngine.removeVectorFromIndex(id);
+    // Remove each deleted vector from the HNSW index.
+    // If any removal fails, mark the index dirty so future searches fall back
+    // to brute-force rather than returning phantom index results.
+    try {
+      for (const id of validatedIds) {
+        await this.searchEngine.removeVectorFromIndex(id);
+      }
+    } catch (error) {
+      this.searchEngine.markIndexDirty();
+      log.error('Index update failed during deleteMany — index marked dirty', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
 
     return count;
@@ -745,7 +786,17 @@ export class VectorDB {
   }
 
   /**
-   * Update multiple vectors
+   * Update multiple vectors.
+   *
+   * **Atomicity model — partial success with index safety:**
+   * Storage updates are applied per vector inside IndexedDB transactions
+   * (chunked by `batchSize`). Vectors whose updates fail are recorded in the
+   * returned error list; the caller can inspect `succeeded` / `failed` counts
+   * to determine the final storage state. The HNSW index is rebuilt from
+   * storage after all updates are applied so it reflects the final storage
+   * state. If the index rebuild fails, the index is marked dirty and future
+   * indexed searches fall back to brute-force until {@link rebuildIndex} is
+   * called explicitly.
    */
   async updateBatch(
     updates: Array<{
@@ -786,7 +837,18 @@ export class VectorDB {
     });
 
     const result = await this.storage.updateBatch(processedUpdates, options);
-    await this.searchEngine.rebuildIndex({ loadFromCache: false });
+
+    // Rebuild the index from the post-update storage state.
+    // If rebuild fails, mark dirty so future searches fall back to brute-force.
+    try {
+      await this.searchEngine.rebuildIndex({ loadFromCache: false });
+    } catch (error) {
+      this.searchEngine.markIndexDirty();
+      log.error('Index rebuild failed after updateBatch — index marked dirty', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     return result;
   }

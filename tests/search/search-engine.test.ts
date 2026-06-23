@@ -1115,4 +1115,106 @@ describe('SearchEngine', () => {
       expect(results[0]!.id).toBe('a');
     });
   });
+
+  // -----------------------------------------------------------------------
+  // Index dirty flag — mutation atomicity and recovery semantics
+  // -----------------------------------------------------------------------
+  describe('index dirty flag', () => {
+    it('should not be dirty on construction', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      expect(engine.isIndexDirty()).toBe(false);
+    });
+
+    it('should mark the index as dirty via markIndexDirty()', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      engine.markIndexDirty();
+
+      expect(engine.isIndexDirty()).toBe(true);
+    });
+
+    it('should fall back to brute-force when index is dirty', async () => {
+      const storage = await createMockStorage([
+        makeVector('a', [1, 0, 0, 0]),
+        makeVector('b', [0, 1, 0, 0]),
+      ]);
+
+      const engine = new SearchEngine(storage, 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      // Populate the HNSW index with only vector 'a' to simulate a partial/stale index.
+      await engine.addVectorToIndex(makeVector('a', [1, 0, 0, 0]));
+
+      // Mark dirty — indexed search must be suppressed.
+      engine.markIndexDirty();
+
+      // Brute-force search sees both vectors; stale HNSW (only 'a') is skipped.
+      const results = await engine.search(new Float32Array([0, 1, 0, 0]), 10);
+
+      const ids = results.map((r) => r.id);
+      expect(ids).toContain('a');
+      expect(ids).toContain('b');
+    });
+
+    it('should clear the dirty flag after a successful rebuildIndex()', async () => {
+      const storage = await createMockStorage([makeVector('a', [1, 0, 0, 0])]);
+
+      const engine = new SearchEngine(storage, 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      engine.markIndexDirty();
+      expect(engine.isIndexDirty()).toBe(true);
+
+      await engine.rebuildIndex({ loadFromCache: false });
+
+      expect(engine.isIndexDirty()).toBe(false);
+    });
+
+    it('should resume indexed search after rebuildIndex() clears the dirty flag', async () => {
+      const storage = await createMockStorage([
+        makeVector('a', [1, 0, 0, 0]),
+        makeVector('b', [0, 1, 0, 0]),
+      ]);
+
+      const engine = new SearchEngine(storage, 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      // Mark dirty and rebuild — index should now match storage.
+      engine.markIndexDirty();
+      await engine.rebuildIndex({ loadFromCache: false });
+
+      expect(engine.isIndexDirty()).toBe(false);
+
+      // Both vectors reachable after rebuild.
+      const results = await engine.search(new Float32Array([1, 0, 0, 0]), 10);
+      const ids = results.map((r) => r.id);
+      expect(ids).toContain('a');
+      expect(ids).toContain('b');
+    });
+
+    it('should not be dirty when index is disabled', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: false,
+        useWorkers: false,
+      });
+
+      // markIndexDirty has no adverse effect when index is disabled.
+      engine.markIndexDirty();
+      // Search still works via brute-force — dirty flag is set but irrelevant.
+      expect(engine.isIndexDirty()).toBe(true);
+    });
+  });
 });
