@@ -105,5 +105,3 @@ repomix-output.xml
 .env.local
 .env.*.local
 
-requirements
-REQUIREMENTS.md
