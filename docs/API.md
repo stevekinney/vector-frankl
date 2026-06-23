@@ -748,6 +748,90 @@ await pool.parallelCompress(
 ): Promise<CompressedVector[]>
 ```
 
+### SharedMemoryManager
+
+Zero-copy shared memory for vector data between the main thread and Web Workers.
+
+> [!WARNING] Requires cross-origin isolation
+> `SharedMemoryManager` uses `SharedArrayBuffer`, which is only available when the page is served with `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. Construction throws when `SharedArrayBuffer` is undefined. Always check `self.crossOriginIsolated` before instantiating. See [docs/shared-memory.md](./shared-memory.md) for setup instructions and fallback guidance.
+
+```typescript
+import { SharedMemoryManager } from 'vector-frankl/workers';
+
+if (self.crossOriginIsolated) {
+  const memory = new SharedMemoryManager({
+    maxPoolSize: 100 * 1024 * 1024, // 100 MB pool
+    initialBufferSize: 1024 * 1024, // 1 MB per allocation
+    alignment: 8,
+    enableStats: true,
+  });
+}
+```
+
+#### Config Options
+
+```typescript
+interface SharedMemoryConfig {
+  /** Maximum memory pool size in bytes (default: 100 MB) */
+  maxPoolSize?: number;
+  /** Initial buffer size for new allocations (default: 1 MB) */
+  initialBufferSize?: number;
+  /** Memory alignment for optimal performance (default: 8) */
+  alignment?: number;
+  /** Enable memory statistics tracking (default: true) */
+  enableStats?: boolean;
+}
+```
+
+#### allocateVectorBuffer()
+
+Allocate a shared buffer sized for a given number of vectors.
+
+```typescript
+const { buffer, layout } = memory.allocateVectorBuffer(
+  vectorCount,   // number of vectors
+  dimension,     // vector dimension
+  bytesPerElement // default: 4 (Float32)
+);
+```
+
+#### releaseBuffer()
+
+Return a buffer to the pool for reuse.
+
+```typescript
+memory.releaseBuffer(buffer);
+```
+
+#### sharedMemoryBatchSearch()
+
+Similarity search over shared-memory buffers. This is an **experimental** method. Prefer `WorkerPool.parallelSearch()` for production use.
+
+```typescript
+const results = await memory.sharedMemoryBatchSearch(
+  vectors,  // Float32Array[]
+  queries,  // Float32Array[]
+  k,        // top-k results per query
+  'cosine', // DistanceMetric
+  { chunkSize: 1000, normalize: false },
+);
+```
+
+#### getStats()
+
+```typescript
+const stats = memory.getStats();
+// { totalAllocated, totalUsed, activeBlocks, poolHits, poolMisses, fragmentationRatio }
+```
+
+#### cleanup()
+
+Remove pool entries older than `maxAge` milliseconds that are not in use.
+
+```typescript
+memory.cleanup(60_000); // evict blocks idle for more than 60 seconds
+```
+
 ## Performance Acceleration
 
 ### SIMD Operations

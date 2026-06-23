@@ -309,6 +309,31 @@ const pool = new WorkerPool({
 const results = await pool.parallelSimilaritySearch(vectors, query, k, 'cosine');
 ```
 
+#### Shared Memory (Experimental)
+
+`SharedMemoryManager` uses `SharedArrayBuffer` to share vector data between the main thread and workers without copying. This requires your server to send cross-origin isolation headers on every document response:
+
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Always check `self.crossOriginIsolated` before constructing `SharedMemoryManager`—it throws when `SharedArrayBuffer` is unavailable. `WorkerPool` (structured-clone transfer) works without these headers and is the production-supported fallback.
+
+```typescript
+import { SharedMemoryManager } from 'vector-frankl/workers';
+
+if (self.crossOriginIsolated) {
+  const memory = new SharedMemoryManager();
+  const results = await memory.sharedMemoryBatchSearch(vectors, queries, k, 'cosine');
+} else {
+  // WorkerPool works without cross-origin isolation
+  const results = await pool.parallelSimilaritySearch(vectors, query, k, 'cosine');
+}
+```
+
+See [docs/shared-memory.md](docs/shared-memory.md) for server configuration examples (Express, Nginx, Vercel, Netlify) and a detailed explanation of fallback behavior.
+
 ### Debug & Profiling
 
 ```typescript
