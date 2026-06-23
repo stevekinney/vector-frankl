@@ -179,6 +179,10 @@ export interface SearchOptions {
   includeMetadata?: boolean;
   timeout?: number;
   signal?: VectorAbortSignal;
+  /** Maximum number of results to return. Capped at 50,000 to prevent memory exhaustion. */
+  maxResults?: number;
+  /** Batch size for chunked operations. Capped at 50,000 to prevent memory exhaustion. */
+  batchSize?: number;
 }
 
 /**

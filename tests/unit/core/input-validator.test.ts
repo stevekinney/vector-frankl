@@ -830,22 +830,22 @@ describe('InputValidator', () => {
       );
     });
 
-    test('rejects maxResults as it is not a SearchOptions key', () => {
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 100 })).toThrow(
-        'Unknown search option: "maxResults"',
-      );
+    test('accepts maxResults within bounds (documented bounded key)', () => {
+      expect(InputValidator.validateSearchOptions({ maxResults: 100 })).toEqual({
+        maxResults: 100,
+      });
     });
 
-    test('throws when batchSize is supplied (not a SearchOptions key)', () => {
-      expect(() => InputValidator.validateSearchOptions({ batchSize: 500 })).toThrow(
-        'Unknown search option: "batchSize"',
-      );
+    test('accepts batchSize within bounds (documented bounded key)', () => {
+      expect(InputValidator.validateSearchOptions({ batchSize: 500 })).toEqual({
+        batchSize: 500,
+      });
     });
 
-    test('throws when maxResults is supplied (not a SearchOptions key)', () => {
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 100 })).toThrow(
-        'Unknown search option: "maxResults"',
-      );
+    test('rejects non-numeric maxResults', () => {
+      expect(() =>
+        InputValidator.validateSearchOptions({ maxResults: 'lots' }),
+      ).toThrow('maxResults must be a positive finite number');
     });
 
     test('rejects unknown option keys', () => {

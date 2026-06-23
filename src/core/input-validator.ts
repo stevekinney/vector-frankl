@@ -378,7 +378,12 @@ export class InputValidator {
     'includeVector',
     'timeout',
     'signal',
+    'maxResults',
+    'batchSize',
   ]);
+
+  /** Upper bound on result/batch counts; rejects values that would invite memory exhaustion. */
+  private static readonly MAX_SEARCH_RESULT_LIMIT = 50_000;
 
   /**
    * Validate search options against the closed `SearchOptions` contract.
@@ -429,6 +434,18 @@ export class InputValidator {
             typeof (value as Record<string, unknown>)['aborted'] !== 'boolean'
           ) {
             throw new Error('signal must be an object with an aborted boolean property');
+          }
+          validated[key] = value;
+          break;
+        case 'maxResults':
+        case 'batchSize':
+          if (typeof value !== 'number' || !isFinite(value) || value <= 0) {
+            throw new Error(`${key} must be a positive finite number`);
+          }
+          if (value > this.MAX_SEARCH_RESULT_LIMIT) {
+            throw new Error(
+              `${key} cannot exceed ${this.MAX_SEARCH_RESULT_LIMIT.toLocaleString('en-US')}`,
+            );
           }
           validated[key] = value;
           break;
