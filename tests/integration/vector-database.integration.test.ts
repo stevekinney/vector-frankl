@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { VectorDB, VectorFrankl, SearchEngine } from '@/index.js';
 import { VectorDatabase } from '@/core/database.js';
 import type { SearchOptions, StorageAdapter } from '@/core/types.js';
+import {
+  assertInvariants,
+  type VectorDBInternals,
+} from '@/test/helpers/storage-index-invariants.js';
 import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
 
 describe('Vector Database Integration Tests', () => {
@@ -466,6 +470,9 @@ describe('Vector Database Integration Tests', () => {
       expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
         [],
       );
+
+      // Invariant: after clear(), index and storage must both be empty.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
 
     it('should delete persisted indexes when clearing while indexing is disabled', async () => {
@@ -481,6 +488,9 @@ describe('Vector Database Integration Tests', () => {
       expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
         [],
       );
+
+      // Invariant: after clear() + re-enable indexing, index and storage must agree.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
 
     it('should delete persisted indexes when clearing from a non-indexed instance', async () => {
@@ -508,6 +518,9 @@ describe('Vector Database Integration Tests', () => {
       expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
         [],
       );
+
+      // Invariant: after clear() from non-indexed instance + rebuild, storage and index agree.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
 
     it('should force-rebuild cached indexes after metadata updates', async () => {
@@ -525,6 +538,9 @@ describe('Vector Database Integration Tests', () => {
       });
       expect(persistedResults).toHaveLength(1);
       expect(persistedResults[0]!.metadata).toEqual({ label: 'new' });
+
+      // Invariant: after updateMetadata, index and storage must agree on membership.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
 
     it('should force-rebuild cached indexes after batch vector updates', async () => {
@@ -563,6 +579,9 @@ describe('Vector Database Integration Tests', () => {
       );
       expect(persistedUpdatedResult?.metadata).toEqual({ label: 'updated' });
       expect(Array.from(persistedUpdatedResult!.vector!)).toEqual([0, 1]);
+
+      // Invariant: after updateBatch, index and storage must agree on membership.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
   });
 
