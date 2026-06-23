@@ -97,7 +97,7 @@ function installMockWorker(): void {
   workerConstructorThrows = false;
   workerConstructorMode = 'echo';
 
-  (global as unknown as Record<string, unknown>)["Worker"] = class extends MockWorker {
+  (global as unknown as Record<string, unknown>)['Worker'] = class extends MockWorker {
     constructor(url: string, options?: WorkerOptions) {
       super(url, options);
       if (workerConstructorThrows) {
@@ -110,7 +110,7 @@ function installMockWorker(): void {
 }
 
 function removeMockWorker(): void {
-  delete (global as unknown as Record<string, unknown>)["Worker"];
+  delete (global as unknown as Record<string, unknown>)['Worker'];
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +141,9 @@ describe('Worker lifecycle', () => {
     it('partial construction: succeeds with fewer workers than requested', async () => {
       // First worker throws, second succeeds
       let callCount = 0;
-      (global as unknown as Record<string, unknown>)["Worker"] = class extends MockWorker {
+      (global as unknown as Record<string, unknown>)['Worker'] = class extends (
+        MockWorker
+      ) {
         constructor(url: string, options?: WorkerOptions) {
           super(url, options);
           callCount++;
@@ -283,7 +285,9 @@ describe('Worker lifecycle', () => {
 
     it('can execute new tasks after a timeout', async () => {
       let callCount = 0;
-      (global as unknown as Record<string, unknown>)["Worker"] = class extends MockWorker {
+      (global as unknown as Record<string, unknown>)['Worker'] = class extends (
+        MockWorker
+      ) {
         constructor(url: string, options?: WorkerOptions) {
           super(url, options);
           this.mode = 'echo';
@@ -418,7 +422,9 @@ describe('Worker lifecycle', () => {
 
   describe('serialization error', () => {
     it('rejects when postMessage throws due to a non-transferable payload', async () => {
-      (global as unknown as Record<string, unknown>)["Worker"] = class extends MockWorker {
+      (global as unknown as Record<string, unknown>)['Worker'] = class extends (
+        MockWorker
+      ) {
         constructor(url: string, options?: WorkerOptions) {
           super(url, options);
           this.mode = 'echo';

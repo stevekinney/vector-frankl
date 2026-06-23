@@ -108,7 +108,11 @@ export class MemoryProfiler {
     }
 
     // Browser with performance.memory (Chrome DevTools / some Chromium builds)
-    const perfMemory = (performance as unknown as { memory?: { usedJSHeapSize: number; totalJSHeapSize: number } }).memory;
+    const perfMemory = (
+      performance as unknown as {
+        memory?: { usedJSHeapSize: number; totalJSHeapSize: number };
+      }
+    ).memory;
     if (perfMemory) {
       return {
         heapUsed: perfMemory.usedJSHeapSize,

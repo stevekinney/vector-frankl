@@ -239,7 +239,12 @@ describe.skipIf(!integrationMode || integrationSkip)(
         const values = Float32Array.from({ length: dim }, (_, i) => i * 0.0001);
         const magnitude = Math.sqrt(values.reduce((s, v) => s + v * v, 0));
 
-        await adapter.put({ id: 'large-vec', vector: values, magnitude, timestamp: Date.now() });
+        await adapter.put({
+          id: 'large-vec',
+          vector: values,
+          magnitude,
+          timestamp: Date.now(),
+        });
 
         const retrieved = await adapter.get('large-vec');
         expect(retrieved.vector).toHaveLength(dim);
@@ -297,8 +302,18 @@ describe.skipIf(!integrationMode || integrationSkip)(
       const adapter = freshAdapter();
       await adapter.init();
 
-      await adapter.put({ id: 'obj-1', vector: new Float32Array([1]), magnitude: 1, timestamp: 0 });
-      await adapter.put({ id: 'obj-2', vector: new Float32Array([2]), magnitude: 2, timestamp: 0 });
+      await adapter.put({
+        id: 'obj-1',
+        vector: new Float32Array([1]),
+        magnitude: 1,
+        timestamp: 0,
+      });
+      await adapter.put({
+        id: 'obj-2',
+        vector: new Float32Array([2]),
+        magnitude: 2,
+        timestamp: 0,
+      });
       expect(await adapter.count()).toBe(2);
 
       await adapter.destroy();
@@ -326,7 +341,10 @@ describe('concurrent writes — single-writer contract', () => {
     // Within one adapter instance the promise-based mutex serialises all
     // manifest updates, so every ID must survive.
     objectStore.clear();
-    const adapter = new S3StorageAdapter({ bucket: 'test-bucket', prefix: 'concurrent/' });
+    const adapter = new S3StorageAdapter({
+      bucket: 'test-bucket',
+      prefix: 'concurrent/',
+    });
     await adapter.init();
 
     const ids = Array.from({ length: 20 }, (_, i) => `concurrent-${i}`);

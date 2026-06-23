@@ -860,7 +860,10 @@ describe('Vector Database Integration Tests', () => {
       it('rejects invalid metadata (array instead of object)', () => {
         const vector = new Float32Array(dimension).fill(0.5);
         expect(
-          db.addVector('bad-meta', vector, [1, 2, 3] as unknown as Record<string, unknown>),
+          db.addVector('bad-meta', vector, [1, 2, 3] as unknown as Record<
+            string,
+            unknown
+          >),
         ).rejects.toThrow('Metadata must be an object');
       });
 
@@ -913,8 +916,12 @@ describe('Vector Database Integration Tests', () => {
     describe('VectorDB.search', () => {
       it('rejects a non-positive k value', () => {
         const vector = new Float32Array(dimension).fill(0.5);
-        expect(db.search(vector, 0)).rejects.toThrow('Search parameter k must be positive');
-        expect(db.search(vector, -1)).rejects.toThrow('Search parameter k must be positive');
+        expect(db.search(vector, 0)).rejects.toThrow(
+          'Search parameter k must be positive',
+        );
+        expect(db.search(vector, -1)).rejects.toThrow(
+          'Search parameter k must be positive',
+        );
       });
 
       it('rejects a non-integer k value', () => {
@@ -947,18 +954,24 @@ describe('Vector Database Integration Tests', () => {
     describe('VectorDB.searchRange', () => {
       it('rejects a negative maxDistance', () => {
         const vector = new Float32Array(dimension).fill(0.5);
-        expect(db.searchRange(vector, -0.1)).rejects.toThrow('Distance must be non-negative');
+        expect(db.searchRange(vector, -0.1)).rejects.toThrow(
+          'Distance must be non-negative',
+        );
       });
 
       it('rejects a non-finite maxDistance', () => {
         const vector = new Float32Array(dimension).fill(0.5);
-        expect(db.searchRange(vector, Infinity)).rejects.toThrow('Distance must be finite');
+        expect(db.searchRange(vector, Infinity)).rejects.toThrow(
+          'Distance must be finite',
+        );
         expect(db.searchRange(vector, NaN)).rejects.toThrow('Distance must be finite');
       });
 
       it('rejects a maxDistance exceeding 1000', () => {
         const vector = new Float32Array(dimension).fill(0.5);
-        expect(db.searchRange(vector, 1001)).rejects.toThrow('Distance cannot exceed 1000');
+        expect(db.searchRange(vector, 1001)).rejects.toThrow(
+          'Distance cannot exceed 1000',
+        );
       });
 
       it('rejects a query vector with the wrong dimension', () => {
@@ -990,10 +1003,10 @@ describe('Vector Database Integration Tests', () => {
       it('rejects invalid metadata (array)', async () => {
         await db.addVector('update-meta-test', new Float32Array(dimension).fill(0.5));
         expect(
-          db.updateMetadata(
-            'update-meta-test',
-            ['invalid'] as unknown as Record<string, unknown>,
-          ),
+          db.updateMetadata('update-meta-test', ['invalid'] as unknown as Record<
+            string,
+            unknown
+          >),
         ).rejects.toThrow('Metadata must be an object');
       });
 
@@ -1013,7 +1026,9 @@ describe('Vector Database Integration Tests', () => {
       });
 
       it('rejects when IDs array contains duplicates', () => {
-        expect(db.getMany(['id1', 'id1'])).rejects.toThrow('Duplicate vector ID found: id1');
+        expect(db.getMany(['id1', 'id1'])).rejects.toThrow(
+          'Duplicate vector ID found: id1',
+        );
       });
 
       it('rejects when IDs array contains an invalid ID', () => {
@@ -1078,7 +1093,9 @@ describe('Vector Database Integration Tests', () => {
 
     describe('VectorFrankl namespace validation', () => {
       it('rejects creating a namespace with a reserved name', () => {
-        expect(vectorFrankl.createNamespace('root', { dimension: 128 })).rejects.toThrow();
+        expect(
+          vectorFrankl.createNamespace('root', { dimension: 128 }),
+        ).rejects.toThrow();
       });
 
       it('rejects creating a namespace whose name contains internal separator', () => {
@@ -1124,7 +1141,9 @@ describe('Vector Database Integration Tests', () => {
 
       it('rejects addVector with empty ID (delegates to VectorDB)', () => {
         const vector = new Float32Array(64).fill(0.5);
-        expect(namespace.addVector('', vector)).rejects.toThrow('Vector ID cannot be empty');
+        expect(namespace.addVector('', vector)).rejects.toThrow(
+          'Vector ID cannot be empty',
+        );
       });
 
       it('rejects search with wrong-dimension vector (delegates to VectorDB)', () => {
@@ -1146,10 +1165,10 @@ describe('Vector Database Integration Tests', () => {
       it('rejects updateMetadata with array metadata (delegates to VectorDB)', async () => {
         await namespace.addVector('valid-id', new Float32Array(64).fill(0.5));
         expect(
-          namespace.updateMetadata(
-            'valid-id',
-            ['not-an-object'] as unknown as Record<string, unknown>,
-          ),
+          namespace.updateMetadata('valid-id', ['not-an-object'] as unknown as Record<
+            string,
+            unknown
+          >),
         ).rejects.toThrow('Metadata must be an object');
       });
 

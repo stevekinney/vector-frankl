@@ -843,9 +843,9 @@ describe('InputValidator', () => {
     });
 
     test('rejects non-numeric maxResults', () => {
-      expect(() =>
-        InputValidator.validateSearchOptions({ maxResults: 'lots' }),
-      ).toThrow('maxResults must be a positive finite number');
+      expect(() => InputValidator.validateSearchOptions({ maxResults: 'lots' })).toThrow(
+        'maxResults must be a positive finite number',
+      );
     });
 
     test('rejects unknown option keys', () => {
@@ -953,9 +953,9 @@ describe('InputValidator', () => {
 
       test('rejects batch of 10,000 items with default limit', () => {
         const hugeBatch = new Array(10_000).fill(1);
-        expect(() =>
-          InputValidator.validateBatchData(hugeBatch, (item) => item),
-        ).toThrow('Batch operation cannot exceed 1000 items');
+        expect(() => InputValidator.validateBatchData(hugeBatch, (item) => item)).toThrow(
+          'Batch operation cannot exceed 1000 items',
+        );
       });
 
       test('rejects batch exceeding a custom limit', () => {
@@ -1010,9 +1010,9 @@ describe('InputValidator', () => {
       });
 
       test('rejects batchSize exceeding 50,000 to prevent memory exhaustion', () => {
-        expect(() =>
-          InputValidator.validateSearchOptions({ batchSize: 50_001 }),
-        ).toThrow('batchSize cannot exceed 50,000');
+        expect(() => InputValidator.validateSearchOptions({ batchSize: 50_001 })).toThrow(
+          'batchSize cannot exceed 50,000',
+        );
       });
     });
 

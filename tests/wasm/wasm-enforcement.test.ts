@@ -118,8 +118,14 @@ describe('integrity', () => {
   // A minimal valid WASM module (magic + version only — no sections, no code).
   // Used as a known-good byte sequence for hash computation.
   const MINIMAL_WASM_MODULE = new Uint8Array([
-    0x00, 0x61, 0x73, 0x6d, // magic: \0asm
-    0x01, 0x00, 0x00, 0x00, // version: 1
+    0x00,
+    0x61,
+    0x73,
+    0x6d, // magic: \0asm
+    0x01,
+    0x00,
+    0x00,
+    0x00, // version: 1
   ]);
 
   /** Compute SHA-256 hex string via the Web Crypto API. */

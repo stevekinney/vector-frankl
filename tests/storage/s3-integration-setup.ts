@@ -53,7 +53,10 @@ interface S3Config {
  * list endpoint. Returns `true` when the server responds (even with an auth
  * error—that still means the service is up), `false` on connection failure.
  */
-async function probeS3(endpoint: string, _config: Omit<S3Config, 'endpoint'>): Promise<boolean> {
+async function probeS3(
+  endpoint: string,
+  _config: Omit<S3Config, 'endpoint'>,
+): Promise<boolean> {
   try {
     const url = `${endpoint}/`;
     const controller = new AbortController();
@@ -196,7 +199,9 @@ async function resolveS3Config(): Promise<S3Config | null> {
       await ensureBucket(config);
       return config;
     }
-    console.warn(`[s3-integration-setup] S3_ENDPOINT=${envEndpoint} is not reachable — skipping.`);
+    console.warn(
+      `[s3-integration-setup] S3_ENDPOINT=${envEndpoint} is not reachable — skipping.`,
+    );
     return null;
   }
 

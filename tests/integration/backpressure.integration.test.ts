@@ -120,7 +120,11 @@ describe('Backpressure and large-batch memory behavior', () => {
 
       // Construct a simple abort signal that fires after the first progress event
       let aborted = false;
-      const signal = { get aborted() { return aborted; } };
+      const signal = {
+        get aborted() {
+          return aborted;
+        },
+      };
 
       let abortError: Error | null = null;
 

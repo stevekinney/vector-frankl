@@ -1087,7 +1087,10 @@ describe('SearchEngine', () => {
         makeVector('dog', [0.9, 0.1, 0], { animal: 'dog' }),
         makeVector('bird', [0, 0, 1], { animal: 'bird' }),
       ];
-      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
       for (const v of vectors) {
         await adapter.put(v);
       }
@@ -1230,7 +1233,10 @@ describe('SearchEngine', () => {
       );
 
       // Path A: adapter with filteredScan (MemoryStorageAdapter)
-      const adapterA = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const adapterA = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
       for (const v of vectors) {
         await adapterA.put(v);
       }

@@ -106,7 +106,9 @@ test.describe('WebGPU Real-Browser Tests', () => {
         const adapter = await navigator.gpu!.requestAdapter();
         if (!adapter) return { ok: false, error: 'requestAdapter returned null' };
 
-        const info = await (adapter as unknown as { requestAdapterInfo?: () => Promise<unknown> }).requestAdapterInfo?.();
+        const info = await (
+          adapter as unknown as { requestAdapterInfo?: () => Promise<unknown> }
+        ).requestAdapterInfo?.();
         return {
           ok: true,
           hasLimits: typeof (adapter as any).limits === 'object',
@@ -279,7 +281,9 @@ test.describe('WebGPU Real-Browser Tests', () => {
         if (!adapter) return { ok: false, error: 'No adapter' };
         const device = await adapter.requestDevice();
 
-        const maxSize = (device as unknown as { limits: { maxStorageBufferBindingSize: number } }).limits.maxStorageBufferBindingSize;
+        const maxSize = (
+          device as unknown as { limits: { maxStorageBufferBindingSize: number } }
+        ).limits.maxStorageBufferBindingSize;
         device.destroy();
 
         return { ok: true, maxSize };
@@ -310,7 +314,9 @@ test.describe('WebGPU Real-Browser Tests', () => {
         );
 
         const deviceHasFeature = hasTimestampQuery
-          ? ((device as unknown as { features?: { has(n: string): boolean } }).features?.has('timestamp-query') ?? false)
+          ? ((
+              device as unknown as { features?: { has(n: string): boolean } }
+            ).features?.has('timestamp-query') ?? false)
           : true; // If we didn't ask for it, the device is still valid.
 
         device.destroy();

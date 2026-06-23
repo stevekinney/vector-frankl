@@ -20,30 +20,30 @@ Pre-release identifiers (`-alpha.N`, `-beta.N`, `-rc.N`) signal that the API is 
 
 ### Browsers
 
-| Runtime | Minimum Version | Notes |
-|---------|----------------|-------|
-| Chrome / Edge (Chromium) | 90 | Full support including SIMD and WebGPU where available |
-| Firefox | 90 | Full support; WebGPU behind flag until broadly enabled |
-| Safari / WebKit | 15.4 | Full support; SharedArrayBuffer requires COOP/COEP headers |
+| Runtime                  | Minimum Version | Notes                                                      |
+| ------------------------ | --------------- | ---------------------------------------------------------- |
+| Chrome / Edge (Chromium) | 90              | Full support including SIMD and WebGPU where available     |
+| Firefox                  | 90              | Full support; WebGPU behind flag until broadly enabled     |
+| Safari / WebKit          | 15.4            | Full support; SharedArrayBuffer requires COOP/COEP headers |
 
 IndexedDB, Web Workers, and `crypto.subtle` are required. Environments that disable these APIs (certain private-browsing modes, locked-down WebViews) will not work.
 
 ### Server-Side Runtimes
 
-| Runtime | Minimum Version | Storage Adapter |
-|---------|----------------|----------------|
-| Bun | 1.3.0 | `FileSystemAdapter`, `SQLiteAdapter`, in-memory |
-| Node.js | 18.0.0 | `FileSystemAdapter`, `LevelDBAdapter`, `LMDBAdapter`, in-memory |
+| Runtime | Minimum Version | Storage Adapter                                                 |
+| ------- | --------------- | --------------------------------------------------------------- |
+| Bun     | 1.3.0           | `FileSystemAdapter`, `SQLiteAdapter`, in-memory                 |
+| Node.js | 18.0.0          | `FileSystemAdapter`, `LevelDBAdapter`, `LMDBAdapter`, in-memory |
 
 Node.js support is provided on a best-effort basis. Bun is the primary server-side target and receives the most testing.
 
 ## Support Window
 
-| Release track | Active support | Security fixes only |
-|---------------|---------------|-------------------|
-| Current stable MAJOR | Until next MAJOR | 12 months after next MAJOR |
-| Previous stable MAJOR | 6 months after new MAJOR | Until end of security window |
-| Pre-release (`alpha`, `beta`, `rc`) | None—upgrade to stable | None |
+| Release track                       | Active support           | Security fixes only          |
+| ----------------------------------- | ------------------------ | ---------------------------- |
+| Current stable MAJOR                | Until next MAJOR         | 12 months after next MAJOR   |
+| Previous stable MAJOR               | 6 months after new MAJOR | Until end of security window |
+| Pre-release (`alpha`, `beta`, `rc`) | None—upgrade to stable   | None                         |
 
 A "supported" release receives bug fixes and security patches. An "end of life" release receives nothing; users are expected to upgrade.
 

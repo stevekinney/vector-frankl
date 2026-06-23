@@ -197,7 +197,9 @@ describe('acceleration: WASMOperations (experimental)', () => {
     const ops = new WASMOperations();
     // init() is the real method; initialize() must not exist
     expect(typeof ops.init).toBe('function');
-    expect(typeof (ops as unknown as Record<string, unknown>)['initialize']).not.toBe('function');
+    expect(typeof (ops as unknown as Record<string, unknown>)['initialize']).not.toBe(
+      'function',
+    );
     await ops.init(); // must not throw
   });
 });

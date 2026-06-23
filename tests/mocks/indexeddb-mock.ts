@@ -86,7 +86,12 @@ export class MockIDBKeyRange {
     return new MockIDBKeyRange(undefined, upper, false, open);
   }
 
-  static bound(lower: string, upper: string, lowerOpen = false, upperOpen = false): MockIDBKeyRange {
+  static bound(
+    lower: string,
+    upper: string,
+    lowerOpen = false,
+    upperOpen = false,
+  ): MockIDBKeyRange {
     return new MockIDBKeyRange(lower, upper, lowerOpen, upperOpen);
   }
 
@@ -198,7 +203,10 @@ export class MockIDBObjectStore {
     return new MockIDBRequest(value === undefined ? null : value);
   }
 
-  getAll(query?: IDBValidKey | IDBKeyRange | null, count?: number): MockIDBRequest<unknown[]> {
+  getAll(
+    query?: IDBValidKey | IDBKeyRange | null,
+    count?: number,
+  ): MockIDBRequest<unknown[]> {
     let entries = Array.from(this.data.entries());
 
     // Filter by key range if a MockIDBKeyRange is provided

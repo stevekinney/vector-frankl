@@ -218,7 +218,10 @@ describe('invariant helpers detect corruption', () => {
   });
 
   it('returns valid:true without throwing when indexing is disabled', async () => {
-    db = new VectorDB(`${DB_NAME}-noindex`, DIM, { useIndex: false, autoEviction: false });
+    db = new VectorDB(`${DB_NAME}-noindex`, DIM, {
+      useIndex: false,
+      autoEviction: false,
+    });
     await db.init();
 
     await db.addVector('v1', makeVector([1, 0, 0, 0]));

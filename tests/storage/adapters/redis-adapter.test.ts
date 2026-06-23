@@ -193,7 +193,12 @@ describe.skipIf(!integrationMode || integrationSkip)(
       await b.init();
 
       try {
-        await a.put({ id: 'shared-id', vector: new Float32Array([1]), magnitude: 1, timestamp: 0 });
+        await a.put({
+          id: 'shared-id',
+          vector: new Float32Array([1]),
+          magnitude: 1,
+          timestamp: 0,
+        });
 
         // Adapter B must not see the vector written by adapter A.
         expect(await b.exists('shared-id')).toBe(false);
@@ -280,8 +285,18 @@ describe.skipIf(!integrationMode || integrationSkip)(
       const adapter = freshAdapter();
       await adapter.init();
 
-      await adapter.put({ id: 'k1', vector: new Float32Array([1]), magnitude: 1, timestamp: 0 });
-      await adapter.put({ id: 'k2', vector: new Float32Array([2]), magnitude: 2, timestamp: 0 });
+      await adapter.put({
+        id: 'k1',
+        vector: new Float32Array([1]),
+        magnitude: 1,
+        timestamp: 0,
+      });
+      await adapter.put({
+        id: 'k2',
+        vector: new Float32Array([2]),
+        magnitude: 2,
+        timestamp: 0,
+      });
       expect(await adapter.count()).toBe(2);
 
       await adapter.destroy();

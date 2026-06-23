@@ -16,7 +16,11 @@ function normalize(v: Float32Array): Float32Array {
   return out;
 }
 
-function computeDistance(a: Float32Array, b: Float32Array, metric: DistanceMetric): number {
+function computeDistance(
+  a: Float32Array,
+  b: Float32Array,
+  metric: DistanceMetric,
+): number {
   switch (metric) {
     case 'cosine': {
       const na = normalize(a);
@@ -442,7 +446,12 @@ describe('SharedMemoryManager', () => {
       ];
       const queries = [new Float32Array([1, 0, 0]), new Float32Array([0, 1, 0])];
 
-      const results = await manager.sharedMemoryBatchSearch(vectors, queries, 2, 'cosine');
+      const results = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        2,
+        'cosine',
+      );
 
       // Must return one result set per query
       expect(results.length).toBe(queries.length);
@@ -479,7 +488,12 @@ describe('SharedMemoryManager', () => {
       const queries = [new Float32Array([1, 0.1]), new Float32Array([0.3, 0.7])];
       const k = 3;
 
-      const smResults = await manager.sharedMemoryBatchSearch(vectors, queries, k, 'cosine');
+      const smResults = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        k,
+        'cosine',
+      );
       expect(smResults.length).toBe(queries.length);
 
       for (let qi = 0; qi < queries.length; qi++) {
@@ -660,16 +674,24 @@ describe('SharedMemoryManager', () => {
       // 16-dimensional vectors
       const dim = 16;
       const seed = (i: number, j: number) => ((i * 7 + j * 13) % 17) / 17;
-      const vectors = Array.from({ length: 10 }, (_, i) =>
-        new Float32Array(Array.from({ length: dim }, (__, j) => seed(i, j))),
+      const vectors = Array.from(
+        { length: 10 },
+        (_, i) => new Float32Array(Array.from({ length: dim }, (__, j) => seed(i, j))),
       );
-      const queries = Array.from({ length: 3 }, (_, i) =>
-        new Float32Array(Array.from({ length: dim }, (__, j) => seed(i + 10, j))),
+      const queries = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new Float32Array(Array.from({ length: dim }, (__, j) => seed(i + 10, j))),
       );
       const k = 5;
 
       for (const metric of ['cosine', 'euclidean', 'manhattan'] as DistanceMetric[]) {
-        const smResults = await manager.sharedMemoryBatchSearch(vectors, queries, k, metric);
+        const smResults = await manager.sharedMemoryBatchSearch(
+          vectors,
+          queries,
+          k,
+          metric,
+        );
 
         expect(smResults.length).toBe(queries.length);
 
@@ -712,9 +734,15 @@ describe('SharedMemoryManager', () => {
       ];
       const k = 2;
 
-      const smResults = await manager.sharedMemoryBatchSearch(vectors, queries, k, 'cosine', {
-        chunkSize: 2,
-      });
+      const smResults = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        k,
+        'cosine',
+        {
+          chunkSize: 2,
+        },
+      );
 
       expect(smResults.length).toBe(queries.length);
 
@@ -729,53 +757,53 @@ describe('SharedMemoryManager', () => {
     });
   });
 
-    describe('Worker buffer memory limit regression tests', () => {
-      it('rejects allocation exceeding the configured pool memory limit', () => {
-        if (typeof SharedArrayBuffer === 'undefined') {
-          return;
-        }
+  describe('Worker buffer memory limit regression tests', () => {
+    it('rejects allocation exceeding the configured pool memory limit', () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
 
-        // Configure a tight 1 MB pool to verify the guard fires before allocation
-        const tightManager = new SharedMemoryManager({
-          maxPoolSize: 1 * 1024 * 1024, // 1 MB
-          enableStats: true,
-        });
-
-        // Requesting ~2 MB should exceed the 1 MB pool limit — rejected before SharedArrayBuffer is created
-        expect(() => {
-          tightManager.allocateVectorBuffer(1, 500_000); // 500k × 4 bytes = ~2 MB
-        }).toThrow('would exceed the pool memory limit');
+      // Configure a tight 1 MB pool to verify the guard fires before allocation
+      const tightManager = new SharedMemoryManager({
+        maxPoolSize: 1 * 1024 * 1024, // 1 MB
+        enableStats: true,
       });
 
-      it('rejects sequential allocations that cumulatively exceed the pool limit', () => {
-        if (typeof SharedArrayBuffer === 'undefined') {
-          return;
-        }
-
-        const tightManager = new SharedMemoryManager({
-          maxPoolSize: 2 * 1024 * 1024, // 2 MB
-          enableStats: true,
-        });
-
-        // First ~1 MB allocation fits
-        tightManager.allocateVectorBuffer(1, 250_000); // 250k × 4 bytes ≈ 1 MB
-
-        // Second ~1.5 MB allocation pushes total over 2 MB limit
-        expect(() => {
-          tightManager.allocateVectorBuffer(1, 375_000); // 375k × 4 bytes ≈ 1.5 MB
-        }).toThrow('would exceed the pool memory limit');
-      });
-
-      it('rejects allocation when the request alone exceeds the pool size', () => {
-        if (typeof SharedArrayBuffer === 'undefined') {
-          return;
-        }
-
-        // 1-byte pool (a nonsensically small limit) — any vector allocation must fail
-        const microManager = new SharedMemoryManager({ maxPoolSize: 1 });
-        expect(() => {
-          microManager.allocateVectorBuffer(1, 1); // 1×1×4 + header > 1 byte
-        }).toThrow('would exceed the pool memory limit');
-      });
+      // Requesting ~2 MB should exceed the 1 MB pool limit — rejected before SharedArrayBuffer is created
+      expect(() => {
+        tightManager.allocateVectorBuffer(1, 500_000); // 500k × 4 bytes = ~2 MB
+      }).toThrow('would exceed the pool memory limit');
     });
+
+    it('rejects sequential allocations that cumulatively exceed the pool limit', () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const tightManager = new SharedMemoryManager({
+        maxPoolSize: 2 * 1024 * 1024, // 2 MB
+        enableStats: true,
+      });
+
+      // First ~1 MB allocation fits
+      tightManager.allocateVectorBuffer(1, 250_000); // 250k × 4 bytes ≈ 1 MB
+
+      // Second ~1.5 MB allocation pushes total over 2 MB limit
+      expect(() => {
+        tightManager.allocateVectorBuffer(1, 375_000); // 375k × 4 bytes ≈ 1.5 MB
+      }).toThrow('would exceed the pool memory limit');
+    });
+
+    it('rejects allocation when the request alone exceeds the pool size', () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      // 1-byte pool (a nonsensically small limit) — any vector allocation must fail
+      const microManager = new SharedMemoryManager({ maxPoolSize: 1 });
+      expect(() => {
+        microManager.allocateVectorBuffer(1, 1); // 1×1×4 + header > 1 byte
+      }).toThrow('would exceed the pool memory limit');
+    });
+  });
 });

@@ -201,7 +201,11 @@ export function resolveExecutionPath(
     return 'webgpu';
   }
 
-  if (sharedMemoryAvailable && workersAvailable && candidateCount >= SHARED_MEMORY_SEARCH_THRESHOLD) {
+  if (
+    sharedMemoryAvailable &&
+    workersAvailable &&
+    candidateCount >= SHARED_MEMORY_SEARCH_THRESHOLD
+  ) {
     return 'shared-memory';
   }
 

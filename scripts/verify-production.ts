@@ -121,9 +121,7 @@ if (failed.length > 0) {
   for (const result of failed) {
     console.error(`  • [${result.name}] ${result.message}`);
   }
-  console.error(
-    '\nRelease is NOT ready. Fix the issues above before publishing.',
-  );
+  console.error('\nRelease is NOT ready. Fix the issues above before publishing.');
   process.exit(1);
 }
 

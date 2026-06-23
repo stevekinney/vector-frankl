@@ -91,9 +91,17 @@ class FaultInjectionAdapter implements StorageAdapter {
     return this.inner.updateMetadata(id, metadata, options);
   }
   async updateBatch(
-    updates: Array<{ id: string; vector?: Float32Array; metadata?: Record<string, unknown> }>,
+    updates: Array<{
+      id: string;
+      vector?: Float32Array;
+      metadata?: Record<string, unknown>;
+    }>,
     options?: BatchOptions,
-  ): Promise<{ succeeded: number; failed: number; errors: Array<{ id: string; error: Error }> }> {
+  ): Promise<{
+    succeeded: number;
+    failed: number;
+    errors: Array<{ id: string; error: Error }>;
+  }> {
     return this.inner.updateBatch(updates, options);
   }
 
@@ -101,7 +109,10 @@ class FaultInjectionAdapter implements StorageAdapter {
     if (this.failNextPutBatch) {
       this.failNextPutBatch = false;
       throw new BatchOperationError(0, vectors.length, [
-        { id: vectors[0]?.id ?? 'unknown', error: new Error('Simulated storage failure') },
+        {
+          id: vectors[0]?.id ?? 'unknown',
+          error: new Error('Simulated storage failure'),
+        },
       ]);
     }
     return this.inner.putBatch(vectors, options);

@@ -201,12 +201,12 @@ Post a release announcement if appropriate (blog post, changelog tweet, etc.) li
 
 ## Quick Reference
 
-| Step | Command |
-|------|---------|
-| Clean checkout | `git clean -fdx && bun install --frozen-lockfile` |
-| Quality gate | `bun run format:check && bun run lint && bun run typecheck && bun test` |
-| CI status | `gh run list --branch main --workflow verify.yml --limit 5` |
-| Build | `bun run build` |
-| Package inspection | `bun run package:check` |
-| Publish with provenance | `npm publish --provenance --access public` |
-| post-release smoke | `cd /tmp && mkdir smoke && cd smoke && bun init -y && bun add vector-frankl@latest` |
+| Step                    | Command                                                                             |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| Clean checkout          | `git clean -fdx && bun install --frozen-lockfile`                                   |
+| Quality gate            | `bun run format:check && bun run lint && bun run typecheck && bun test`             |
+| CI status               | `gh run list --branch main --workflow verify.yml --limit 5`                         |
+| Build                   | `bun run build`                                                                     |
+| Package inspection      | `bun run package:check`                                                             |
+| Publish with provenance | `npm publish --provenance --access public`                                          |
+| post-release smoke      | `cd /tmp && mkdir smoke && cd smoke && bun init -y && bun add vector-frankl@latest` |

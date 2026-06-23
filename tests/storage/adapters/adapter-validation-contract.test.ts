@@ -20,7 +20,9 @@ import { describe, expect, it, beforeEach } from 'bun:test';
 import type { VectorData } from '@/core/types.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
-function makeVectorData(overrides: Partial<VectorData> & Pick<VectorData, 'id'>): VectorData {
+function makeVectorData(
+  overrides: Partial<VectorData> & Pick<VectorData, 'id'>,
+): VectorData {
   return {
     vector: new Float32Array([1, 0]),
     magnitude: 1,
@@ -69,7 +71,11 @@ describe('StorageAdapter validation contract', () => {
     describe('vector dimension handling', () => {
       it('accepts a zero-length vector without throwing', async () => {
         // Adapters do not enforce minimum dimension. VectorDB rejects dimension=0.
-        const vec = makeVectorData({ id: 'zero-dim', vector: new Float32Array(0), magnitude: 0 });
+        const vec = makeVectorData({
+          id: 'zero-dim',
+          vector: new Float32Array(0),
+          magnitude: 0,
+        });
         await adapter.put(vec);
         const retrieved = await adapter.get('zero-dim');
         expect(retrieved.vector).toHaveLength(0);
@@ -79,7 +85,11 @@ describe('StorageAdapter validation contract', () => {
         // Adapters do not enforce the 100k-dimension memory limit. VectorDB does.
         const largeDim = 200_000;
         const largeVector = new Float32Array(largeDim).fill(0.001);
-        const vec = makeVectorData({ id: 'large-dim', vector: largeVector, magnitude: 1 });
+        const vec = makeVectorData({
+          id: 'large-dim',
+          vector: largeVector,
+          magnitude: 1,
+        });
         await adapter.put(vec);
         const retrieved = await adapter.get('large-dim');
         expect(retrieved.vector).toHaveLength(largeDim);
@@ -91,7 +101,10 @@ describe('StorageAdapter validation contract', () => {
     describe('metadata handling', () => {
       it('accepts metadata with keys starting with double underscores without throwing', async () => {
         // The InputValidator rejects __proto__-style keys. Adapters do not.
-        const vec = makeVectorData({ id: 'meta-unsafe', metadata: { __type__: 'value' } });
+        const vec = makeVectorData({
+          id: 'meta-unsafe',
+          metadata: { __type__: 'value' },
+        });
         await adapter.put(vec);
         const retrieved = await adapter.get('meta-unsafe');
         expect(retrieved.metadata).toEqual({ __type__: 'value' });

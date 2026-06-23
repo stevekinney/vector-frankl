@@ -37,7 +37,8 @@ describe('SIMD capability detection', () => {
 
       // No entry should claim native hardware SIMD
       const hasSIMDClaim = caps.instructionSets.some(
-        (entry) => entry === 'SIMD' || entry === 'SSE' || entry === 'AVX' || entry === 'NEON',
+        (entry) =>
+          entry === 'SIMD' || entry === 'SSE' || entry === 'AVX' || entry === 'NEON',
       );
       expect(hasSIMDClaim).toBe(false);
     });
@@ -161,8 +162,14 @@ describe('SIMD vs scalar parity', () => {
   });
 
   it('distance metric calculator produces same results enabled or disabled', () => {
-    const metricsEnabled = new SIMDDistanceMetrics({ enableSIMD: true, simdThreshold: 16 });
-    const metricsDisabled = new SIMDDistanceMetrics({ enableSIMD: true, simdThreshold: 10000 });
+    const metricsEnabled = new SIMDDistanceMetrics({
+      enableSIMD: true,
+      simdThreshold: 16,
+    });
+    const metricsDisabled = new SIMDDistanceMetrics({
+      enableSIMD: true,
+      simdThreshold: 10000,
+    });
 
     for (const metric of ['cosine', 'euclidean', 'manhattan'] as const) {
       const enabled = metricsEnabled.calculateDistance(vectorA, vectorB, metric);

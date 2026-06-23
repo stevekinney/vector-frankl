@@ -109,7 +109,10 @@ describe('MemoryStorageAdapter-specific', () => {
     }
 
     it('returns only vectors whose metadata satisfies the predicate', async () => {
-      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
       await adapter.put(makeVector('a', [1, 0], { category: 'science' }));
       await adapter.put(makeVector('b', [0, 1], { category: 'art' }));
       await adapter.put(makeVector('c', [1, 1], { category: 'science' }));
@@ -120,7 +123,10 @@ describe('MemoryStorageAdapter-specific', () => {
     });
 
     it('returns an empty array when no vectors match', async () => {
-      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
       await adapter.put(makeVector('a', [1], { type: 'x' }));
 
       const results = await adapter.filteredScan((m) => m['type'] === 'z');
@@ -128,7 +134,10 @@ describe('MemoryStorageAdapter-specific', () => {
     });
 
     it('returns all vectors when the predicate always returns true', async () => {
-      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
       await adapter.put(makeVector('a', [1]));
       await adapter.put(makeVector('b', [2]));
 
@@ -137,7 +146,10 @@ describe('MemoryStorageAdapter-specific', () => {
     });
 
     it('handles vectors with no metadata by treating metadata as {}', async () => {
-      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
       // Vector without metadata field
       await adapter.put(makeVector('no-meta', [1]));
       await adapter.put(makeVector('has-meta', [2], { tag: 'yes' }));
@@ -161,7 +173,10 @@ describe('MemoryStorageAdapter-specific', () => {
     });
 
     it('returns only the matching subset from a large store without materializing all vectors', async () => {
-      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
       const total = 1000;
       const targetCount = 50;
 

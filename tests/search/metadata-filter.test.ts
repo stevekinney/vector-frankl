@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { MetadataFilter } from '@/core/types.js';
-import { MetadataFilterCompiler, metadataQuery, MetadataRangeQuery } from '@/search/metadata-filter.js';
+import {
+  MetadataFilterCompiler,
+  metadataQuery,
+  MetadataRangeQuery,
+} from '@/search/metadata-filter.js';
 
 describe('MetadataFilterCompiler', () => {
   describe('Field-level operators without $and wrapper', () => {
@@ -464,10 +468,20 @@ describe('MetadataFilterCompiler', () => {
       } as MetadataFilter);
 
       expect(
-        matcher({ items: [{ price: 30, inStock: true }, { price: 80, inStock: true }] }),
+        matcher({
+          items: [
+            { price: 30, inStock: true },
+            { price: 80, inStock: true },
+          ],
+        }),
       ).toBe(true);
       expect(
-        matcher({ items: [{ price: 30, inStock: false }, { price: 80, inStock: true }] }),
+        matcher({
+          items: [
+            { price: 30, inStock: false },
+            { price: 80, inStock: true },
+          ],
+        }),
       ).toBe(false);
     });
   });
@@ -478,7 +492,9 @@ describe('MetadataFilterCompiler', () => {
         $unknown: 'value',
       } as unknown as MetadataFilter);
 
-      expect(() => matcher({ field: 'value' })).toThrow('Unknown filter operator: $unknown');
+      expect(() => matcher({ field: 'value' })).toThrow(
+        'Unknown filter operator: $unknown',
+      );
     });
 
     it('should throw for unknown field-level operators', () => {
@@ -486,7 +502,9 @@ describe('MetadataFilterCompiler', () => {
         field: { $unknown: 'value' },
       } as unknown as MetadataFilter);
 
-      expect(() => matcher({ field: 'value' })).toThrow('Unknown field operator: $unknown');
+      expect(() => matcher({ field: 'value' })).toThrow(
+        'Unknown field operator: $unknown',
+      );
     });
   });
 });
@@ -590,7 +608,9 @@ describe('MetadataRangeQuery', () => {
   });
 
   it('should throw for invalid regex flags', () => {
-    expect(() => metadataQuery().regex('name', 'foo', 'z')).toThrow('Invalid regex flags');
+    expect(() => metadataQuery().regex('name', 'foo', 'z')).toThrow(
+      'Invalid regex flags',
+    );
   });
   describe('ReDoS regression tests', () => {
     // These tests verify that dangerous regex patterns are rejected
@@ -683,21 +703,20 @@ describe('MetadataRangeQuery', () => {
 
     it('MetadataRangeQuery.regex rejects dangerous pattern before adding to filter', () => {
       const query = new MetadataRangeQuery();
-      expect(() => query.regex('field', '(.*)+'))
-        .toThrow('Potentially dangerous regex pattern');
+      expect(() => query.regex('field', '(.*)+')).toThrow(
+        'Potentially dangerous regex pattern',
+      );
     });
 
     it('MetadataRangeQuery.regex rejects pattern exceeding 1000 characters', () => {
       const query = new MetadataRangeQuery();
       const longPattern = 'a'.repeat(1001);
-      expect(() => query.regex('field', longPattern))
-        .toThrow('Regex pattern too long');
+      expect(() => query.regex('field', longPattern)).toThrow('Regex pattern too long');
     });
 
     it('MetadataRangeQuery.regex rejects invalid flags', () => {
       const query = new MetadataRangeQuery();
-      expect(() => query.regex('field', '^test', 'z'))
-        .toThrow('Invalid regex flags');
+      expect(() => query.regex('field', '^test', 'z')).toThrow('Invalid regex flags');
     });
   });
 });

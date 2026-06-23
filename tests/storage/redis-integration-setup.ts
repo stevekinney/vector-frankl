@@ -140,7 +140,9 @@ async function resolveRedisUrl(): Promise<string | null> {
   if (envUrl) {
     const reachable = await probeRedis(envUrl);
     if (reachable) return envUrl;
-    console.warn(`[redis-integration-setup] REDIS_URL=${envUrl} is not reachable — skipping.`);
+    console.warn(
+      `[redis-integration-setup] REDIS_URL=${envUrl} is not reachable — skipping.`,
+    );
     return null;
   }
 
@@ -166,7 +168,9 @@ const resolvedUrl = await resolveRedisUrl();
 
 if (resolvedUrl !== null) {
   process.env['REDIS_INTEGRATION_URL'] = resolvedUrl;
-  console.info(`[redis-integration-setup] Redis integration tests enabled at ${resolvedUrl}`);
+  console.info(
+    `[redis-integration-setup] Redis integration tests enabled at ${resolvedUrl}`,
+  );
 } else {
   process.env['REDIS_INTEGRATION_SKIP'] = 'true';
   console.warn(

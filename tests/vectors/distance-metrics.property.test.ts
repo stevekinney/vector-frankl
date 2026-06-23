@@ -43,7 +43,9 @@ function randomFloat64(rng: () => number, dim: number): Float64Array {
 }
 
 function randomInt8(rng: () => number, dim: number): Int8Array {
-  return new Int8Array(Array.from({ length: dim }, () => Math.round((rng() * 2 - 1) * 127)));
+  return new Int8Array(
+    Array.from({ length: dim }, () => Math.round((rng() * 2 - 1) * 127)),
+  );
 }
 
 function randomUint8(rng: () => number, dim: number): Uint8Array {

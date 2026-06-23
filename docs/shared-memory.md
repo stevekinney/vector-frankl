@@ -151,14 +151,14 @@ Header always set Cross-Origin-Embedder-Policy "require-corp"
 
 When cross-origin isolation is absent, `SharedArrayBuffer` is `undefined` and `SharedMemoryManager` cannot be instantiated. The rest of Vector Frankl continues to work normally:
 
-| Feature | Isolated (`crossOriginIsolated: true`) | Not Isolated |
-|---|---|---|
-| `SharedMemoryManager` | Available | Throws on construction |
-| `WorkerPool` (standard) | Available | Available |
-| Main-thread search | Available | Available |
-| HNSW index search | Available | Available |
-| WebGPU acceleration | Available | Available |
-| SIMD acceleration | Available | Available |
+| Feature                 | Isolated (`crossOriginIsolated: true`) | Not Isolated           |
+| ----------------------- | -------------------------------------- | ---------------------- |
+| `SharedMemoryManager`   | Available                              | Throws on construction |
+| `WorkerPool` (standard) | Available                              | Available              |
+| Main-thread search      | Available                              | Available              |
+| HNSW index search       | Available                              | Available              |
+| WebGPU acceleration     | Available                              | Available              |
+| SIMD acceleration       | Available                              | Available              |
 
 The standard `WorkerPool` uses `postMessage` with structured cloning to pass vectors to workers. This incurs a copy per transfer, but it works without cross-origin isolation and is the right default for most applications.
 

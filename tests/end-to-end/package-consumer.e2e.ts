@@ -32,7 +32,9 @@ test.describe('Package Consumer Browser Tests', () => {
     // Give dynamic imports a moment to resolve
     await page.waitForTimeout(500);
 
-    expect(errors.filter((e) => /Cannot find module|Failed to resolve|SyntaxError/.test(e))).toEqual([]);
+    expect(
+      errors.filter((e) => /Cannot find module|Failed to resolve|SyntaxError/.test(e)),
+    ).toEqual([]);
 
     // The page title confirms the consumer bundle loaded
     await expect(page).toHaveTitle('Vector Frankl Package Consumer Test');
@@ -66,25 +68,30 @@ test.describe('Package Consumer Browser Tests', () => {
     await page.click('button:has-text("Run Full Workflow")');
 
     // Wait for all workflow steps to appear as results
-    await expect(
-      page.locator('.result[data-test-name="Write Vectors"]'),
-    ).toContainText('success', { ignoreCase: true, timeout: 15_000 });
+    await expect(page.locator('.result[data-test-name="Write Vectors"]')).toContainText(
+      'success',
+      { ignoreCase: true, timeout: 15_000 },
+    );
 
-    await expect(
-      page.locator('.result[data-test-name="Search"]'),
-    ).toContainText('success', { ignoreCase: true });
+    await expect(page.locator('.result[data-test-name="Search"]')).toContainText(
+      'success',
+      { ignoreCase: true },
+    );
 
-    await expect(
-      page.locator('.result[data-test-name="Update Metadata"]'),
-    ).toContainText('success', { ignoreCase: true });
+    await expect(page.locator('.result[data-test-name="Update Metadata"]')).toContainText(
+      'success',
+      { ignoreCase: true },
+    );
 
-    await expect(
-      page.locator('.result[data-test-name="Clear"]'),
-    ).toContainText('success', { ignoreCase: true });
+    await expect(page.locator('.result[data-test-name="Clear"]')).toContainText(
+      'success',
+      { ignoreCase: true },
+    );
 
-    await expect(
-      page.locator('.result[data-test-name="Close"]'),
-    ).toContainText('success', { ignoreCase: true });
+    await expect(page.locator('.result[data-test-name="Close"]')).toContainText(
+      'success',
+      { ignoreCase: true },
+    );
 
     // Confirm no error results exist in the container
     const errorResults = await page.locator('.result.error').count();
@@ -113,7 +120,9 @@ test.describe('Package Consumer Browser Tests', () => {
       timeout: 15_000,
     });
 
-    const vfType = await page.evaluate(() => typeof (window as unknown as Record<string, unknown>)['vf']);
+    const vfType = await page.evaluate(
+      () => typeof (window as unknown as Record<string, unknown>)['vf'],
+    );
     expect(vfType).toBe('object');
   });
 });

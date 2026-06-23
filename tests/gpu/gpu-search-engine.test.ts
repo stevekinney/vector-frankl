@@ -1075,7 +1075,12 @@ describe('GPUSearchEngine', () => {
       }));
 
       expect(
-        limitedEngine.search(oversizedVectors, new Float32Array([1, 0, 0, 0]), 5, 'cosine'),
+        limitedEngine.search(
+          oversizedVectors,
+          new Float32Array([1, 0, 0, 0]),
+          5,
+          'cosine',
+        ),
       ).rejects.toThrow('exceeds the configured limit');
 
       await limitedEngine.cleanup();
@@ -1093,12 +1098,29 @@ describe('GPUSearchEngine', () => {
       await engine.init();
 
       const smallVectors = [
-        { id: 'v1', vector: new Float32Array([1, 0]), metadata: {}, magnitude: 1, timestamp: Date.now() },
-        { id: 'v2', vector: new Float32Array([0, 1]), metadata: {}, magnitude: 1, timestamp: Date.now() },
+        {
+          id: 'v1',
+          vector: new Float32Array([1, 0]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: Date.now(),
+        },
+        {
+          id: 'v2',
+          vector: new Float32Array([0, 1]),
+          metadata: {},
+          magnitude: 1,
+          timestamp: Date.now(),
+        },
       ];
 
       // Should not throw — total size (2×2×4=16 bytes) is well within 256 MB
-      const { results } = await engine.search(smallVectors, new Float32Array([1, 0]), 2, 'cosine');
+      const { results } = await engine.search(
+        smallVectors,
+        new Float32Array([1, 0]),
+        2,
+        'cosine',
+      );
       expect(Array.isArray(results)).toBe(true);
 
       await engine.cleanup();

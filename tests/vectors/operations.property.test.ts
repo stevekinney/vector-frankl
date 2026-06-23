@@ -35,11 +35,7 @@ function createPrng(seed: number): () => number {
 /**
  * Generate a Float32Array of `dimension` random values in [-scale, scale].
  */
-function randomFloat32(
-  rng: () => number,
-  dimension: number,
-  scale = 1,
-): Float32Array {
+function randomFloat32(rng: () => number, dimension: number, scale = 1): Float32Array {
   const v = new Float32Array(dimension);
   for (let i = 0; i < dimension; i++) {
     v[i] = (rng() * 2 - 1) * scale;
@@ -50,10 +46,7 @@ function randomFloat32(
 /**
  * Generate a non-zero Float32Array so normalization is well-defined.
  */
-function randomNonZeroFloat32(
-  rng: () => number,
-  dimension: number,
-): Float32Array {
+function randomNonZeroFloat32(rng: () => number, dimension: number): Float32Array {
   let v: Float32Array;
   do {
     v = randomFloat32(rng, dimension);

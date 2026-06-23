@@ -931,7 +931,9 @@ describe('IndexPersistence storage', () => {
 
       // Cast the mock as VectorDatabase — IndexPersistence only uses
       // executeTransaction, which the mock implements.
-      const persistence = new IndexPersistence(mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0]);
+      const persistence = new IndexPersistence(
+        mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0],
+      );
 
       const usage = await persistence.getStorageUsage();
 
@@ -950,7 +952,9 @@ describe('IndexPersistence storage', () => {
       const mockDb = new MockIDBDatabase('test-storage-measure', 1);
       mockDb.createObjectStore('hnsw_indices');
 
-      const persistence = new IndexPersistence(mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0]);
+      const persistence = new IndexPersistence(
+        mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0],
+      );
 
       const index = new HNSWIndex('cosine', { m: 4, efConstruction: 20, maxLevel: 2 });
       await index.addVector(makeVector('v1', [1, 0, 0]));
@@ -976,7 +980,9 @@ describe('IndexPersistence persistence', () => {
       const mockDb = new MockIDBDatabase('test-compat-ok', 1);
       mockDb.createObjectStore('hnsw_indices');
 
-      const persistence = new IndexPersistence(mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0]);
+      const persistence = new IndexPersistence(
+        mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0],
+      );
 
       const index = new HNSWIndex('cosine', { m: 4, efConstruction: 20, maxLevel: 2 });
       await index.addVector(makeVector('v1', [1, 0, 0]));
@@ -1000,7 +1006,9 @@ describe('IndexPersistence persistence', () => {
       const mockDb = new MockIDBDatabase('test-compat-bad', 1);
       mockDb.createObjectStore('hnsw_indices');
 
-      const persistence = new IndexPersistence(mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0]);
+      const persistence = new IndexPersistence(
+        mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0],
+      );
 
       // Write a record directly with an unsupported version tag
       const incompatibleRecord = {
@@ -1045,7 +1053,9 @@ describe('IndexPersistence persistence', () => {
       const mockDb = new MockIDBDatabase('test-compat-msg', 1);
       mockDb.createObjectStore('hnsw_indices');
 
-      const persistence = new IndexPersistence(mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0]);
+      const persistence = new IndexPersistence(
+        mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0],
+      );
 
       const incompatibleRecord = {
         id: 'old-idx2',
@@ -1090,7 +1100,9 @@ describe('IndexPersistence persistence', () => {
       const mockDb = new MockIDBDatabase('test-missing', 1);
       mockDb.createObjectStore('hnsw_indices');
 
-      const persistence = new IndexPersistence(mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0]);
+      const persistence = new IndexPersistence(
+        mockDb as unknown as ConstructorParameters<typeof IndexPersistence>[0],
+      );
 
       const result = await persistence.loadIndex('does-not-exist');
       expect(result).toBeNull();

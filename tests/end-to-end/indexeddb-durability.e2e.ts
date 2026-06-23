@@ -76,7 +76,8 @@ test.describe('IndexedDB Durability', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/indexeddb-durability.html');
     await page.waitForFunction(
-      () => (window as unknown as DurabilityWindow).__INDEXEDDB_DURABILITY_READY__ === true,
+      () =>
+        (window as unknown as DurabilityWindow).__INDEXEDDB_DURABILITY_READY__ === true,
       null,
       { timeout: 15_000 },
     );
@@ -97,7 +98,8 @@ test.describe('IndexedDB Durability', () => {
     // Reload to simulate a new browser session
     await page.reload();
     await page.waitForFunction(
-      () => (window as unknown as DurabilityWindow).__INDEXEDDB_DURABILITY_READY__ === true,
+      () =>
+        (window as unknown as DurabilityWindow).__INDEXEDDB_DURABILITY_READY__ === true,
       null,
       { timeout: 15_000 },
     );
@@ -249,7 +251,8 @@ test.describe('IndexedDB Durability', () => {
     // Reload
     await page.reload();
     await page.waitForFunction(
-      () => (window as unknown as DurabilityWindow).__INDEXEDDB_DURABILITY_READY__ === true,
+      () =>
+        (window as unknown as DurabilityWindow).__INDEXEDDB_DURABILITY_READY__ === true,
       null,
       { timeout: 15_000 },
     );
