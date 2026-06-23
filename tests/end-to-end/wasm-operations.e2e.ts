@@ -12,20 +12,15 @@ test.describe('WASM Operations Tests', () => {
       timeout: 10000,
     });
 
+    // WebAssembly is a hard requirement for production — skip rather than falsely pass.
+    const wasmSupported = await page.evaluate(() => typeof WebAssembly !== 'undefined');
+    if (!wasmSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        const wasmSupported = typeof WebAssembly !== 'undefined';
-        window.log(`WebAssembly supported: ${wasmSupported}`);
-
-        if (!wasmSupported) {
-          window.addTestResult(
-            'WASM Support',
-            'success',
-            'WebAssembly not supported in this browser',
-          );
-          return;
-        }
-
         // Test basic WebAssembly functionality
         const wasmFeatures = {
           instantiate: typeof WebAssembly.instantiate === 'function',
@@ -39,6 +34,17 @@ test.describe('WASM Operations Tests', () => {
         const supportedFeatures = Object.entries(wasmFeatures)
           .filter(([, supported]) => supported)
           .map(([feature]) => feature);
+
+        // All six core WASM features are required for production use.
+        const missingFeatures = Object.entries(wasmFeatures)
+          .filter(([, supported]) => !supported)
+          .map(([feature]) => feature);
+
+        if (missingFeatures.length > 0) {
+          throw new Error(
+            `Missing required WebAssembly features: ${missingFeatures.join(', ')}`,
+          );
+        }
 
         window.log(`WASM features available: ${supportedFeatures.join(', ')}`);
 
@@ -62,13 +68,14 @@ test.describe('WASM Operations Tests', () => {
       timeout: 10000,
     });
 
+    const wasmSupported = await page.evaluate(() => typeof WebAssembly !== 'undefined');
+    if (!wasmSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        if (typeof WebAssembly === 'undefined') {
-          window.addTestResult('WASM Module', 'success', 'WebAssembly not available');
-          return;
-        }
-
         // Simple WASM module that adds two numbers
         // (module (func (export "add") (param i32) (param i32) (result i32) local.get 0 local.get 1 i32.add))
         const wasmBytes = new Uint8Array([
@@ -117,13 +124,14 @@ test.describe('WASM Operations Tests', () => {
       timeout: 10000,
     });
 
+    const wasmSupported = await page.evaluate(() => typeof WebAssembly !== 'undefined');
+    if (!wasmSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        if (typeof WebAssembly === 'undefined') {
-          window.addTestResult('WASM Memory', 'success', 'WebAssembly not available');
-          return;
-        }
-
         // Test WebAssembly.Memory
         const memory = new WebAssembly.Memory({ initial: 1, maximum: 10 });
         const buffer = memory.buffer;
@@ -181,81 +189,62 @@ test.describe('WASM Operations Tests', () => {
       timeout: 10000,
     });
 
+    const wasmSupported = await page.evaluate(() => typeof WebAssembly !== 'undefined');
+    if (!wasmSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        if (typeof WebAssembly === 'undefined') {
-          window.addTestResult('WASM Vector Ops', 'success', 'WebAssembly not available');
-          return;
-        }
-
-        // More complex WASM module for vector dot product
-        // This is a simplified version - real implementation would be more complex
-        const vectorWasmBytes = new Uint8Array([
-          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x0c, 0x02, 0x60, 0x03,
-          0x7f, 0x7f, 0x7f, 0x01, 0x7d, 0x60, 0x02, 0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x03,
-          0x02, 0x00, 0x01, 0x05, 0x03, 0x01, 0x00, 0x01, 0x07, 0x12, 0x02, 0x08, 0x64,
-          0x6f, 0x74, 0x50, 0x72, 0x6f, 0x64, 0x00, 0x00, 0x03, 0x61, 0x64, 0x64, 0x00,
-          0x01, 0x0a, 0x1a, 0x02, 0x0b, 0x00, 0x20, 0x00, 0x20, 0x01, 0x20, 0x02, 0x41,
-          0x02, 0x74, 0x6a, 0x2a, 0x02, 0x00, 0x92, 0x0b, 0x07, 0x00, 0x20, 0x00, 0x20,
-          0x01, 0x6a, 0x0b,
+        // Use the known-valid WASM module (same bytes as the compile/instantiate test):
+        // (module (func (export "add") (param i32) (param i32) (result i32) local.get 0 local.get 1 i32.add))
+        const wasmBytes = new Uint8Array([
+          0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x07, 0x01, 0x60, 0x02,
+          0x7f, 0x7f, 0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x07, 0x01, 0x03, 0x61,
+          0x64, 0x64, 0x00, 0x00, 0x0a, 0x09, 0x01, 0x07, 0x00, 0x20, 0x00, 0x20, 0x01,
+          0x6a, 0x0b,
         ]);
 
-        try {
-          const wasmModule = await WebAssembly.instantiate(vectorWasmBytes);
+        const wasmModule = await WebAssembly.instantiate(wasmBytes);
+        const addFn = wasmModule.instance.exports['add'] as CallableFunction;
 
-          // Test simple functions first
-          const addFn = wasmModule.instance.exports['add'];
-          if (typeof addFn === 'function' && addFn(2, 3) === 5) {
-            window.log('WASM vector module basic function works');
-          }
-
-          window.addTestResult(
-            'WASM Vector Ops',
-            'success',
-            'WASM vector operations module loaded',
-          );
-        } catch (wasmError) {
-          // If complex WASM fails, fall back to simple vector operations
-          window.log(
-            `Complex WASM failed (${(wasmError as Error).message}), testing simpler approach`,
-          );
-
-          // Simulate vector operations without actual WASM
-          const vector1 = new Float32Array([1.0, 2.0, 3.0, 4.0]);
-          const vector2 = new Float32Array([0.5, 1.5, 2.5, 3.5]);
-
-          // Manual dot product for comparison
-          let dotProduct = 0;
-          for (let i = 0; i < vector1.length; i++) {
-            dotProduct += vector1[i]! * vector2[i]!;
-          }
-
-          window.log(`JavaScript dot product: ${dotProduct}`);
-
-          // Test that we can handle Float32Arrays (which WASM would use)
-          const buffer = new ArrayBuffer(vector1.length * 4);
-          const wasmView = new Float32Array(buffer);
-          wasmView.set(vector1);
-
-          // Verify data integrity
-          let matches = true;
-          for (let i = 0; i < vector1.length; i++) {
-            if (Math.abs(wasmView[i]! - vector1[i]!) > 0.001) {
-              matches = false;
-              break;
-            }
-          }
-
-          if (!matches) {
-            throw new Error('Float32Array data transfer failed', { cause: wasmError });
-          }
-
-          window.addTestResult(
-            'WASM Vector Ops',
-            'success',
-            `Vector operations ready, JS dot product: ${dotProduct.toFixed(3)}`,
-          );
+        if (typeof addFn !== 'function') {
+          throw new Error('WASM module did not export an "add" function');
         }
+
+        // Validate arithmetic — the same check used by a real vector accumulator
+        const addResult = addFn(2, 3);
+        if (addResult !== 5) {
+          throw new Error(`WASM add(2, 3) returned ${addResult}, expected 5`);
+        }
+        window.log('WASM integer arithmetic verified: add(2, 3) = 5');
+
+        // Validate linear memory read/write — this is the actual data-path for
+        // WASM-accelerated vector operations (SIMD dot product, cosine distance, etc.)
+        const memory = new WebAssembly.Memory({ initial: 1 });
+        const vector = new Float32Array([1.0, 2.0, 3.0, 4.0]);
+        const view = new Float32Array(memory.buffer);
+        view.set(vector, 0);
+
+        for (let i = 0; i < vector.length; i++) {
+          if (Math.abs(view[i]! - vector[i]!) > 1e-6) {
+            throw new Error(`WASM linear memory round-trip failed at index ${i}`);
+          }
+        }
+
+        // Self dot-product via the memory view — proves the data path is intact
+        let dotProduct = 0;
+        for (let i = 0; i < vector.length; i++) {
+          dotProduct += view[i]! * view[i]!;
+        }
+        window.log(`WASM memory round-trip verified, vector self-dot: ${dotProduct}`);
+
+        window.addTestResult(
+          'WASM Vector Ops',
+          'success',
+          `WASM arithmetic and linear memory I/O verified (self-dot: ${dotProduct})`,
+        );
       } catch (error) {
         window.addTestResult('WASM Vector Ops', 'error', (error as Error).message);
         throw error;
@@ -271,17 +260,14 @@ test.describe('WASM Operations Tests', () => {
       timeout: 10000,
     });
 
+    const wasmSupported = await page.evaluate(() => typeof WebAssembly !== 'undefined');
+    if (!wasmSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        if (typeof WebAssembly === 'undefined') {
-          window.addTestResult(
-            'WASM Error Handling',
-            'success',
-            'WebAssembly not available',
-          );
-          return;
-        }
-
         let errorsHandled = 0;
 
         // Test invalid WASM bytes
@@ -353,17 +339,14 @@ test.describe('WASM Operations Tests', () => {
       timeout: 10000,
     });
 
+    const wasmSupported = await page.evaluate(() => typeof WebAssembly !== 'undefined');
+    if (!wasmSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        if (typeof WebAssembly === 'undefined') {
-          window.addTestResult(
-            'WASM Performance',
-            'success',
-            'WebAssembly not available',
-          );
-          return;
-        }
-
         // Simple performance test: compare JS vs WASM for basic operations
         const testSize = 10000;
 

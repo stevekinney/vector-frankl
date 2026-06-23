@@ -12,26 +12,20 @@ test.describe('Web Workers Tests', () => {
       timeout: 10000,
     });
 
+    // Web Workers are a production requirement — skip rather than falsely pass.
+    const workersSupported = await page.evaluate(() => typeof Worker !== 'undefined');
+    if (!workersSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        // Check if Web Workers are supported
-        const workersSupported = typeof Worker !== 'undefined';
-        window.log(`Web Workers supported: ${workersSupported}`);
-
-        if (!workersSupported) {
-          window.addTestResult(
-            'Web Workers Support',
-            'success',
-            'Web Workers not available in this environment',
-          );
-          return;
-        }
-
         // Test basic worker functionality
         const workerCode = `
           self.onmessage = function(e) {
             const { vectors, queryVector } = e.data;
-            
+
             // Simple dot product calculation in worker
             const results = vectors.map((vec, index) => {
               let dotProduct = 0;
@@ -40,10 +34,10 @@ test.describe('Web Workers Tests', () => {
               }
               return { index, score: dotProduct };
             });
-            
+
             // Sort by score descending
             results.sort((a, b) => b.score - a.score);
-            
+
             self.postMessage({ results });
           };
         `;
@@ -116,13 +110,14 @@ test.describe('Web Workers Tests', () => {
       timeout: 10000,
     });
 
+    const workersSupported = await page.evaluate(() => typeof Worker !== 'undefined');
+    if (!workersSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        if (typeof Worker === 'undefined') {
-          window.addTestResult('Worker Pool', 'success', 'Web Workers not available');
-          return;
-        }
-
         // Simple worker pool implementation for testing
         class SimpleWorkerPool {
           workers: Worker[];
@@ -143,10 +138,10 @@ test.describe('Web Workers Tests', () => {
             const workerCode = `
               self.onmessage = function(e) {
                 const { taskId, data } = e.data;
-                
+
                 // Simulate some computation
                 const result = data.map(x => x * x).reduce((a, b) => a + b, 0);
-                
+
                 self.postMessage({ taskId, result });
               };
             `;
@@ -254,29 +249,24 @@ test.describe('Web Workers Tests', () => {
       timeout: 10000,
     });
 
+    // SharedArrayBuffer requires COOP/COEP headers — skip rather than falsely pass
+    // when the capability is absent.
+    const sharedArrayBufferSupported = await page.evaluate(
+      () => typeof SharedArrayBuffer !== 'undefined',
+    );
+    if (!sharedArrayBufferSupported) {
+      test.skip();
+      return;
+    }
+
+    const workersSupported = await page.evaluate(() => typeof Worker !== 'undefined');
+    if (!workersSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        const sharedArrayBufferSupported = typeof SharedArrayBuffer !== 'undefined';
-        window.log(`SharedArrayBuffer supported: ${sharedArrayBufferSupported}`);
-
-        if (!sharedArrayBufferSupported) {
-          window.addTestResult(
-            'SharedArrayBuffer',
-            'success',
-            'SharedArrayBuffer not available (requires COOP/COEP headers)',
-          );
-          return;
-        }
-
-        if (typeof Worker === 'undefined') {
-          window.addTestResult(
-            'SharedArrayBuffer',
-            'success',
-            'Web Workers not available',
-          );
-          return;
-        }
-
         // Test SharedArrayBuffer with worker
         const sharedBuffer = new SharedArrayBuffer(1024);
         const sharedArray = new Float32Array(sharedBuffer);
@@ -290,13 +280,13 @@ test.describe('Web Workers Tests', () => {
           self.onmessage = function(e) {
             const { sharedBuffer } = e.data;
             const sharedArray = new Float32Array(sharedBuffer);
-            
+
             // Compute sum in worker using shared memory
             let sum = 0;
             for (let i = 0; i < sharedArray.length; i++) {
               sum += sharedArray[i];
             }
-            
+
             self.postMessage({ sum, length: sharedArray.length });
           };
         `;
@@ -369,17 +359,14 @@ test.describe('Web Workers Tests', () => {
       timeout: 10000,
     });
 
+    const workersSupported = await page.evaluate(() => typeof Worker !== 'undefined');
+    if (!workersSupported) {
+      test.skip();
+      return;
+    }
+
     await page.evaluate(async () => {
       try {
-        if (typeof Worker === 'undefined') {
-          window.addTestResult(
-            'Worker Error Handling',
-            'success',
-            'Web Workers not available',
-          );
-          return;
-        }
-
         let errorsCaught = 0;
 
         // Test worker with syntax error
