@@ -1,4 +1,4 @@
-import { VectorDB, VectorOperations } from '../src/index.js';
+import { VectorDB, VectorOperations } from 'vector-frankl';
 
 /**
  * Basic usage example of the Vector Database

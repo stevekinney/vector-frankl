@@ -1104,6 +1104,8 @@ import { getDebug, debugManager, withProfiling } from 'vector-frankl/debug';
 ### Enable Debugging
 
 ```typescript
+import { debugManager } from 'vector-frankl/debug';
+
 debugManager.enable({
   profile: true,
   traceLevel: 'detailed',
@@ -1114,14 +1116,9 @@ debugManager.enable({
 ### Performance Profiling
 
 ```typescript
-const profiledSearch = withProfiling(
-  'vector-search',
-  async (query: Float32Array, k: number) => {
-    return await db.search(query, k);
-  },
-);
+import { withProfiling } from 'vector-frankl/debug';
 
-const results = await profiledSearch(queryVector, 10);
+const results = await withProfiling('vector-search', () => db.search(queryVector, 10));
 ```
 
 ### Debug Console

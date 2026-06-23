@@ -139,8 +139,8 @@ const db = new VectorDB('collection-name', 384);
 await db.init();
 
 // Basic operations
-await db.addVector(id, vector, metadata);
-const vector = await db.getVector(id);
+await db.addVector(id, embedding, metadata);
+const retrieved = await db.getVector(id);
 await db.deleteVector(id);
 
 // Batch operations
@@ -150,7 +150,6 @@ const count = await db.deleteMany(['id1', 'id2']);
 // Search
 const results = await db.search(queryVector, k, {
   filter: { category: 'AI' },
-  distanceMetric: 'cosine',
   includeMetadata: true,
 });
 
@@ -180,11 +179,7 @@ const products = await db.createNamespace('products', {
 const documents = await db.createNamespace('documents', {
   dimension: 768,
   distanceMetric: 'euclidean',
-  useIndex: true,
-  indexConfig: {
-    m: 16,
-    efConstruction: 200,
-  },
+  indexStrategy: 'hnsw',
 });
 
 // Work with namespaces independently
@@ -211,6 +206,7 @@ await db.init();
 
 ```typescript
 // SQLite (Bun runtime only)
+import { VectorDB } from 'vector-frankl';
 import { SQLiteStorageAdapter } from 'vector-frankl/adapters/sqlite';
 
 const sqlite = new SQLiteStorageAdapter({ filename: './vectors.db' });
@@ -275,8 +271,11 @@ import {
   decompressVector,
 } from 'vector-frankl/compression';
 
-// Quick compression with auto-selected strategy
-const compressed = await compressVector(vector);
+// Quick compression with an explicit configuration
+const compressed = await compressVector(vector, {
+  level: 8,
+  maxPrecisionLoss: 0.01,
+});
 const decompressed = await decompressVector(compressed);
 
 // Advanced compression management
@@ -309,7 +308,7 @@ const gpuSearch = new GPUSearchEngine({
 });
 
 await gpuSearch.init();
-const results = await gpuSearch.search(query, vectors, k);
+const results = await gpuSearch.search(vectors, query, k);
 ```
 
 ### Background Processing
@@ -354,7 +353,7 @@ See [docs/shared-memory.md](docs/shared-memory.md) for server configuration exam
 ### Debug & Profiling
 
 ```typescript
-import { debugManager, profiler, withProfiling } from 'vector-frankl/debug';
+import { debugManager, withProfiling } from 'vector-frankl/debug';
 
 // Enable debug mode
 debugManager.enable({
@@ -363,10 +362,8 @@ debugManager.enable({
   memoryTracking: true,
 });
 
-// Instrument functions
-const searchWithProfiling = withProfiling('vector-search', (query, k) =>
-  db.search(query, k),
-);
+// Profile a function call
+const result = await withProfiling('vector-search', () => db.search(queryVector, 5));
 ```
 
 ## 🏗️ Architecture
@@ -445,10 +442,9 @@ const suite = new BenchmarkSuite({
   datasetSizes: [1000, 10000, 50000],
   distanceMetrics: ['cosine', 'euclidean'],
   testCompression: true,
-  testAcceleration: true,
 });
 
-const results = await suite.runAll();
+const results = await suite.runSuite();
 ```
 
 ### Performance Characteristics

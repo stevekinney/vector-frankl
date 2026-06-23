@@ -1,4 +1,4 @@
-import { VectorFrankl, VectorOperations } from '../src/index.js';
+import { VectorFrankl, VectorOperations } from 'vector-frankl';
 
 /**
  * Example demonstrating namespace management in Vector Frankl
