@@ -55,7 +55,7 @@ for (const tarball of existingTarballs) {
   rmSync(join(ROOT, tarball));
 }
 
-const packResult = Bun.spawnSync(['npm', 'pack', '--ignore-scripts'], {
+const packResult = Bun.spawnSync(['npm', 'pack', '--ignore-scripts', '--json'], {
   cwd: ROOT,
   stdout: 'pipe' as const,
   stderr: 'inherit' as const,
@@ -66,7 +66,32 @@ if (packResult.exitCode !== 0) {
   process.exit(1);
 }
 
-const tarballName = new TextDecoder().decode(packResult.stdout).trim();
+// `npm pack --json` prints a JSON array on stdout, but lifecycle/notice
+// banners can pollute it in CI. Slice out the `[...]` array and read the
+// filename; fall back to globbing the produced `.tgz` if parsing fails.
+const packStdout = new TextDecoder().decode(packResult.stdout);
+let tarballName: string | undefined;
+const jsonStart = packStdout.indexOf('[');
+const jsonEnd = packStdout.lastIndexOf(']');
+if (jsonStart !== -1 && jsonEnd > jsonStart) {
+  try {
+    const parsed = JSON.parse(packStdout.slice(jsonStart, jsonEnd + 1)) as Array<{
+      filename: string;
+    }>;
+    tarballName = parsed[0]?.filename;
+  } catch {
+    // fall through to glob fallback
+  }
+}
+if (!tarballName) {
+  tarballName = Array.from(new Bun.Glob('*.tgz').scanSync({ cwd: ROOT })).at(-1);
+}
+
+if (!tarballName) {
+  console.error('[consumer-server] Could not determine packed tarball name');
+  process.exit(1);
+}
+
 const tarballPath = join(ROOT, tarballName);
 
 if (!existsSync(tarballPath)) {
