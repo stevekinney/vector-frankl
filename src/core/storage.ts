@@ -1,4 +1,6 @@
 import { log } from '@/utilities/logger.js';
+import { BATCH_MEMORY_LIMIT_BYTES } from '@/performance/execution-thresholds.js';
+import { splitByMemoryBudget } from '@/performance/memory-guard.js';
 import { VectorDatabase } from './database.js';
 import { BatchOperationError, TransactionError, VectorNotFoundError } from './errors.js';
 import type {
@@ -518,20 +520,42 @@ export class VectorStorage implements StorageAdapter {
    * consistency — see {@link VectorDB.addBatch} for the documented policy.
    */
   async putBatch(vectors: VectorData[], options: BatchOptions = {}): Promise<void> {
-    const { batchSize = 1000, onProgress, abortSignal } = options;
+    const { onProgress, abortSignal } = options;
+    // Caller-supplied batchSize takes precedence; otherwise we size sub-batches
+    // by memory budget so that a single large write cannot exhaust the heap.
+    const memoryLimitBytes = options.memoryLimitBytes ?? BATCH_MEMORY_LIMIT_BYTES;
 
     const total = vectors.length;
     let completed = 0;
     let failed = 0;
     const errors: Array<{ id: string; error: Error }> = [];
 
-    // Process in batches
-    for (let i = 0; i < total; i += batchSize) {
+    // Infer vector dimension from the first element; fall back to 1 so the
+    // budget calculation degrades gracefully for empty/degenerate inputs.
+    const dimension =
+      total > 0 && vectors[0]?.vector?.length ? vectors[0].vector.length : 1;
+
+    // Build an iterator of sub-batches sized by memory budget.
+    // If the caller supplied an explicit batchSize we honour it directly;
+    // otherwise we let splitByMemoryBudget determine the sub-batch size.
+    const subBatches: VectorData[][] = options.batchSize
+      ? (() => {
+          const batches: VectorData[][] = [];
+          for (let i = 0; i < total; i += options.batchSize!) {
+            batches.push(vectors.slice(i, i + options.batchSize!));
+          }
+          return batches;
+        })()
+      : Array.from(splitByMemoryBudget(vectors, dimension, memoryLimitBytes));
+
+    const totalBatches = subBatches.length;
+    let batchIndex = 0;
+
+    for (const batch of subBatches) {
       if (abortSignal?.aborted) {
         throw new Error('Batch operation aborted');
       }
 
-      const batch = vectors.slice(i, i + batchSize);
       const batchResult = await this.processBatch(batch);
 
       completed += batchResult.succeeded;
@@ -544,11 +568,13 @@ export class VectorStorage implements StorageAdapter {
           completed,
           failed,
           percentage: Math.round((completed / total) * 100),
-          currentBatch: Math.floor(i / batchSize) + 1,
-          totalBatches: Math.ceil(total / batchSize),
+          currentBatch: batchIndex + 1,
+          totalBatches,
         };
         onProgress(progress);
       }
+
+      batchIndex++;
     }
 
     if (failed > 0) {

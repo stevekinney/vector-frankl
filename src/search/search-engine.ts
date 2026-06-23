@@ -13,6 +13,12 @@ import type {
   VectorData,
 } from '@/core/types.js';
 import { GPUSearchEngine, type GPUSearchConfig } from '@/gpu/gpu-search-engine.js';
+import {
+  GPU_SEARCH_THRESHOLD,
+  WORKER_BATCH_SIMILARITY_THRESHOLD,
+  WORKER_NORMALIZE_THRESHOLD,
+  WORKER_SEARCH_THRESHOLD,
+} from '@/performance/execution-thresholds.js';
 import { log } from '@/utilities/logger.js';
 import { VectorOperations } from '@/vectors/operations.js';
 import { WorkerPool } from '@/workers/worker-pool.js';
@@ -33,10 +39,10 @@ export class SearchEngine {
   private indexId: string;
   private workerPool: WorkerPool | null = null;
   private useWorkers = false;
-  private parallelThreshold = 1000; // Use workers for datasets larger than this
+  private parallelThreshold = WORKER_SEARCH_THRESHOLD;
   private gpuSearchEngine: GPUSearchEngine | null = null;
   private useGPU = false;
-  private gpuThreshold = 5000; // Use GPU for datasets larger than this
+  private gpuThreshold = GPU_SEARCH_THRESHOLD;
 
   /**
    * When true, the HNSW index may not reflect current storage state.
@@ -1102,7 +1108,7 @@ export class SearchEngine {
    * Batch normalize vectors using workers if available
    */
   async normalizeVectorsBatch(vectors: Float32Array[]): Promise<Float32Array[]> {
-    if (this.workerPool && vectors.length >= 100) {
+    if (this.workerPool && vectors.length >= WORKER_NORMALIZE_THRESHOLD) {
       try {
         await this.workerPool.init();
         return await this.workerPool.normalizeVectors(vectors);
@@ -1125,7 +1131,7 @@ export class SearchEngine {
     queries: Float32Array[],
     metric: DistanceMetricType = 'cosine',
   ): Promise<number[][]> {
-    if (this.workerPool && vectors.length * queries.length >= 10000) {
+    if (this.workerPool && vectors.length * queries.length >= WORKER_BATCH_SIMILARITY_THRESHOLD) {
       try {
         await this.workerPool.init();
         return await this.workerPool.batchSimilarity(vectors, queries, metric);

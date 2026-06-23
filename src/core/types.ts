@@ -270,6 +270,13 @@ export interface BatchOptions {
   onProgress?: (progress: BatchProgress) => void;
   abortSignal?: VectorAbortSignal;
   parallel?: boolean;
+  /**
+   * Maximum in-flight heap memory (bytes) per sub-batch. When not supplied the
+   * storage layer uses the default from
+   * `src/performance/execution-thresholds.ts` (64 MiB). Callers can lower this
+   * value to apply more aggressive backpressure on memory-constrained devices.
+   */
+  memoryLimitBytes?: number;
 }
 
 /**
