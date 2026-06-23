@@ -447,6 +447,30 @@ export class BrowserSupportError extends VectorDatabaseError {
 }
 
 /**
+ * Thrown when a search operation is aborted via an AbortSignal
+ */
+export class SearchAbortedError extends VectorDatabaseError {
+  constructor(context?: Record<string, unknown>) {
+    super('Search was aborted', 'SEARCH_ABORTED', context);
+  }
+}
+
+/**
+ * Thrown when a search operation exceeds its configured timeout
+ */
+export class SearchTimeoutError extends VectorDatabaseError {
+  public readonly timeoutMs: number;
+
+  constructor(timeoutMs: number, context?: Record<string, unknown>) {
+    super(`Search timed out after ${timeoutMs}ms`, 'SEARCH_TIMEOUT', {
+      timeoutMs,
+      ...context,
+    });
+    this.timeoutMs = timeoutMs;
+  }
+}
+
+/**
  * Type guard to check if an error is a VectorDatabaseError
  */
 export function isVectorDatabaseError(error: unknown): error is VectorDatabaseError {

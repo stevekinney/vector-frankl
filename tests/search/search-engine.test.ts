@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
-import { DimensionMismatchError } from '@/core/errors.js';
-import type { StorageAdapter, VectorData } from '@/core/types.js';
+import {
+  DimensionMismatchError,
+  SearchAbortedError,
+  SearchTimeoutError,
+} from '@/core/errors.js';
+import type { StorageAdapter, VectorData, VectorAbortSignal } from '@/core/types.js';
 import { SearchEngine } from '@/search/search-engine.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
@@ -799,6 +803,244 @@ describe('SearchEngine', () => {
       expect(results[0]![0]).toBeCloseTo(1, 3);
       // Orthogonal vectors should score ~0.5 (cosine distance ~1, score = 1-1/2 = 0.5).
       expect(results[0]![1]).toBeCloseTo(0.5, 3);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // timeout option
+  // -----------------------------------------------------------------------
+  describe('timeout option', () => {
+    it('should throw SearchTimeoutError when timeout is 0 and search takes time', async () => {
+      // A storage adapter that delays reads to simulate a slow fetch
+      class SlowStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new SlowStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      expect(
+        engine.search(new Float32Array([1, 0, 0]), 5, { timeout: 1 }),
+      ).rejects.toThrow(SearchTimeoutError);
+    });
+
+    it('should include the configured timeout in the error', async () => {
+      class SlowStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new SlowStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      try {
+        await engine.search(new Float32Array([1, 0, 0]), 5, { timeout: 5 });
+        expect.unreachable('should have thrown SearchTimeoutError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(SearchTimeoutError);
+        expect((err as SearchTimeoutError).timeoutMs).toBe(5);
+        expect((err as SearchTimeoutError).code).toBe('SEARCH_TIMEOUT');
+      }
+    });
+
+    it('should complete successfully when timeout is generous', async () => {
+      const vectors = [makeVector('a', [1, 0, 0])];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      // 5000ms timeout should not fire for a trivially small dataset
+      const results = await engine.search(new Float32Array([1, 0, 0]), 5, {
+        timeout: 5000,
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('a');
+    });
+
+    it('should apply timeout to searchRange as well', async () => {
+      class SlowStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new SlowStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      expect(
+        engine.searchRange(new Float32Array([1, 0, 0]), 1.0, { timeout: 1 }),
+      ).rejects.toThrow(SearchTimeoutError);
+    });
+
+    it('should apply timeout to searchStream as well', async () => {
+      class SlowStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new SlowStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      const gen = engine.searchStream(new Float32Array([1, 0, 0]), {
+        timeout: 1,
+        batchSize: 5,
+      });
+
+      expect(gen.next()).rejects.toThrow(SearchTimeoutError);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // signal option (abort)
+  // -----------------------------------------------------------------------
+  describe('signal option', () => {
+    /** Simple mutable VectorAbortSignal implementation for tests. */
+    function makeSignal(aborted = false): VectorAbortSignal & { abort(): void } {
+      let isAborted = aborted;
+      return {
+        get aborted() {
+          return isAborted;
+        },
+        abort() {
+          isAborted = true;
+        },
+      };
+    }
+
+    it('should throw SearchAbortedError immediately when signal is already aborted', async () => {
+      const vectors = [makeVector('a', [1, 0, 0])];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(true); // already aborted
+
+      expect(engine.search(new Float32Array([1, 0, 0]), 5, { signal })).rejects.toThrow(
+        SearchAbortedError,
+      );
+    });
+
+    it('should include error code SEARCH_ABORTED', async () => {
+      const engine = new SearchEngine(await createMockStorage([]), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(true);
+
+      try {
+        await engine.search(new Float32Array([1, 0, 0]), 5, { signal });
+        expect.unreachable('should have thrown SearchAbortedError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(SearchAbortedError);
+        expect((err as SearchAbortedError).code).toBe('SEARCH_ABORTED');
+      }
+    });
+
+    it('should abort during an ongoing search when signal fires mid-search', async () => {
+      const signal = makeSignal();
+
+      class AbortingStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          // Abort the signal before completing the storage read.
+          signal.abort();
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new AbortingStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      expect(engine.search(new Float32Array([1, 0, 0]), 5, { signal })).rejects.toThrow(
+        SearchAbortedError,
+      );
+    });
+
+    it('should not abort a search when signal is never triggered', async () => {
+      const vectors = [makeVector('a', [1, 0, 0])];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(); // not aborted
+
+      const results = await engine.search(new Float32Array([1, 0, 0]), 5, { signal });
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('a');
+    });
+
+    it('should throw SearchAbortedError immediately for searchRange when already aborted', async () => {
+      const engine = new SearchEngine(await createMockStorage([]), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(true);
+
+      expect(
+        engine.searchRange(new Float32Array([1, 0, 0]), 1.0, { signal }),
+      ).rejects.toThrow(SearchAbortedError);
+    });
+
+    it('should throw SearchAbortedError immediately for searchStream when already aborted', async () => {
+      const engine = new SearchEngine(await createMockStorage([]), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(true);
+
+      const gen = engine.searchStream(new Float32Array([1, 0, 0]), { signal });
+
+      expect(gen.next()).rejects.toThrow(SearchAbortedError);
+    });
+
+    it('should abort between batches in searchStream', async () => {
+      const signal = makeSignal();
+
+      const vectors = Array.from({ length: 15 }, (_, i) =>
+        makeVector(`v${i}`, [i + 1, 0, 0]),
+      );
+
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      const gen = engine.searchStream(new Float32Array([0, 0, 0]), {
+        batchSize: 5,
+        maxResults: 15,
+        signal,
+      });
+
+      // First batch succeeds.
+      const first = await gen.next();
+      expect(first.done).toBe(false);
+      expect((first.value as VectorData[]).length).toBeLessThanOrEqual(5);
+
+      // Abort before requesting the next batch.
+      signal.abort();
+
+      expect(gen.next()).rejects.toThrow(SearchAbortedError);
     });
   });
 

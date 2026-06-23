@@ -1,5 +1,9 @@
 import { VectorDatabase } from '@/core/database.js';
-import { DimensionMismatchError } from '@/core/errors.js';
+import {
+  DimensionMismatchError,
+  SearchAbortedError,
+  SearchTimeoutError,
+} from '@/core/errors.js';
 import type {
   DistanceMetric as DistanceMetricType,
   MetadataFilter,
@@ -92,6 +96,74 @@ export class SearchEngine {
   }
 
   /**
+   * Throw SearchAbortedError if the signal is already aborted.
+   */
+  private throwIfAborted(signal?: SearchOptions['signal']): void {
+    if (signal?.aborted) {
+      throw new SearchAbortedError();
+    }
+  }
+
+  /**
+   * Wrap a search promise with timeout and/or abort-signal enforcement.
+   *
+   * - `timeout` races the search against a timer. If the timer fires first,
+   *   the search resolves with SearchTimeoutError.
+   * - `signal` is polled before the promise settles via a rejection race.
+   *   When the signal is already aborted at call time, the error is thrown
+   *   synchronously by throwIfAborted before we even reach here.
+   */
+  private withCancellation<T>(promise: Promise<T>, options?: SearchOptions): Promise<T> {
+    const { timeout, signal } = options ?? {};
+
+    if (!timeout && !signal) {
+      return promise;
+    }
+
+    const racers: Promise<T>[] = [promise];
+
+    if (timeout !== undefined) {
+      racers.push(
+        new Promise<T>((_resolve, reject) => {
+          setTimeout(() => reject(new SearchTimeoutError(timeout)), timeout);
+        }),
+      );
+    }
+
+    if (signal !== undefined) {
+      racers.push(
+        new Promise<T>((_resolve, reject) => {
+          // Poll the signal — VectorAbortSignal only exposes `.aborted`, not an
+          // `addEventListener`. We resolve the race quickly by checking every frame
+          // via a tight polling loop that terminates once the outer promise settles.
+          let done = false;
+          promise
+            .then(() => {
+              done = true;
+            })
+            .catch(() => {
+              done = true;
+            });
+
+          const poll = () => {
+            if (done) return;
+            if (signal.aborted) {
+              reject(new SearchAbortedError());
+              return;
+            }
+            // Check every ~10 ms while the search is running.
+            setTimeout(poll, 10);
+          };
+          // If already aborted, fire immediately on the next tick.
+          setTimeout(poll, 0);
+        }),
+      );
+    }
+
+    return Promise.race(racers);
+  }
+
+  /**
    * Search for k most similar vectors
    */
   async search(
@@ -104,13 +176,16 @@ export class SearchEngine {
       throw new DimensionMismatchError(this.dimension, queryVector.length);
     }
 
-    // Use HNSW index if available and no metadata filter
-    if (this.useIndex && this.hnswIndex && !options?.filter) {
-      return this.searchWithIndex(queryVector, k, options);
-    }
+    // Reject immediately if the caller already aborted.
+    this.throwIfAborted(options?.signal);
 
-    // Fall back to brute force search
-    return this.searchBruteForce(queryVector, k, options);
+    // Use HNSW index if available and no metadata filter
+    const coreSearch =
+      this.useIndex && this.hnswIndex && !options?.filter
+        ? this.searchWithIndex(queryVector, k, options)
+        : this.searchBruteForce(queryVector, k, options);
+
+    return this.withCancellation(coreSearch, options);
   }
 
   /**
@@ -132,6 +207,9 @@ export class SearchEngine {
 
     // Search using HNSW index
     const indexResults = await this.hnswIndex.search(processedQuery, k);
+
+    // Check abort signal after the async index search.
+    this.throwIfAborted(options?.signal);
 
     // Convert to search results
     const results = await Promise.all(
@@ -173,6 +251,9 @@ export class SearchEngine {
 
     // Get candidates (all vectors for now, will be optimized with indexing)
     const candidates = await this.getCandidates(options?.filter);
+
+    // Check abort signal after the async storage fetch.
+    this.throwIfAborted(options?.signal);
 
     if (candidates.length === 0) {
       return [];
@@ -313,6 +394,9 @@ export class SearchEngine {
     }
 
     try {
+      // Check abort signal before dispatching worker tasks.
+      this.throwIfAborted(options?.signal);
+
       // Use parallel similarity search
       const results = await this.workerPool.parallelSimilaritySearch(
         candidates,
@@ -321,6 +405,9 @@ export class SearchEngine {
         metric?.name as DistanceMetricType,
         filterFn,
       );
+
+      // Check abort signal after workers finish.
+      this.throwIfAborted(options?.signal);
 
       // Convert to search results format
       return results.map((result) => {
@@ -403,6 +490,21 @@ export class SearchEngine {
       throw new DimensionMismatchError(this.dimension, queryVector.length);
     }
 
+    // Reject immediately if the caller already aborted.
+    this.throwIfAborted(options?.signal);
+
+    const rangeSearch = this.searchRangeCore(queryVector, maxDistance, options);
+    return this.withCancellation(rangeSearch, options);
+  }
+
+  /**
+   * Core implementation of range search (without cancellation wrapping).
+   */
+  private async searchRangeCore(
+    queryVector: Float32Array,
+    maxDistance: number,
+    options?: SearchOptions & { maxResults?: number },
+  ): Promise<SearchResult[]> {
     const metric = this.distanceCalculator.getMetricInfo();
     const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
@@ -461,6 +563,9 @@ export class SearchEngine {
       progressive?: boolean;
     },
   ): AsyncGenerator<SearchResult[], void, unknown> {
+    // Reject immediately if already aborted.
+    this.throwIfAborted(options?.signal);
+
     const batchSize = options?.batchSize || 10;
     const maxResults = options?.maxResults || Infinity;
 
@@ -470,11 +575,13 @@ export class SearchEngine {
       return;
     }
 
-    // Regular streaming search
+    // Regular streaming search — run via search() which already enforces
+    // timeout and signal.
     const results = await this.search(queryVector, maxResults, options);
 
-    // Yield results in batches
+    // Yield results in batches, checking signal between each batch.
     for (let i = 0; i < results.length; i += batchSize) {
+      this.throwIfAborted(options?.signal);
       yield results.slice(i, i + batchSize);
     }
   }

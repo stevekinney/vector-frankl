@@ -84,6 +84,8 @@ export {
   BatchOperationError,
   IndexError,
   BrowserSupportError,
+  SearchAbortedError,
+  SearchTimeoutError,
   isVectorDatabaseError,
   sanitizeContext,
 } from './core/errors.js';
