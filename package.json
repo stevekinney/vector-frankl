@@ -142,7 +142,7 @@
     "prepack": "bun run build",
     "package:check": "bun run build && bun run scripts/check-package.ts",
     "prepare": "husky",
-    "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
+    "prepublishOnly": "bun run verify:production",
     "start": "bun run dist/index.js",
     "test": "r=0; bun test src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test tests/gpu tests/integration tests/search || r=$?; bun test tests/vectors tests/wasm tests/workers || r=$?; bun test tests/storage || r=$?; exit $r",
     "test:all": "bun run test && bun run test:end-to-end",
@@ -156,7 +156,16 @@
     "test:end-to-end:webkit": "playwright test --project=webkit",
     "test:parallel": "r=0; bun test --parallel src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test --parallel tests/gpu tests/integration tests/search || r=$?; bun test --parallel tests/vectors tests/wasm tests/workers || r=$?; bun test --parallel tests/storage || r=$?; exit $r",
     "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:acceleration": "bun run scripts/verify-acceleration.ts",
+    "verify:benchmarks": "bun run scripts/verify-benchmarks.ts",
+    "verify:bundle-size": "bun run scripts/verify-bundle-size.ts",
+    "verify:changelog": "bun run scripts/verify-changelog.ts",
+    "verify:documentation-examples": "bun run scripts/verify-documentation-examples.ts",
+    "verify:exports": "bun run scripts/verify-exports.ts",
+    "verify:package-consumers": "bun run scripts/verify-package-consumers.ts",
+    "verify:production": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build && bun run verify:exports && bun run verify:package-consumers && bun run verify:documentation-examples && bun run verify:acceleration && bun run verify:benchmarks && bun run verify:bundle-size && bun run verify:supply-chain && bun run verify:changelog",
+    "verify:supply-chain": "bun run scripts/verify-supply-chain.ts"
   },
   "lint-staged": {
     "src/**/*.{js,ts,tsx,jsx,mjs,cjs}": [
