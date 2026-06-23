@@ -163,6 +163,7 @@
     "verify:benchmarks": "bun run scripts/verify-benchmarks.ts",
     "verify:bundle-size": "bun run scripts/verify-bundle-size.ts",
     "verify:changelog": "bun run scripts/verify-changelog.ts",
+    "verify:documentation": "bun run scripts/verify-documentation.ts",
     "verify:documentation-examples": "bun run scripts/verify-documentation-examples.ts",
     "verify:exports": "bun run scripts/verify-exports.ts",
     "verify:package-consumers": "bun run scripts/verify-package-consumers.ts",

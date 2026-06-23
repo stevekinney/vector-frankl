@@ -94,7 +94,6 @@ export interface IndexedDatabaseTransaction {
   onerror: ((event: unknown) => void) | null;
   onabort: ((event: unknown) => void) | null;
   readonly error: Error | null;
-  readonly mode: IndexedDatabaseTransactionMode;
   objectStore(name: string): IndexedDatabaseObjectStore;
   abort(): void;
 }

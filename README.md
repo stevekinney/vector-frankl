@@ -1,93 +1,143 @@
-# Vector Frankl 🚀
+# Vector Frankl
 
-A high-performance vector database built on IndexedDB for browser-based storage, with pluggable storage adapters for server-side runtimes. Perfect for building AI-powered applications with semantic search capabilities, vector similarity search, and machine learning workflows.
+A vector database built on IndexedDB for browser-based storage, with pluggable storage adapters for server-side runtimes. Designed for AI-powered applications that need semantic search, vector similarity search, and machine learning workflows—especially in environments where latency, privacy, or offline access matter.
 
 [![CI](https://github.com/stevekinney/vector-frankl/workflows/CI/badge.svg)](https://github.com/stevekinney/vector-frankl/actions)
 [![TypeScript](https://img.shields.io/badge/TypeScript-100%25_Type_Safe-blue.svg)](https://www.typescriptlang.org/)
 [![Bun](https://img.shields.io/badge/Bun-Optimized-yellow.svg)](https://bun.sh/)
 [![Security](https://img.shields.io/badge/Security-Hardened-green.svg)](docs/SECURITY.md)
 
-## ✨ Why Vector Frankl is Awesome
+## Why Vector Frankl
 
-- **Unparalleled Performance:** Leveraging SIMD and WebGPU, Vector Frankl delivers fast vector operations, ensuring your AI features are responsive and efficient, even with large datasets.
-- **Runs Anywhere:** Defaults to IndexedDB in the browser for zero-config client-side AI, but pluggable storage adapters let you run the same API on top of SQLite, LevelDB, LMDB, Redis, S3, or the file system in Bun, with LevelDB and LMDB also supported in Node.
-- **Rich Feature Set:** From advanced vector compression and multiple distance metrics to robust namespace management and comprehensive debugging tools, Vector Frankl provides everything you need to build sophisticated vector-based applications.
-- **Developer-Friendly:** With 100% TypeScript support, a clear API, and built-in performance monitoring, integrating and optimizing your AI workflows has never been easier.
+**Browser-first, server-optional.** The core API defaults to IndexedDB with zero configuration, making client-side semantic search practical without a backend. Pluggable storage adapters let the same API run on SQLite, LevelDB, LMDB, Redis, S3, or the file system in Bun and Node when you need a server-side deployment.
+
+**Performance through honest capability detection.** SIMD and WebGPU are used automatically when the environment supports them, with transparent fallback to scalar operations when they don't. The library reports which path it took rather than silently degrading.
+
+**100% TypeScript, strict mode throughout.** Zero `any` escapes, `exactOptionalPropertyTypes`, `noUncheckedIndexedAccess`. Types are not bolted on—they drive the API shape.
 
 ## Use Cases
 
-The broader pattern here is moving vector search compute to the edge—the browser—which unlocks use cases where latency, privacy, cost, or offline access are constraints. The tradeoff is index size and embedding compute, but with quantized models and WebGPU acceleration, that ceiling keeps rising.
+Moving vector search compute to the browser unlocks use cases where latency, privacy, cost, or offline access are constraints. The tradeoff is index size and embedding compute, but with quantized models and WebGPU acceleration (where available), that ceiling keeps rising.
 
-- **Local semantic search:** All embeddings stay on the user's device. You could build a personal knowledge base, journal, or note-taking app where semantic search works entirely offline with zero data leaving the browser. Note that data is stored as **plaintext** in IndexedDB—it is not transmitted to a server, but it is readable by any same-origin script and by the underlying OS. See the [Encryption at Rest](docs/SECURITY.md#encryption-at-rest) section before storing sensitive content.
+- **Privacy-first semantic search:** All embeddings stay on the user's device. Build a personal knowledge base, journal, or note-taking app where semantic search works entirely offline with zero data leaving the browser. Note that data is stored as **plaintext** in IndexedDB—it is not transmitted to a server, but it is readable by any same-origin script and by the underlying OS. See the [Encryption at Rest](docs/SECURITY.md#encryption-at-rest) section before storing sensitive content.
 
-- **Offline-capable RAG:** Pair it with a small local model (like one running via WebLLM or ONNX Runtime Web) and you've got a fully client-side retrieval-augmented generation pipeline. Think a field technician querying a maintenance manual on a tablet with no connectivity.
+- **Offline-capable RAG:** Pair with a small local model (WebLLM, ONNX Runtime Web) for a fully client-side retrieval-augmented generation pipeline.
 
-- **Personalized UI without a backend:** Embed user interactions—clicks, searches, navigation patterns—as vectors and do nearest-neighbor lookups to surface contextually relevant UI elements, recommendations, or shortcuts. All without a single network request.
+- **Personalized UI without a backend:** Embed user interactions as vectors and do nearest-neighbor lookups to surface contextually relevant UI elements or recommendations—without a single network request.
 
-- **Cross-tab and cross-session memory:** Since IndexedDB persists across sessions and is shared across tabs for the same origin, you could build agents or assistants that accumulate semantic memory over time. A support chatbot that "remembers" what the user struggled with last week, entirely client-side.
+- **Cross-tab and cross-session memory:** IndexedDB persists across sessions and is shared across tabs for the same origin. Build assistants that accumulate semantic memory over time, entirely client-side.
 
-- **Edge-computed semantic caching:** Cache LLM responses keyed by embedding similarity rather than exact string match. If a user asks something semantically close to a previous query, serve the cached response instantly. This cuts API costs and latency dramatically for conversational UIs.
+- **Edge-computed semantic caching:** Cache LLM responses keyed by embedding similarity rather than exact string match, cutting API costs and latency for conversational UIs.
 
-- **Federated or hybrid search architectures:** Run a first-pass vector search locally against the user's personal corpus, then only fan out to the server for the public or shared corpus. You reduce server load and latency while keeping personal data local.
+- **Federated or hybrid search:** Run a first-pass vector search locally against the user's personal corpus, then fan out to the server for the public corpus. Reduce server load while keeping personal data local.
 
-- **Progressive enrichment:** As a user browses, background-embed page content (or snippets they highlight and bookmark) into the local vector store, gradually building a personal semantic index of "everything I've read." Then offer recall like "you read something about X last month" without any server involvement.
+- **Progressive enrichment:** As a user browses, background-embed page content into the local vector store, gradually building a personal semantic index of "everything I've read."
 
-- **Developer tooling in the browser:** Imagine a browser DevTools extension that embeds console errors, network responses, and component trees, then lets you do semantic search across your debugging session. "Find me the request that looked like the one that failed yesterday."
+## Features
 
-## 🌟 Features
-
-### ✅ Core Features
+### Core Features
 
 **Vector Storage & Management**
 
-- 🗄️ **Pluggable Storage**: IndexedDB (browser default), SQLite, LevelDB, LMDB, Redis, S3, OPFS, Chrome Storage, file system, or in-memory
-- 📊 **Multiple Vector Formats**: Support for Float32Array, Float64Array, Int8Array, Uint8Array, and regular arrays
-- 🔍 **Similarity Search**: Fast brute-force and optimized search algorithms
-- 📝 **Rich Metadata**: Attach and filter by custom metadata with advanced query support
-- 🔧 **Batch Operations**: Efficient bulk insert/update/delete with progress tracking
+- **Pluggable Storage**: IndexedDB (browser default), SQLite, LevelDB, LMDB, Redis, S3, OPFS, Chrome Storage, file system, or in-memory
+- **Multiple Vector Formats**: Float32Array, Float64Array, Int8Array, Uint8Array, and regular arrays
+- **Similarity Search**: Brute-force and HNSW-indexed approximate search
+- **Rich Metadata**: Attach and filter by custom metadata with advanced query support
+- **Batch Operations**: Efficient bulk insert/update/delete with progress tracking
 
 **Advanced Architecture**
 
-- 🏗️ **Namespace Management**: Isolated vector collections with independent configurations
-- 🎯 **Multiple Distance Metrics**: Cosine, Euclidean, Manhattan, Hamming, Jaccard, and custom metrics
-- 🚀 **Performance Optimizations**: SIMD operations, WebGPU acceleration, and scalar fallbacks
-- 📦 **Vector Compression**: Scalar quantization and product quantization
-- 🔄 **Background Processing**: Web Workers for parallel operations
+- **Namespace Management**: Isolated vector collections with independent configurations
+- **Multiple Distance Metrics**: Cosine, Euclidean, Manhattan, Hamming, Jaccard, and custom metrics
+- **SIMD Acceleration**: Vectorized math operations with automatic capability detection and scalar fallback
+- **WebGPU Acceleration**: GPU-accelerated similarity search via `GPUSearchEngine` (browser-dependent; falls back to CPU automatically)
+- **Vector Compression**: Scalar quantization and product quantization
+- **Background Processing**: Web Workers for parallel operations
 
 **Developer Experience**
 
-- 📘 **Full TypeScript Support**: 100% type-safe with strict mode, zero TypeScript errors
-- 🛠️ **Debug & Profiling Tools**: Built-in performance monitoring and debugging utilities
-- 📈 **Benchmarking Suite**: Comprehensive performance testing framework
-- 🔐 **Advanced Error Handling**: Detailed error types with context and recovery suggestions
-- 🛡️ **Security First**: Input validation, ReDoS protection, and memory safeguards
+- **Full TypeScript Support**: 100% type-safe with strict mode, zero TypeScript errors
+- **Debug & Profiling Tools**: Built-in performance monitoring and debugging utilities
+- **Benchmarking Suite**: Comprehensive performance testing framework
+- **Security First**: Input validation, ReDoS protection, and memory safeguards
 
-### 🚧 Advanced Features
+### Storage Management
 
-**Storage Management**
+- **Quota Monitoring**: Track storage usage with automatic cleanup policies
+- **Eviction Strategies**: LRU, LFU, TTL, score-based, and hybrid policies
+- **Memory Management**: Shared memory pools for efficient data handling
 
-- 🔌 **Pluggable Adapters**: 10 storage backends behind a single `StorageAdapter` interface
-- 📊 **Quota Monitoring**: Track storage usage with automatic cleanup policies
-- 🗑️ **Eviction Strategies**: LRU, LFU, TTL, score-based, and hybrid policies
-- 💾 **Memory Management**: Shared memory pools for efficient data handling
+### Search & Indexing
 
-**Search & Indexing**
+- **HNSW Index**: Hierarchical Navigable Small World graphs for fast approximate search
+- **Index Persistence**: Save and load search indices for improved performance
+- **Search Filters**: Complex metadata filtering with range queries and operators
 
-- 🔍 **HNSW Index**: Hierarchical Navigable Small World graphs for fast approximate search
-- 🔗 **Index Persistence**: Save and load search indices for improved performance
-- 🎛️ **Search Filters**: Complex metadata filtering with range queries and operators
+## Production Readiness
 
-**Performance Acceleration**
+Feature stability levels reflect the actual state of the implementation and its test coverage. Stability guarantees apply at the API level—interfaces marked **Stable** will not make breaking changes without a major version bump.
 
-- ⚡ **SIMD Operations**: Single Instruction, Multiple Data for vectorized computations
-- 🌐 **WebGPU Support**: GPU-accelerated search and mathematical operations
-- 🔧 **Acceleration Fallbacks**: Honest capability detection with SIMD/scalar fallbacks when optional acceleration is unavailable
+### Stable
 
-## 📋 Prerequisites
+These features are implemented, tested, and covered by CI.
+
+| Feature                         | Description                                      |
+| ------------------------------- | ------------------------------------------------ |
+| `VectorDB`                      | Simple single-collection API                     |
+| `VectorFrankl`                  | Namespace API for multi-collection use           |
+| `MemoryStorageAdapter`          | In-memory storage for tests and ephemeral use    |
+| `IndexedDatabaseStorageAdapter` | IndexedDB for browser persistence                |
+| Distance metrics                | Cosine, Euclidean, Manhattan, Hamming, Jaccard   |
+| `HNSWIndex`                     | Approximate nearest-neighbor indexing            |
+| Metadata filtering              | Range queries, logical operators                 |
+| Batch operations                | Insert, update, delete with progress callbacks   |
+| Eviction policies               | LRU, LFU, TTL, score-based, hybrid               |
+| Quota monitoring                | `StorageQuotaMonitor` for storage usage tracking |
+| Compression                     | Scalar quantization, product quantization        |
+| Error types                     | `VectorDatabaseError` and all subclasses         |
+
+### Beta
+
+These features are implemented and tested but depend on optional peer dependencies, specific runtimes, or browser capabilities that vary across environments.
+
+| Feature                    | Description                          | Requirement                    |
+| -------------------------- | ------------------------------------ | ------------------------------ |
+| `OPFSStorageAdapter`       | Origin Private File System storage   | Browser with OPFS support      |
+| `ChromeStorageAdapter`     | `chrome.storage` adapter             | Chrome extension context       |
+| `SQLiteStorageAdapter`     | SQLite-backed storage                | Bun runtime                    |
+| `FileSystemStorageAdapter` | File system (JSON files)             | Bun or Node.js                 |
+| `LevelStorageAdapter`      | LevelDB via `level`                  | Optional peer dependency       |
+| `LmdbStorageAdapter`       | LMDB via `lmdb`                      | Optional peer dependency       |
+| `RedisStorageAdapter`      | Redis via `Bun.RedisClient`          | Bun runtime                    |
+| `S3StorageAdapter`         | Object storage via `Bun.s3`          | Bun runtime                    |
+| `GPUSearchEngine`          | WebGPU-accelerated similarity search | Browser with WebGPU support    |
+| `SIMDOperations`           | WebAssembly SIMD vectorized math     | Browser/runtime with Wasm SIMD |
+| `WorkerPool`               | Parallel search via Web Workers      | Browser with Worker support    |
+
+### Experimental
+
+These features are present in the codebase but are not complete or not fully integrated. Treat them as opt-in previews; their APIs may change.
+
+| Feature                          | Description                                                                                                                                                                                                 |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WASMManager` / `WASMOperations` | WebAssembly capability detection and memory management. **No compiled vector-operation module is bundled.** The API exists for future integration; callers fall back to SIMD or scalar paths automatically. |
+| `debugManager` / `profiler`      | Debug and profiling APIs under `vector-frankl/debug`. Functional but the interface is not yet finalized.                                                                                                    |
+
+### Unsupported
+
+These are not currently part of the public API and are not supported for external use.
+
+| Area                    | Status                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------- |
+| Custom WASM modules     | No loader or interface for supplying a compiled WASM module is exposed             |
+| Server-side IndexedDB   | IndexedDB requires a real browser environment; Node.js polyfills are not supported |
+| React Native / Electron | Not tested; IndexedDB availability varies                                          |
+
+## Prerequisites
 
 - [Bun](https://bun.sh) >= 1.3.0
 - Modern browser with IndexedDB support
-- Chrome/Edge recommended for optimal performance (SIMD, WebGPU)
+- Chrome or Edge recommended for WebGPU acceleration (where used)
 
 ## Runtime Support
 
@@ -153,17 +203,14 @@ quota handling, and cleanup steps for each adapter, see [docs/ADAPTERS.md](docs/
 | `RedisStorageAdapter`           | Redis                      | Bun ≥ 1.1         | None            |
 | `S3StorageAdapter`              | S3 / S3-compatible         | Bun ≥ 1.1         | None            |
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Installation
 
 ```bash
-# Install Vector Frankl
 npm install vector-frankl
 # or
 bun add vector-frankl
-# or
-yarn add vector-frankl
 ```
 
 ### Simple Usage
@@ -190,7 +237,7 @@ const results = await db.search(queryVector, 5, {
 console.log(results);
 ```
 
-## 📖 API Documentation
+## API Documentation
 
 ### Simple API (VectorDB)
 
@@ -257,7 +304,7 @@ await db.deleteNamespace('old-collection');
 
 ### Storage Adapters
 
-By default, `VectorDB` and `VectorFrankl` use IndexedDB. Pass a `StorageAdapter` or `StorageAdapterFactory` to swap in a different backend. `MemoryStorageAdapter` and `IndexedDatabaseStorageAdapter` are exported from the main entry point; server-side adapters are imported directly from their files.
+By default, `VectorDB` and `VectorFrankl` use IndexedDB. Pass a `StorageAdapter` or `StorageAdapterFactory` to swap in a different backend. `MemoryStorageAdapter` and `IndexedDatabaseStorageAdapter` are exported from the main entry point; all other adapters are imported via their own deep-import paths.
 
 ```typescript
 import { VectorDB, MemoryStorageAdapter } from 'vector-frankl';
@@ -292,37 +339,20 @@ await frankl.init();
 
 ### Storage Adapter Support Matrix
 
-Every adapter carries a `static capabilities` property that declares its support guarantees. Three tiers apply:
+| Adapter                         | Import path                             | Backend                    | Environment       | Stability | Persist | Txn | Batch Atomic | Quota |
+| ------------------------------- | --------------------------------------- | -------------------------- | ----------------- | --------- | ------- | --- | ------------ | ----- |
+| `IndexedDatabaseStorageAdapter` | `vector-frankl`                         | IndexedDB                  | Browser           | Stable    | ✓       | ✓   | —            | ✓     |
+| `MemoryStorageAdapter`          | `vector-frankl`                         | In-memory `Map`            | Any               | Stable    | —       | —   | —            | —     |
+| `SQLiteStorageAdapter`          | `vector-frankl/adapters/sqlite`         | `bun:sqlite`               | Bun               | Beta      | ✓       | ✓   | ✓            | —     |
+| `OPFSStorageAdapter`            | `vector-frankl/adapters/opfs`           | Origin Private File System | Browser           | Beta      | ✓       | —   | —            | ✓     |
+| `ChromeStorageAdapter`          | `vector-frankl/adapters/chrome-storage` | `chrome.storage`           | Chrome extensions | Beta      | ✓       | —   | —            | —     |
+| `FileSystemStorageAdapter`      | `vector-frankl/adapters/file-system`    | File system (JSON/binary)  | Bun / Node        | Beta      | ✓       | —   | —            | —     |
+| `LevelStorageAdapter`           | `vector-frankl/adapters/level`          | LevelDB via `level`        | Bun / Node        | Beta      | ✓       | —   | ✓            | —     |
+| `LmdbStorageAdapter`            | `vector-frankl/adapters/lmdb`           | LMDB via `lmdb`            | Bun / Node        | Beta      | ✓       | ✓   | ✓            | —     |
+| `RedisStorageAdapter`           | `vector-frankl/adapters/redis`          | `Bun.RedisClient`          | Bun               | Beta      | ✓       | —   | —            | —     |
+| `S3StorageAdapter`              | `vector-frankl/adapters/s3`             | `Bun.s3`                   | Bun               | Beta      | ✓       | —   | —            | —     |
 
-- **production-supported**: stable API, recommended for production use.
-- **experimental**: functional but subject to change; use with caution in production.
-- **internal-only**: for testing and ephemeral use only; not intended for production.
-
-| Adapter                         | Tier                 | Backend                    | Runtime           | Persist | Txn | Batch Atomic | Quota |
-| ------------------------------- | -------------------- | -------------------------- | ----------------- | ------- | --- | ------------ | ----- |
-| `IndexedDatabaseStorageAdapter` | production-supported | IndexedDB                  | Browser           | ✓       | ✓   | —            | ✓     |
-| `SQLiteStorageAdapter`          | production-supported | `bun:sqlite`               | Bun               | ✓       | ✓   | ✓            | —     |
-| `OPFSStorageAdapter`            | experimental         | Origin Private File System | Browser           | ✓       | —   | —            | ✓     |
-| `ChromeStorageAdapter`          | experimental         | `chrome.storage`           | Chrome extensions | ✓       | —   | —            | —     |
-| `FileSystemStorageAdapter`      | experimental         | File system (JSON/binary)  | Bun / Node        | ✓       | —   | —            | —     |
-| `LevelStorageAdapter`           | experimental         | LevelDB via `level`        | Bun / Node        | ✓       | —   | ✓            | —     |
-| `LmdbStorageAdapter`            | experimental         | LMDB via `lmdb`            | Bun / Node        | ✓       | ✓   | ✓            | —     |
-| `RedisStorageAdapter`           | experimental         | `Bun.RedisClient`          | Bun               | ✓       | —   | —            | —     |
-| `S3StorageAdapter`              | experimental         | `Bun.s3`                   | Bun               | ✓       | —   | —            | —     |
-| `MemoryStorageAdapter`          | internal-only        | In-memory `Map`            | Any               | —       | —   | —            | —     |
-
-Capability metadata is queryable at runtime:
-
-```typescript
-import { ADAPTER_SUPPORT_MATRIX } from 'vector-frankl/storage/adapters/adapter-capabilities';
-
-const caps = ADAPTER_SUPPORT_MATRIX['SQLiteStorageAdapter'];
-// caps.tier         → 'production-supported'
-// caps.transactions → true
-// caps.runtimes     → ['bun']
-```
-
-## 🔧 Advanced Features
+## Advanced Features
 
 ### Vector Compression
 
@@ -356,11 +386,11 @@ const result = await manager.compress(vector, 'scalar');
 
 ### Performance Acceleration
 
-SIMD and WebGPU acceleration are used automatically by the search engine when available. You don't need to import or configure them directly — Vector Frankl detects browser capabilities and selects the fastest available path, falling back to scalar operations when acceleration is unavailable.
+SIMD and WebGPU acceleration are used automatically by the search engine when available. Capability detection runs at initialization; when an acceleration path is unavailable the library falls back silently to scalar operations.
 
 #### WebGPU Acceleration
 
-For explicit control over GPU-accelerated search:
+`GPUSearchEngine` (exported from `vector-frankl/gpu`) provides explicit control over GPU-accelerated search. WebGPU availability varies by browser and platform—`enableFallback: true` (the default) ensures CPU search is used when the GPU path is unavailable.
 
 ```typescript
 import { GPUSearchEngine } from 'vector-frankl/gpu';
@@ -416,6 +446,8 @@ See [docs/shared-memory.md](docs/shared-memory.md) for server configuration exam
 
 ### Debug & Profiling
 
+The debug API is available under `vector-frankl/debug` and is currently **experimental**—functional but not yet API-stable.
+
 ```typescript
 import { debugManager, withProfiling } from 'vector-frankl/debug';
 
@@ -430,7 +462,7 @@ debugManager.enable({
 const result = await withProfiling('vector-search', () => db.search(queryVector, 5));
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ### Core Components
 
@@ -490,9 +522,9 @@ const result = await withProfiling('vector-search', () => db.search(queryVector,
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 📊 Benchmarks
+## Benchmarks
 
-Vector Frankl includes a comprehensive benchmarking suite:
+Vector Frankl includes a benchmarking suite:
 
 ```typescript
 import { BenchmarkSuite, QuickBenchmark } from 'vector-frankl/benchmarks';
@@ -511,25 +543,16 @@ const suite = new BenchmarkSuite({
 const results = await suite.runSuite();
 ```
 
-### Performance Characteristics
+Performance varies significantly by environment, browser, hardware, and whether SIMD or WebGPU acceleration is active. Run `bun run scripts/benchmark.ts` against your target environment for representative numbers.
 
-| Operation    | 1K vectors | 10K vectors | 100K vectors |
-| ------------ | ---------- | ----------- | ------------ |
-| Insert       | ~1ms       | ~5ms        | ~50ms        |
-| Search       | ~10ms      | ~100ms      | ~800ms       |
-| Batch Insert | ~50ms      | ~200ms      | ~1.5s        |
-| With SIMD    | ~5ms       | ~50ms       | ~400ms       |
-| With WebGPU  | ~2ms       | ~20ms       | ~150ms       |
+## Security & Reliability
 
-### Security & Performance Improvements
+- **ReDoS Protection**: All regex operations guarded with pattern validation; no user input is passed to `RegExp` without sanitization
+- **Memory Guards**: Vector size limits (100k dimensions, 512MB per vector) prevent exhaustion attacks
+- **Input Validation**: Comprehensive validation for all user inputs via `InputValidator`
+- **Type Safety**: 100% TypeScript strict mode with zero errors
 
-- **ReDoS Protection**: All regex operations protected with timeout and pattern validation
-- **Memory Guards**: Vector size limits (100k dimensions, 512MB max per vector)
-- **Input Validation**: Comprehensive validation for all user inputs
-- **Optimized Async**: Removed unnecessary async/await for 30-50% performance boost
-- **Type Safety**: 100% TypeScript strict mode compliance with zero errors
-
-## 🛠️ Development
+## Development
 
 ### Setup
 
@@ -560,6 +583,9 @@ bun run build
 
 # Benchmarks
 bun run scripts/benchmark.ts
+
+# Verify documentation claims
+bun run verify:documentation
 ```
 
 ### Quality Assurance
@@ -599,7 +625,7 @@ docs/                   # Documentation
 scripts/                # Build and benchmark scripts
 ```
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions!
 
@@ -619,22 +645,22 @@ We welcome contributions!
 - Use semantic commit messages
 - Document public APIs with JSDoc
 
-## 📄 License
+## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License—see [LICENSE](LICENSE) for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - IndexedDB for persistent browser storage
 - HNSW algorithm for efficient similarity search
-- WebGPU and SIMD for performance acceleration
+- WebGPU and SIMD for performance acceleration where available
 
-## 📚 Related Projects
+## Related Projects
 
-- [Faiss](https://github.com/facebookresearch/faiss) - Library for efficient similarity search
-- [Annoy](https://github.com/spotify/annoy) - Approximate nearest neighbors
-- [Vector Database Comparison](https://github.com/erikbern/ann-benchmarks) - Benchmarking various implementations
+- [Faiss](https://github.com/facebookresearch/faiss)—library for efficient similarity search
+- [Annoy](https://github.com/spotify/annoy)—approximate nearest neighbors
+- [ANN Benchmarks](https://github.com/erikbern/ann-benchmarks)—benchmarking various implementations
 
 ---
 
-Built with ❤️ by [Steve Kinney](https://github.com/stevekinney).
+Built by [Steve Kinney](https://github.com/stevekinney).
