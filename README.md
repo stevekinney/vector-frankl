@@ -10,7 +10,7 @@ A high-performance vector database built on IndexedDB for browser-based storage,
 ## ✨ Why Vector Frankl is Awesome
 
 - **Unparalleled Performance:** Leveraging SIMD and WebGPU, Vector Frankl delivers fast vector operations, ensuring your AI features are responsive and efficient, even with large datasets.
-- **Runs Anywhere:** Defaults to IndexedDB in the browser for zero-config client-side AI, but pluggable storage adapters let you run the same API on top of SQLite, LevelDB, LMDB, Redis, S3, or the file system in Bun and Node.
+- **Runs Anywhere:** Defaults to IndexedDB in the browser for zero-config client-side AI, but pluggable storage adapters let you run the same API on top of SQLite, LevelDB, LMDB, Redis, S3, or the file system in Bun, with LevelDB and LMDB also supported in Node.
 - **Rich Feature Set:** From advanced vector compression and multiple distance metrics to robust namespace management and comprehensive debugging tools, Vector Frankl provides everything you need to build sophisticated vector-based applications.
 - **Developer-Friendly:** With 100% TypeScript support, a clear API, and built-in performance monitoring, integrating and optimizing your AI workflows has never been easier.
 
@@ -239,7 +239,7 @@ Available adapters:
 | `OPFSStorageAdapter`            | Origin Private File System | Browser           |
 | `ChromeStorageAdapter`          | `chrome.storage`           | Chrome extensions |
 | `SQLiteStorageAdapter`          | `bun:sqlite`               | Bun               |
-| `FileSystemStorageAdapter`      | File system (JSON files)   | Bun / Node        |
+| `FileSystemStorageAdapter`      | File system (JSON files)   | Bun               |
 | `LevelStorageAdapter`           | LevelDB via `level`        | Bun / Node        |
 | `LmdbStorageAdapter`            | LMDB via `lmdb`            | Bun / Node        |
 | `RedisStorageAdapter`           | `Bun.RedisClient`          | Bun               |
