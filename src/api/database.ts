@@ -101,7 +101,13 @@ export class VectorDB {
   }
 
   /**
-   * Initialize the database
+   * Initialize the database.
+   *
+   * When indexing is enabled and a persistence backend is available, any
+   * previously saved HNSW index is loaded and validated against current storage
+   * automatically so that `getIndexStats().nodeCount` reflects the stored vector
+   * count immediately after reopening without requiring an explicit
+   * `rebuildIndex()` call.  A stale or empty snapshot triggers a rebuild.
    */
   @debugMethod('database.init', 'basic', { profileEnabled: true, memoryTracking: true })
   async init(): Promise<void> {
@@ -111,6 +117,11 @@ export class VectorDB {
 
     await this.storage.init();
     this.initialized = true;
+
+    // Restore persisted HNSW index when indexing is enabled.
+    // rebuildIndex() tries the cache first (with validation) and falls back to
+    // building from storage when no valid snapshot exists.
+    await this.searchEngine.rebuildIndex();
   }
 
   /**

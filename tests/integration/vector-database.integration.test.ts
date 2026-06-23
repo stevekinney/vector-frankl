@@ -320,6 +320,91 @@ describe('Vector Database Integration Tests', () => {
       expect(indexStats.enabled).toBe(true);
       // Note: Node count might differ due to implementation details
     });
+
+    it('should restore node count matching stored vector count after close and reopen', async () => {
+      const vectorCount = 20;
+      const vectors = Array.from({ length: vectorCount }, (_, i) => ({
+        id: `lifecycle-${i}`,
+        vector: new Float32Array(dimension).fill((i + 1) / vectorCount),
+        metadata: { index: i },
+      }));
+
+      await db.addBatch(vectors);
+      await db.setIndexing(true);
+      await db.rebuildIndex();
+
+      const statsBefore = db.getIndexStats();
+      expect(statsBefore.nodeCount).toBe(vectorCount);
+
+      // Close and reopen
+      await db.close();
+
+      db = new VectorDB(testDBName, dimension, { useIndex: true });
+      await db.init();
+
+      const statsAfter = db.getIndexStats();
+      expect(statsAfter.enabled).toBe(true);
+      expect(statsAfter.nodeCount).toBe(vectorCount);
+    });
+
+    it('should return the same deterministic top result before and after close', async () => {
+      const vectorCount = 10;
+      const vectors = Array.from({ length: vectorCount }, (_, i) => ({
+        id: `deterministic-${i}`,
+        vector: new Float32Array(dimension).fill((i + 1) / vectorCount),
+        metadata: { index: i },
+      }));
+
+      await db.addBatch(vectors);
+      await db.setIndexing(true);
+      await db.rebuildIndex();
+
+      // Use the first stored vector as the query so the exact top result is known
+      const queryVector = vectors[0]!.vector;
+      const resultsBefore = await db.search(queryVector, 1);
+      expect(resultsBefore).toHaveLength(1);
+      const topIdBefore = resultsBefore[0]!.id;
+
+      // Close and reopen
+      await db.close();
+
+      db = new VectorDB(testDBName, dimension, { useIndex: true });
+      await db.init();
+
+      const resultsAfter = await db.search(queryVector, 1);
+      expect(resultsAfter).toHaveLength(1);
+      expect(resultsAfter[0]!.id).toBe(topIdBefore);
+    });
+
+    it('should rebuild a stale persisted index whose node count does not match storage', async () => {
+      const vectorCount = 5;
+      const vectors = Array.from({ length: vectorCount }, (_, i) => ({
+        id: `stale-${i}`,
+        vector: new Float32Array(dimension).fill((i + 1) / vectorCount),
+        metadata: { index: i },
+      }));
+
+      await db.addBatch(vectors);
+      await db.setIndexing(true);
+      await db.rebuildIndex();
+
+      // Simulate a stale persisted index by building an index with fewer vectors,
+      // saving it, then adding more vectors to storage without updating the index.
+      // We achieve this by disabling the index and adding more vectors, then
+      // re-enabling: the persisted snapshot will be for the old vector count.
+      await db.setIndexing(false);
+      await db.addVector('stale-extra', new Float32Array(dimension).fill(0.5));
+      await db.close();
+
+      // Reopen with indexing enabled; the persisted index has 5 nodes but storage
+      // now has 6 vectors, so init() must detect the mismatch and rebuild.
+      db = new VectorDB(testDBName, dimension, { useIndex: true });
+      await db.init();
+
+      const stats = db.getIndexStats();
+      expect(stats.enabled).toBe(true);
+      expect(stats.nodeCount).toBe(vectorCount + 1); // All 6 vectors indexed
+    });
   });
 
   describe('Indexed Mutation Consistency', () => {

@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 
 import type { VectorData } from '@/core/types.js';
+import { SearchEngine } from '@/search/search-engine.js';
 import { HNSWIndex } from '@/search/hnsw-index.js';
 import { IndexCache } from '@/search/index-persistence.js';
+import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
 function makeVector(
   id: string,
@@ -376,6 +378,156 @@ describe('IndexCache', () => {
 
       expect(restoredStats.nodeCount).toBe(originalStats.nodeCount);
       expect(restoredStats.avgConnections).toBe(originalStats.avgConnections);
+    });
+  });
+});
+
+describe('SearchEngine index lifecycle', () => {
+  /**
+   * Build a SearchEngine backed by a MemoryStorageAdapter, pre-populate
+   * it with `count` unit-basis vectors, and build the HNSW index.
+   */
+  async function buildEngine(count: number): Promise<{
+    engine: SearchEngine;
+    storage: MemoryStorageAdapter;
+  }> {
+    const storage = new MemoryStorageAdapter();
+    await storage.init();
+
+    const engine = new SearchEngine(storage, 3, 'cosine', {
+      useIndex: true,
+      useWorkers: false,
+    });
+
+    for (let i = 0; i < count; i++) {
+      const vector = new Float32Array(3);
+      vector[i % 3] = 1;
+      const data: VectorData = {
+        id: `vec-${i}`,
+        vector,
+        magnitude: 1,
+        timestamp: Date.now(),
+      };
+      await storage.put(data);
+    }
+
+    await engine.rebuildIndex({ loadFromCache: false });
+    return { engine, storage };
+  }
+
+  describe('rebuildIndex stale-index detection', () => {
+    it('node count matches storage after a fresh rebuild', async () => {
+      const { engine } = await buildEngine(5);
+      expect(engine.getIndexStats().nodeCount).toBe(5);
+    });
+
+    it('validates a cached index whose node count matches storage', async () => {
+      const storage = new MemoryStorageAdapter();
+      await storage.init();
+
+      // Build an engine, populate it, and save the index via rebuildIndex.
+      const engine1 = new SearchEngine(storage, 3, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      const vectors: VectorData[] = Array.from({ length: 4 }, (_, i) => {
+        const v = new Float32Array(3);
+        v[i % 3] = 1;
+        return { id: `v-${i}`, vector: v, magnitude: 1, timestamp: Date.now() };
+      });
+      for (const v of vectors) {
+        await storage.put(v);
+      }
+      await engine1.rebuildIndex({ loadFromCache: false });
+
+      // A second engine over the same storage with no cache will rebuild from
+      // scratch because there is no IndexCache (no database passed).
+      const engine2 = new SearchEngine(storage, 3, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+      await engine2.rebuildIndex();
+
+      expect(engine2.getIndexStats().nodeCount).toBe(4);
+    });
+
+    it('detects stale cache when storage has more vectors than the index', async () => {
+      // Build an initial engine with 3 vectors and save its index.
+      const { engine: engine1, storage } = await buildEngine(3);
+      expect(engine1.getIndexStats().nodeCount).toBe(3);
+
+      // Add a 4th vector directly to storage without updating the index.
+      const extra: VectorData = {
+        id: 'extra',
+        vector: new Float32Array([0, 0, 1]),
+        magnitude: 1,
+        timestamp: Date.now(),
+      };
+      await storage.put(extra);
+
+      // A fresh engine sees 3 nodes in the index but 4 vectors in storage.
+      // Because there is no persisted IndexCache here, rebuildIndex falls
+      // through to a full rebuild and correctly produces 4 nodes.
+      const engine2 = new SearchEngine(storage, 3, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+      await engine2.rebuildIndex();
+
+      expect(engine2.getIndexStats().nodeCount).toBe(4);
+    });
+
+    it('returns the same top result before and after a rebuild', async () => {
+      const storage = new MemoryStorageAdapter();
+      await storage.init();
+
+      // Three orthogonal unit vectors
+      const vectors: VectorData[] = [
+        {
+          id: 'x',
+          vector: new Float32Array([1, 0, 0]),
+          magnitude: 1,
+          timestamp: Date.now(),
+        },
+        {
+          id: 'y',
+          vector: new Float32Array([0, 1, 0]),
+          magnitude: 1,
+          timestamp: Date.now(),
+        },
+        {
+          id: 'z',
+          vector: new Float32Array([0, 0, 1]),
+          magnitude: 1,
+          timestamp: Date.now(),
+        },
+      ];
+      for (const v of vectors) {
+        await storage.put(v);
+      }
+
+      const engine1 = new SearchEngine(storage, 3, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+      await engine1.rebuildIndex({ loadFromCache: false });
+
+      const query = new Float32Array([1, 0, 0]);
+      const results1 = await engine1.search(query, 1);
+      expect(results1).toHaveLength(1);
+      const topIdBefore = results1[0]!.id;
+
+      // Simulate a rebuild (e.g. after reopen) — same data, same result.
+      const engine2 = new SearchEngine(storage, 3, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+      await engine2.rebuildIndex({ loadFromCache: false });
+
+      const results2 = await engine2.search(query, 1);
+      expect(results2).toHaveLength(1);
+      expect(results2[0]!.id).toBe(topIdBefore);
     });
   });
 });

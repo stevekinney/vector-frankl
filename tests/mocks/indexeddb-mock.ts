@@ -469,25 +469,37 @@ export class MockIDBOpenDBRequest {
 
   constructor(name: string, version?: number) {
     setTimeout(() => {
-      // Simulate database opening
-      const db = new MockIDBDatabase(name, version || 1);
+      const requestedVersion = version || 1;
+      const existing = mockDatabases.get(name);
 
-      // Store the database in the global registry
-      mockDatabases.set(name, db);
+      let db: MockIDBDatabase;
+      let isNew: boolean;
+
+      if (existing) {
+        // Reuse existing database so close/reopen tests see persisted data
+        db = existing;
+        isNew = false;
+      } else {
+        db = new MockIDBDatabase(name, requestedVersion);
+        mockDatabases.set(name, db);
+        isNew = true;
+      }
 
       // Set result before callbacks
       this.result = db;
 
-      // Always trigger upgrade for new databases (simulate schema creation)
-      const upgradeEvent = {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        target: this as any,
-        oldVersion: 0,
-        newVersion: version || 1,
-      };
+      if (isNew) {
+        // Trigger upgrade only for new databases (simulate schema creation)
+        const upgradeEvent = {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          target: this as any,
+          oldVersion: 0,
+          newVersion: requestedVersion,
+        };
 
-      if (this.onupgradeneeded) {
-        this.onupgradeneeded(upgradeEvent);
+        if (this.onupgradeneeded) {
+          this.onupgradeneeded(upgradeEvent);
+        }
       }
 
       // Wait a tick to ensure upgrade is processed, then trigger success

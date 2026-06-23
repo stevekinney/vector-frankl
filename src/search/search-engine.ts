@@ -672,7 +672,11 @@ export class SearchEngine {
   }
 
   /**
-   * Rebuild the index from storage
+   * Rebuild the index from storage, optionally loading a persisted snapshot first.
+   *
+   * When loading from cache, the cached index is validated against the current
+   * storage vector count. If the counts differ (stale or incompatible index) the
+   * index is rebuilt from scratch so results remain consistent.
    */
   async rebuildIndex(options: { loadFromCache?: boolean } = {}): Promise<void> {
     if (!this.useIndex || !this.hnswIndex) {
@@ -683,7 +687,28 @@ export class SearchEngine {
     if (options.loadFromCache !== false && this.indexCache) {
       const cached = await this.indexCache.getIndex(this.indexId);
       if (cached) {
-        this.hnswIndex = cached.index;
+        // Validate cached index against current storage state
+        const allVectors = await this.storage.getAll();
+        if (cached.index.size() === allVectors.length) {
+          this.hnswIndex = cached.index;
+          return;
+        }
+
+        // Stale index — node count doesn't match storage. Discard and rebuild.
+        log.warn(
+          `Persisted HNSW index has ${cached.index.size()} nodes but storage has ${allVectors.length} vectors; rebuilding`,
+          { indexId: this.indexId },
+        );
+
+        // Clear the stale persisted entry so it doesn't get reused
+        await this.indexCache.deleteIndex(this.indexId);
+
+        // Clear existing index and rebuild from the already-fetched vectors
+        this.hnswIndex.clear();
+        for (const vectorData of allVectors) {
+          await this.hnswIndex.addVector(vectorData);
+        }
+        await this.saveIndex();
         return;
       }
     }
