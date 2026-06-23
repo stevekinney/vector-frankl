@@ -115,6 +115,26 @@ async function buildCjs(): Promise<void> {
     process.exit(1);
   }
 
+  // Safety net: a silent shim-swap miss would ship a raw `import.meta` token
+  // into the CJS output, which crashes Node's CommonJS parser at load time.
+  // Fail the build loudly if that ever happens, so it can never reach a consumer.
+  const offenders: string[] = [];
+  for (const output of result.outputs) {
+    if (output.kind !== 'entry-point' && output.kind !== 'chunk') continue;
+    const text = await output.text();
+    if (text.includes('import.meta')) {
+      offenders.push(output.path);
+    }
+  }
+  if (offenders.length > 0) {
+    console.error(
+      'CJS build produced output containing `import.meta`, which is invalid in CommonJS:\n' +
+        offenders.map((p) => `  - ${p}`).join('\n') +
+        '\nThe per-format shim swap (scripts/build.ts) failed to replace an import.meta source.',
+    );
+    process.exit(1);
+  }
+
   // Write dist/cjs/package.json so Node resolves .js files as CommonJS.
   await writeFile(
     join(ROOT, 'dist/cjs/package.json'),

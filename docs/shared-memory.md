@@ -58,7 +58,7 @@ Calling `new SharedMemoryManager()` without checking `self.crossOriginIsolated` 
 
 ## Server Configuration Examples
 
-### Express / Node HTTP
+### [Express](https://expressjs.com) / Node HTTP
 
 ```typescript
 import express from 'express';
@@ -91,7 +91,7 @@ serve({
 });
 ```
 
-### Vite (development)
+### [Vite](https://vitejs.dev) (development)
 
 ```typescript
 // vite.config.ts
@@ -107,21 +107,21 @@ export default defineConfig({
 });
 ```
 
-### Nginx
+### [Nginx](https://nginx.org)
 
 ```nginx
 add_header Cross-Origin-Opener-Policy "same-origin" always;
 add_header Cross-Origin-Embedder-Policy "require-corp" always;
 ```
 
-### Apache
+### [Apache](https://httpd.apache.org)
 
 ```apache
 Header always set Cross-Origin-Opener-Policy "same-origin"
 Header always set Cross-Origin-Embedder-Policy "require-corp"
 ```
 
-### Netlify (`netlify.toml`)
+### [Netlify](https://www.netlify.com) (`netlify.toml`)
 
 ```toml
 [[headers]]
@@ -131,7 +131,7 @@ Header always set Cross-Origin-Embedder-Policy "require-corp"
     Cross-Origin-Embedder-Policy = "require-corp"
 ```
 
-### Vercel (`vercel.json`)
+### [Vercel](https://vercel.com) (`vercel.json`)
 
 ```json
 {

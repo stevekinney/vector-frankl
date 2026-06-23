@@ -69,7 +69,13 @@ support tiers.
 
 ### Migration
 
-- No breaking API changes from `1.0.0-beta.1` for the core `VectorDB`/`VectorFrankl` surface. Removed dead `NamespaceConfig` fields (`indexStrategy`, `compression`, `compressionConfig`) that never affected runtime. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md).
+No breaking changes to the core `VectorDB`/`VectorFrankl` method signatures since `1.0.0-beta.1`. The following are **behavior changes** that could affect existing consumers — review them before upgrading. See [docs/MIGRATIONS.md](docs/MIGRATIONS.md) for details.
+
+- **Search-option validation is now strict.** `SearchOptions` is a closed contract: unknown keys are rejected, and `maxResults`/`batchSize` must be positive integers `≤ 50,000`. Code that previously passed unrecognized or out-of-range options (silently ignored before) will now throw at validation time.
+- **Cosine scores are normalized.** Cosine similarity is clamped to `[-1, 1]` and scores to `[0, 1]` (`score = 1 - distance / 2`) consistently across CPU, worker, and GPU paths. Absolute score values and ranking thresholds may shift slightly versus beta.1; re-tune any hard-coded score cutoffs.
+- **Acceleration claims are honest now.** WebAssembly reports unavailable unless you supply a real module (none is bundled); "SIMD" is optimized JavaScript, not hardware SIMD. Behavior is unchanged at runtime (fallbacks already applied) but capability reporting differs.
+- **CommonJS consumers must pass `workerScript`.** In CJS builds, `new WorkerPool()` without an explicit `workerScript` throws synchronously at construction (ESM resolves it automatically via `import.meta.url`).
+- **Removed dead `NamespaceConfig` fields** (`indexStrategy`, `compression`, `compressionConfig`) that never affected runtime.
 
 ### Verification evidence
 

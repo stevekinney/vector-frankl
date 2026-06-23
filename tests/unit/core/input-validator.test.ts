@@ -844,8 +844,37 @@ describe('InputValidator', () => {
 
     test('rejects non-numeric maxResults', () => {
       expect(() => InputValidator.validateSearchOptions({ maxResults: 'lots' })).toThrow(
-        'maxResults must be a positive finite number',
+        'maxResults must be a positive integer',
       );
+    });
+
+    test('rejects degenerate numeric maxResults/batchSize before bounding', () => {
+      for (const bad of [NaN, Infinity, -Infinity, -1, 0, 1.5, 99.99]) {
+        expect(() => InputValidator.validateSearchOptions({ maxResults: bad })).toThrow(
+          'maxResults must be a positive integer',
+        );
+        expect(() => InputValidator.validateSearchOptions({ batchSize: bad })).toThrow(
+          'batchSize must be a positive integer',
+        );
+      }
+    });
+
+    test('rejects maxResults/batchSize above the 50,000 limit', () => {
+      expect(() => InputValidator.validateSearchOptions({ maxResults: 50001 })).toThrow(
+        'maxResults cannot exceed 50,000',
+      );
+      expect(() =>
+        InputValidator.validateSearchOptions({ batchSize: 1_000_000 }),
+      ).toThrow('batchSize cannot exceed 50,000');
+    });
+
+    test('accepts valid integer maxResults/batchSize at the boundary', () => {
+      expect(
+        InputValidator.validateSearchOptions({ maxResults: 1, batchSize: 50000 }),
+      ).toEqual({
+        maxResults: 1,
+        batchSize: 50000,
+      });
     });
 
     test('rejects unknown option keys', () => {

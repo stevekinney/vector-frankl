@@ -439,8 +439,8 @@ export class InputValidator {
           break;
         case 'maxResults':
         case 'batchSize':
-          if (typeof value !== 'number' || !isFinite(value) || value <= 0) {
-            throw new Error(`${key} must be a positive finite number`);
+          if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+            throw new Error(`${key} must be a positive integer`);
           }
           if (value > this.MAX_SEARCH_RESULT_LIMIT) {
             throw new Error(

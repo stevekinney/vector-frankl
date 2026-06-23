@@ -21,7 +21,7 @@ Moving vector search compute to the browser unlocks use cases where latency, pri
 
 - **Privacy-first semantic search:** All embeddings stay on the user's device. Build a personal knowledge base, journal, or note-taking app where semantic search works entirely offline with zero data leaving the browser. Note that data is stored as **plaintext** in IndexedDB—it is not transmitted to a server, but it is readable by any same-origin script and by the underlying OS. See the [Encryption at Rest](docs/SECURITY.md#encryption-at-rest) section before storing sensitive content.
 
-- **Offline-capable RAG:** Pair with a small local model (WebLLM, ONNX Runtime Web) for a fully client-side retrieval-augmented generation pipeline.
+- **Offline-capable RAG:** Pair with a small local model ([WebLLM](https://github.com/mlc-ai/web-llm), [ONNX Runtime Web](https://onnxruntime.ai/docs/get-started/with-javascript/web.html)) for a fully client-side retrieval-augmented generation pipeline.
 
 - **Personalized UI without a backend:** Embed user interactions as vectors and do nearest-neighbor lookups to surface contextually relevant UI elements or recommendations—without a single network request.
 

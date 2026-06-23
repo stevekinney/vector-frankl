@@ -14,7 +14,7 @@ Given a version number `MAJOR.MINOR.PATCH`:
 
 Pre-release identifiers (`-alpha.N`, `-beta.N`, `-rc.N`) signal that the API is not yet stable and any part of it may change between pre-release builds without a major version bump.
 
-> [!NOTE] The current version is `1.0.0-beta.1`. Until `1.0.0` stable ships, MINOR and PATCH releases may include breaking changes. Evaluate beta upgrades carefully.
+> [!NOTE] This package is still in the `1.0.0-beta.*` line (see `package.json` for the exact published version). Until `1.0.0` stable ships, MINOR and PATCH releases may include breaking changes. Evaluate beta upgrades carefully.
 
 ## Supported Runtimes
 
