@@ -6,6 +6,8 @@ import {
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
@@ -253,6 +255,39 @@ export class ChromeStorageAdapter implements StorageAdapter {
   async count(): Promise<number> {
     const ids = await this.readIdIndex();
     return ids.length;
+  }
+
+  /**
+   * Stream all vectors by fetching each one individually from chrome.storage.
+   *
+   * The chrome.storage API does not support cursor-based reads. The ID index
+   * is loaded upfront in a single call; vector payloads are then fetched
+   * lazily one at a time inside the loop.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const ids = await this.readIdIndex();
+
+    for (const id of ids) {
+      if (options?.signal?.aborted) return;
+      const key = this.vectorKey(id);
+      const result = await this.storage.get(key);
+      const data = result[key] as SerializedVectorData | undefined;
+      if (data) {
+        yield this.deserialize(data);
+      }
+    }
+  }
+
+  /**
+   * chrome.storage does not support cursor-based scans; the full ID index
+   * must be loaded upfront before individual vector fetches.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return {
+      nativeStreaming: false,
+      limitationReason:
+        'ChromeStorageAdapter uses a flat key/value store with a separate ID index. The ID list is always fully loaded before vector payloads can be streamed.',
+    };
   }
 
   // ---------------------------------------------------------------------------

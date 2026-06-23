@@ -5,6 +5,8 @@ import type {
   BatchOptions,
   BatchProgress,
   IndexedDatabaseObjectStore,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from './types.js';
@@ -391,6 +393,79 @@ export class VectorStorage implements StorageAdapter {
         });
       },
     );
+  }
+
+  /**
+   * Stream all vectors from IndexedDB using a key-ranged page approach.
+   *
+   * IndexedDB transactions auto-commit when the event loop is yielded between
+   * IDB requests, so we cannot hold a cursor open across `await` boundaries.
+   * Instead we open a fresh readonly transaction per page, using an
+   * `IDBKeyRange.lowerBound(lastKey, true)` to pick up after the previous
+   * page's last key. Each transaction fetches at most `pageSize` records.
+   *
+   * Memory at any point is bounded to at most `pageSize` records (default 500).
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const pageSize = options?.pageSize ?? 500;
+    let lastKey: string | undefined;
+
+    while (true) {
+      if (options?.signal?.aborted) return;
+      const page = await this.scanPage(lastKey, pageSize);
+      if (page.length === 0) return;
+
+      for (const record of page) {
+        if (options?.signal?.aborted) return;
+        yield record;
+      }
+
+      if (page.length < pageSize) return;
+      lastKey = page[page.length - 1]!.id;
+    }
+  }
+
+  /**
+   * Fetch one page of vectors starting after `afterKey` (exclusive).
+   * Opens a fresh readonly transaction so the cursor does not span `await`.
+   */
+  private async scanPage(
+    afterKey: string | undefined,
+    count: number,
+  ): Promise<VectorData[]> {
+    return this.database.executeTransaction(
+      VectorDatabase.STORES.VECTORS,
+      'readonly',
+      async (transaction) => {
+        const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
+        const range =
+          afterKey !== undefined
+            ? (IDBKeyRange.lowerBound(afterKey, true) as unknown)
+            : undefined;
+
+        return new Promise<VectorData[]>((resolve, reject) => {
+          const request = store.getAll<VectorData>(range, count);
+
+          request.onsuccess = () => resolve(request.result ?? []);
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'scan page',
+                `Failed to fetch scan page after key "${afterKey}"`,
+                request.error ?? undefined,
+              ),
+            );
+        });
+      },
+    );
+  }
+
+  /**
+   * IndexedDB supports key-ranged paged scanning, so each page keeps at most
+   * `pageSize` records in memory at a time.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return { nativeStreaming: true };
   }
 
   /**

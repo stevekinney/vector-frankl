@@ -2,6 +2,8 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
@@ -109,6 +111,33 @@ export class MemoryStorageAdapter implements StorageAdapter {
 
   async count(): Promise<number> {
     return this.store.size;
+  }
+
+  /**
+   * Stream all vectors from the in-memory store one at a time.
+   *
+   * The in-memory adapter iterates the underlying Map without materializing a
+   * separate array — each yielded value is produced lazily. The store itself
+   * is already in memory, so this does not save memory overall, but it provides
+   * the streaming API so callers can work with `scan()` uniformly across adapters.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    for (const entry of this.store.values()) {
+      if (options?.signal?.aborted) return;
+      yield this.cloneOnRead ? this.clone(entry) : entry;
+    }
+  }
+
+  /**
+   * The in-memory adapter holds all data in a Map; scan() iterates lazily
+   * but all data is already in memory by definition.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return {
+      nativeStreaming: false,
+      limitationReason:
+        'MemoryStorageAdapter holds all vectors in a Map; scan() iterates lazily but all data is already in memory.',
+    };
   }
 
   // Multi-item writes

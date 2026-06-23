@@ -476,6 +476,94 @@ export function runStorageAdapterTests(
       });
     });
 
+    // ── scan (streaming cursor) ────────────────────────────────────────
+
+    describe('scan', () => {
+      it('streams all stored vectors without returning an array', async () => {
+        await adapter.put(makeVector('scan-a', [1, 0]));
+        await adapter.put(makeVector('scan-b', [0, 1]));
+        await adapter.put(makeVector('scan-c', [1, 1]));
+
+        const scanned: string[] = [];
+        for await (const vector of adapter.scan()) {
+          scanned.push(vector.id);
+        }
+
+        expect(scanned.sort()).toEqual(['scan-a', 'scan-b', 'scan-c']);
+      });
+
+      it('returns no records from an empty store', async () => {
+        const scanned: string[] = [];
+        for await (const vector of adapter.scan()) {
+          scanned.push(vector.id);
+        }
+        expect(scanned).toHaveLength(0);
+      });
+
+      it('respects the abort signal and stops early', async () => {
+        for (let i = 0; i < 10; i++) {
+          await adapter.put(makeVector(`abort-scan-${i}`, [i]));
+        }
+
+        const controller = new AbortController();
+        const scanned: string[] = [];
+
+        for await (const vector of adapter.scan({ signal: controller.signal })) {
+          scanned.push(vector.id);
+          controller.abort(); // abort after the first record
+        }
+
+        // Only one record should have been yielded before abort
+        expect(scanned).toHaveLength(1);
+      });
+
+      it('yields the same vectors as getAll()', async () => {
+        await adapter.put(makeVector('sa-1', [1, 2, 3]));
+        await adapter.put(makeVector('sa-2', [4, 5, 6]));
+
+        const allVectors = await adapter.getAll();
+        const fromGetAll = allVectors.map((v) => v.id).sort();
+
+        const fromScan: string[] = [];
+        for await (const vector of adapter.scan()) {
+          fromScan.push(vector.id);
+        }
+        fromScan.sort();
+
+        expect(fromScan).toEqual(fromGetAll);
+      });
+
+      it('scan with pageSize hint returns all vectors', async () => {
+        for (let i = 0; i < 12; i++) {
+          await adapter.put(makeVector(`page-${i}`, [i]));
+        }
+
+        const scanned: string[] = [];
+        for await (const vector of adapter.scan({ pageSize: 5 })) {
+          scanned.push(vector.id);
+        }
+
+        expect(scanned).toHaveLength(12);
+      });
+    });
+
+    // ── getScanCapabilities ────────────────────────────────────────────
+
+    describe('getScanCapabilities', () => {
+      it('returns an object with a boolean nativeStreaming field', () => {
+        const capabilities = adapter.getScanCapabilities();
+        expect(typeof capabilities.nativeStreaming).toBe('boolean');
+      });
+
+      it('includes a limitationReason when nativeStreaming is false', () => {
+        const capabilities = adapter.getScanCapabilities();
+        if (!capabilities.nativeStreaming) {
+          expect(typeof capabilities.limitationReason).toBe('string');
+          expect((capabilities.limitationReason ?? '').length).toBeGreaterThan(0);
+        }
+      });
+    });
+
     // ── access tracking ───────────────────────────────────────────────
 
     describe('access tracking', () => {

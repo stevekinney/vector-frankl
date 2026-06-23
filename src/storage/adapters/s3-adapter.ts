@@ -2,6 +2,8 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
@@ -273,6 +275,36 @@ export class S3StorageAdapter implements StorageAdapter {
 
   async count(): Promise<number> {
     return this.index.size;
+  }
+
+  /**
+   * Stream all vectors by fetching each object from S3 individually.
+   *
+   * S3 does not support cursor-based range reads; the in-memory index
+   * enumerates IDs and each object is fetched one at a time.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const ids = Array.from(this.index);
+
+    for (const id of ids) {
+      if (options?.signal?.aborted) return;
+      const body = await this.getObject(this.vectorKey(id));
+      if (body !== null) {
+        yield jsonToVectorData(body);
+      }
+    }
+  }
+
+  /**
+   * S3 maintains an in-memory ID index; object payloads are fetched one at
+   * a time, but the ID set is always fully materialized.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return {
+      nativeStreaming: false,
+      limitationReason:
+        'S3StorageAdapter maintains a full in-memory ID index. Object payloads are fetched one at a time, but the ID set is always fully materialized.',
+    };
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────

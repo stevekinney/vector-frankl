@@ -4,6 +4,8 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
@@ -206,6 +208,30 @@ export class LevelStorageAdapter implements StorageAdapter {
     }
 
     return total;
+  }
+
+  /**
+   * Stream all vectors using the Level iterator directly.
+   *
+   * The `abstract-level` iterator yields one entry at a time from disk,
+   * so only a single record is held in memory per iteration step.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const database = this.getDatabase();
+
+    for await (const entry of database.iterator()) {
+      if (options?.signal?.aborted) return;
+      // entry is [key, value]; we only need the value
+      yield jsonToVectorData(entry[1]);
+    }
+  }
+
+  /**
+   * Level's iterator streams records from disk one at a time, so scanning
+   * is memory-bounded regardless of store size.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return { nativeStreaming: true };
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────

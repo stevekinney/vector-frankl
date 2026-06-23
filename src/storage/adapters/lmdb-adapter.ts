@@ -4,6 +4,8 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
@@ -191,6 +193,29 @@ export class LmdbStorageAdapter implements StorageAdapter {
     }
 
     return total;
+  }
+
+  /**
+   * Stream all vectors using LMDB's `getRange()` iterator.
+   *
+   * LMDB's range iterator is lazy and memory-mapped, so only one entry is
+   * decoded per iteration step.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const database = this.requireDatabase();
+
+    for (const entry of database.getRange()) {
+      if (options?.signal?.aborted) return;
+      yield jsonToVectorData(entry.value);
+    }
+  }
+
+  /**
+   * LMDB uses memory-mapped files; `getRange()` yields entries lazily so
+   * scanning is memory-bounded.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return { nativeStreaming: true };
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────

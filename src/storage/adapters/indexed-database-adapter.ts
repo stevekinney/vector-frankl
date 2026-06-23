@@ -1,7 +1,13 @@
 import { VectorDatabase } from '@/core/database.js';
 import { BatchOperationError, VectorNotFoundError } from '@/core/errors.js';
 import { VectorStorage } from '@/core/storage.js';
-import type { BatchOptions, StorageAdapter, VectorData } from '@/core/types.js';
+import type {
+  BatchOptions,
+  ScanCapabilities,
+  ScanOptions,
+  StorageAdapter,
+  VectorData,
+} from '@/core/types.js';
 
 interface IndexedDatabaseAdapterOptions {
   name: string;
@@ -128,6 +134,20 @@ export class IndexedDatabaseStorageAdapter implements StorageAdapter {
   async count(): Promise<number> {
     const storage = this.requireStorage();
     return storage.count();
+  }
+
+  /**
+   * Stream all vectors from IndexedDB using key-ranged paging.
+   * Delegates to VectorStorage which opens a fresh transaction per page.
+   */
+  scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const storage = this.requireStorage();
+    return storage.scan(options);
+  }
+
+  /** IndexedDB supports key-ranged paged scanning with bounded memory. */
+  getScanCapabilities(): ScanCapabilities {
+    return { nativeStreaming: true };
   }
 
   // ---------------------------------------------------------------------------

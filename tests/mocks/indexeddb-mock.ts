@@ -35,7 +35,59 @@ interface IDBIndexOptions {
 }
 
 type IDBValidKey = string | number | Date | ArrayBufferView | ArrayBuffer | IDBValidKey[];
-// Simple IDBKeyRange mock interface
+
+/**
+ * Minimal mock of the IDBKeyRange API.
+ *
+ * Only string keys are supported since the vector store uses string IDs.
+ */
+export class MockIDBKeyRange {
+  lower?: string;
+  upper?: string;
+  lowerOpen: boolean;
+  upperOpen: boolean;
+
+  constructor(
+    lower: string | undefined,
+    upper: string | undefined,
+    lowerOpen: boolean,
+    upperOpen: boolean,
+  ) {
+    if (lower !== undefined) this.lower = lower;
+    if (upper !== undefined) this.upper = upper;
+    this.lowerOpen = lowerOpen;
+    this.upperOpen = upperOpen;
+  }
+
+  /** Returns true if the given string key falls within this range. */
+  includes(key: string): boolean {
+    if (this.lower !== undefined) {
+      if (this.lowerOpen ? key <= this.lower : key < this.lower) return false;
+    }
+    if (this.upper !== undefined) {
+      if (this.upperOpen ? key >= this.upper : key > this.upper) return false;
+    }
+    return true;
+  }
+
+  static lowerBound(lower: string, open = false): MockIDBKeyRange {
+    return new MockIDBKeyRange(lower, undefined, open, false);
+  }
+
+  static upperBound(upper: string, open = false): MockIDBKeyRange {
+    return new MockIDBKeyRange(undefined, upper, false, open);
+  }
+
+  static bound(lower: string, upper: string, lowerOpen = false, upperOpen = false): MockIDBKeyRange {
+    return new MockIDBKeyRange(lower, upper, lowerOpen, upperOpen);
+  }
+
+  static only(key: string): MockIDBKeyRange {
+    return new MockIDBKeyRange(key, key, false, false);
+  }
+}
+
+// Simple IDBKeyRange mock interface (kept for typing purposes)
 interface IDBKeyRange {
   lower?: IDBValidKey;
   upper?: IDBValidKey;
@@ -138,9 +190,19 @@ export class MockIDBObjectStore {
     return new MockIDBRequest(value === undefined ? null : value);
   }
 
-  getAll(): MockIDBRequest<unknown[]> {
-    const values = Array.from(this.data.values());
-    return new MockIDBRequest(values);
+  getAll(query?: IDBValidKey | IDBKeyRange | null, count?: number): MockIDBRequest<unknown[]> {
+    let entries = Array.from(this.data.entries());
+
+    // Filter by key range if a MockIDBKeyRange is provided
+    if (query instanceof MockIDBKeyRange) {
+      entries = entries.filter(([key]) => query.includes(key));
+    }
+
+    // Sort entries by key (ascending) so paging is stable
+    entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+
+    const values = entries.map(([, v]) => v);
+    return new MockIDBRequest(count !== undefined ? values.slice(0, count) : values);
   }
 
   put<T = unknown>(value: T, key?: IDBValidKey): MockIDBRequest<IDBValidKey> {
@@ -576,6 +638,8 @@ export function setupIndexedDBMocks(): void {
   global.IDBIndex = MockIDBIndex;
   // @ts-expect-error - Monkey patching for tests
   global.IDBCursor = MockIDBCursor;
+  // @ts-expect-error - Monkey patching for tests
+  global.IDBKeyRange = MockIDBKeyRange;
   global.navigator = mockNavigator as Navigator;
 }
 

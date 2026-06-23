@@ -352,6 +352,34 @@ export interface TransactionOptions {
 }
 
 /**
+ * Options for cursor/streaming scans over the full store.
+ */
+export interface ScanOptions {
+  /**
+   * Hint to the adapter for how many records to fetch per internal page or
+   * cursor advance. Adapters may ignore this if the underlying storage does
+   * not support paging (e.g. in-memory Map).
+   */
+  pageSize?: number;
+  /** Optional abort signal to cancel a long-running scan. */
+  signal?: VectorAbortSignal;
+}
+
+/**
+ * Describes whether a storage adapter supports native cursor/streaming scans
+ * or falls back to a fully-materialized scan via `getAll()`.
+ *
+ * Adapters that cannot support streaming scans must set `nativeStreaming` to
+ * `false` and document the limitation in `limitationReason`.
+ */
+export interface ScanCapabilities {
+  /** True when the adapter streams records from storage without loading all into memory. */
+  nativeStreaming: boolean;
+  /** Human-readable explanation when `nativeStreaming` is false. */
+  limitationReason?: string;
+}
+
+/**
  * Storage adapter interface for pluggable storage backends.
  *
  * Each adapter manages vector persistence for a single logical database.
@@ -374,6 +402,25 @@ export interface StorageAdapter {
   getMany(ids: string[]): Promise<VectorData[]>;
   getAll(): Promise<VectorData[]>;
   count(): Promise<number>;
+
+  /**
+   * Stream all vectors one at a time (or in pages, depending on the adapter).
+   *
+   * Prefer `scan()` over `getAll()` for search, eviction, and maintenance
+   * operations that do not need the full store in memory at once.
+   *
+   * Callers should treat `scan()` as the canonical iteration primitive and
+   * only fall back to `getAll()` when random access to the full slice is
+   * genuinely required (e.g. sorting across the entire corpus).
+   */
+  scan(options?: ScanOptions): AsyncIterable<VectorData>;
+
+  /**
+   * Report whether this adapter natively streams records from storage or
+   * materializes them in memory. Callers can inspect this to decide whether
+   * `scan()` provides bounded-memory iteration on large stores.
+   */
+  getScanCapabilities(): ScanCapabilities;
 
   // Multi-item writes
   deleteMany(ids: string[]): Promise<number>;

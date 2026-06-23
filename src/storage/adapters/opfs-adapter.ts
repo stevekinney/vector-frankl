@@ -2,6 +2,8 @@ import { BrowserSupportError, VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
@@ -230,6 +232,32 @@ export class OPFSStorageAdapter implements StorageAdapter {
     }
 
     return total;
+  }
+
+  /**
+   * Stream all vectors by reading each OPFS file individually.
+   *
+   * The OPFS directory iterator yields file handles lazily; only one file's
+   * binary contents are deserialized at a time.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const directory = this.requireVectorsHandle();
+
+    for await (const entry of directory.values()) {
+      if (options?.signal?.aborted) return;
+      if (entry.kind !== 'file' || !entry.name.endsWith('.vec')) continue;
+      const fileHandle = await directory.getFileHandle(entry.name);
+      const data = await this.readVectorFromHandle(fileHandle);
+      yield data;
+    }
+  }
+
+  /**
+   * OPFS yields file handles lazily via the directory iterator; only one
+   * file is read at a time, so scanning is memory-bounded.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return { nativeStreaming: true };
   }
 
   // Multi-item writes

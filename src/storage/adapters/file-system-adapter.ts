@@ -4,6 +4,8 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
@@ -165,6 +167,38 @@ export class FileSystemStorageAdapter implements StorageAdapter {
 
     const extension = this.format === 'json' ? '.json' : '.vec';
     return entries.filter((entry) => entry.endsWith(extension)).length;
+  }
+
+  /**
+   * Stream all vectors by reading each file individually.
+   *
+   * Only one file's contents is held in memory at a time, so this is
+   * memory-bounded even for very large stores.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    let entries: string[];
+    try {
+      entries = await readdir(this.vectorsDirectory);
+    } catch {
+      return;
+    }
+
+    const extension = this.format === 'json' ? '.json' : '.vec';
+    for (const entry of entries) {
+      if (!entry.endsWith(extension)) continue;
+      if (options?.signal?.aborted) return;
+      const file = Bun.file(`${this.vectorsDirectory}/${entry}`);
+      const data = await this.readVectorFile(file);
+      yield data;
+    }
+  }
+
+  /**
+   * The filesystem adapter reads one file at a time, so scanning is
+   * memory-bounded — only one vector is held in memory per iteration step.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return { nativeStreaming: true };
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────
