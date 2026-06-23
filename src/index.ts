@@ -86,6 +86,9 @@ export {
   BrowserSupportError,
   SearchAbortedError,
   SearchTimeoutError,
+  StorageCorruptionError,
+  StorageFormatError,
+  QuotaSafetyMarginError,
   isVectorDatabaseError,
   sanitizeContext,
 } from './core/errors.js';

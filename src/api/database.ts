@@ -1,5 +1,5 @@
 import { VectorDatabase } from '@/core/database.js';
-import { DimensionMismatchError } from '@/core/errors.js';
+import { DimensionMismatchError, QuotaSafetyMarginError } from '@/core/errors.js';
 import { InputValidator } from '@/core/input-validator.js';
 import { VectorStorage } from '@/core/storage.js';
 import type {
@@ -163,8 +163,10 @@ export class VectorDB {
       async () => {
         await this.ensureInitialized();
 
-        // Check quota before adding
-        await this.quotaMonitor.checkQuota();
+        // Assert quota is safe before any allocation.  Throws QuotaSafetyMarginError
+        // when quota is critically low and eviction cannot free enough space.
+        // This must be called BEFORE writing to prevent dangling partial records.
+        await this.assertQuotaAvailable();
 
         // Validate dimension
         if (vector.length !== this.dimension) {
@@ -211,6 +213,11 @@ export class VectorDB {
     options?: BatchOptions,
   ): Promise<void> {
     await this.ensureInitialized();
+
+    // Assert quota is safe before any allocation.  Throws QuotaSafetyMarginError
+    // when quota is critically low and eviction cannot free enough space.
+    // Must be called BEFORE preparing/writing vectors to prevent dangling IDs.
+    await this.assertQuotaAvailable();
 
     // Validate and prepare all vectors (matching addVector's validation pattern)
     const preparedVectors = await Promise.all(
@@ -326,7 +333,9 @@ export class VectorDB {
   ): Promise<SearchResult[]> {
     // Validate inputs
     InputValidator.validateDistance(maxDistance);
-    const validatedOptions = InputValidator.validateSearchOptions(options);
+    // Extract maxResults before passing to validateSearchOptions (it only validates SearchOptions keys).
+    const { maxResults, ...searchOptions } = options ?? {};
+    const validatedOptions = InputValidator.validateSearchOptions(searchOptions);
 
     // Validate vector format and dimension
     VectorFormatHandler.validate(queryVector, this.dimension);
@@ -342,11 +351,10 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    return this.searchEngine.searchRange(
-      query,
-      maxDistance,
-      validatedOptions as SearchOptions & { maxResults?: number },
-    );
+    return this.searchEngine.searchRange(query, maxDistance, {
+      ...(validatedOptions as SearchOptions),
+      ...(maxResults !== undefined && { maxResults }),
+    });
   }
 
   /**
@@ -416,6 +424,76 @@ export class VectorDB {
     avgConnections?: number;
   } {
     return this.searchEngine.getIndexStats();
+  }
+
+  /**
+   * Assert that sufficient quota is available before a write operation.
+   *
+   * When the quota monitor reports a critical or emergency level:
+   * 1. If `autoEviction` is enabled, eviction runs and is fully **awaited**
+   *    before this method returns.
+   * 2. A forced re-check is performed after eviction.
+   * 3. If quota remains at a critical level after eviction (or eviction is
+   *    disabled), a `QuotaSafetyMarginError` is thrown so the caller aborts
+   *    before writing any partial data.
+   *
+   * Callers must invoke this method **before** writing any record to storage.
+   * The write must not proceed if this method throws.
+   */
+  private async assertQuotaAvailable(): Promise<void> {
+    const quotaEstimate = await this.quotaMonitor.checkQuota(true);
+
+    // No quota API available — cannot enforce; proceed optimistically
+    if (!quotaEstimate) return;
+
+    const { usageRatio, available, quota } = quotaEstimate;
+
+    // Safety margin: reject writes when less than 5% of quota remains
+    const HARD_REJECT_RATIO = 0.95;
+
+    if (usageRatio < HARD_REJECT_RATIO) return;
+
+    // Quota is critically low.  Try auto-eviction first if enabled.
+    if (this.autoEviction) {
+      const targetBytes =
+        usageRatio >= 0.98
+          ? Math.floor(quota * 0.2) // Emergency: free 20%
+          : Math.floor(quota * 0.1); // Critical: free 10%
+
+      log.info(
+        `Pre-write quota guard: usage at ${(usageRatio * 100).toFixed(1)}%. Attempting eviction to free ${this.formatBytes(targetBytes)}.`,
+      );
+
+      try {
+        const suggestion = await this.evictionManager.suggestStrategy(targetBytes);
+        const result = await this.evictionManager.evict(suggestion.config);
+
+        log.info(
+          `Pre-write eviction completed: freed ${this.formatBytes(result.freedBytes)} by removing ${result.evictedCount} vectors`,
+        );
+
+        if (result.evictedCount > 0) {
+          await this.searchEngine.rebuildIndex();
+        }
+      } catch (evictionError) {
+        log.error('Pre-write eviction failed', {
+          error:
+            evictionError instanceof Error
+              ? evictionError.message
+              : String(evictionError),
+        });
+      }
+
+      // Re-check quota after eviction
+      const postEviction = await this.quotaMonitor.checkQuota(true);
+      if (postEviction && postEviction.usageRatio >= HARD_REJECT_RATIO) {
+        throw new QuotaSafetyMarginError(0, postEviction.available);
+      }
+      return;
+    }
+
+    // Auto-eviction is disabled and we are over the threshold — reject write
+    throw new QuotaSafetyMarginError(0, available);
   }
 
   /**

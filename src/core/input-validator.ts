@@ -378,9 +378,6 @@ export class InputValidator {
     'includeVector',
     'timeout',
     'signal',
-    'maxResults',
-    'batchSize',
-    'progressive',
   ]);
 
   /**
@@ -432,19 +429,6 @@ export class InputValidator {
             typeof (value as Record<string, unknown>)['aborted'] !== 'boolean'
           ) {
             throw new Error('signal must be an object with an aborted boolean property');
-          }
-          validated[key] = value;
-          break;
-        case 'maxResults':
-        case 'batchSize':
-          if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
-            throw new Error(`${key} must be a positive integer`);
-          }
-          validated[key] = value;
-          break;
-        case 'progressive':
-          if (typeof value !== 'boolean') {
-            throw new Error('progressive must be a boolean');
           }
           validated[key] = value;
           break;

@@ -429,6 +429,64 @@ export class NamespaceDeletionBlockedError extends VectorDatabaseError {
 }
 
 /**
+ * Thrown when a serialized record fails integrity or format validation.
+ * Indicates the on-disk payload is unreadable and a documented recovery
+ * path (repair, rebuild, or fail-closed) should be applied.
+ */
+export class StorageCorruptionError extends VectorDatabaseError {
+  public readonly vectorId?: string | undefined;
+  public readonly reason: string;
+
+  constructor(reason: string, vectorId?: string) {
+    super(
+      `Storage record corruption detected${vectorId ? ` for vector '${vectorId}'` : ''}: ${reason}`,
+      'STORAGE_CORRUPTION',
+      { reason, ...(vectorId !== undefined && { vectorId }) },
+    );
+    this.reason = reason;
+    this.vectorId = vectorId;
+  }
+}
+
+/**
+ * Thrown when a serialized record uses an unsupported or unrecognized format
+ * version.  The caller must either migrate the record or reject it.
+ */
+export class StorageFormatError extends VectorDatabaseError {
+  public readonly formatVersion: number;
+  public readonly supportedVersions: readonly number[];
+
+  constructor(formatVersion: number, supportedVersions: readonly number[]) {
+    super(
+      `Unsupported storage format version ${formatVersion}. Supported: [${supportedVersions.join(', ')}]`,
+      'STORAGE_FORMAT_ERROR',
+      { formatVersion, supportedVersions },
+    );
+    this.formatVersion = formatVersion;
+    this.supportedVersions = supportedVersions;
+  }
+}
+
+/**
+ * Thrown when a write is rejected because available storage space is below
+ * the required safety margin.  Auto-eviction either failed or is disabled.
+ */
+export class QuotaSafetyMarginError extends VectorDatabaseError {
+  public readonly required: number;
+  public readonly available: number;
+
+  constructor(required: number, available: number) {
+    super(
+      `Write rejected: required ${required} bytes but only ${available} bytes available within safety margin`,
+      'QUOTA_SAFETY_MARGIN',
+      { required, available },
+    );
+    this.required = required;
+    this.available = available;
+  }
+}
+
+/**
  * Thrown when browser features are not supported
  */
 export class BrowserSupportError extends VectorDatabaseError {

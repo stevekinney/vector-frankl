@@ -1,3 +1,4 @@
+import { StorageCorruptionError, StorageFormatError } from '@/core/errors.js';
 import type { VectorData } from '@/core/types.js';
 
 // ---------------------------------------------------------------------------
@@ -108,12 +109,42 @@ export function jsonToVectorData(json: string): VectorData {
 }
 
 // ---------------------------------------------------------------------------
-// Binary serialization
+// Versioned binary serialization
 //
-// Wire format: [4-byte uint32 vector length (little-endian)]
-//              [Float32Array bytes]
-//              [UTF-8 JSON for remaining fields]
+// Wire format (version 1):
+//
+//   Offset  Size  Field
+//   ------  ----  -----
+//   0       4     Magic marker: 0x56454346 ("VECF" in ASCII, little-endian)
+//   4       1     Format version (currently 1)
+//   5       3     Reserved / padding (zeros)
+//   8       4     Vector length in elements (uint32 LE)
+//   12      4     Metadata JSON byte length (uint32 LE)
+//   16      4     CRC-32 checksum over entire buffer (checksum field zeroed)
+//   20      N     Float32Array bytes (N = vectorLength × 4, 4-byte aligned)
+//   20+N    M     UTF-8 JSON for all fields except the raw vector
+//
+// The checksum covers the entire buffer with the checksum field set to 0,
+// so readers can recompute by zeroing bytes [16..20) and calling crc32().
+// The header is 20 bytes, a multiple of 4, so the Float32Array at offset 20
+// is always correctly aligned.
 // ---------------------------------------------------------------------------
+
+/** Magic bytes that identify a versioned VECF binary payload. */
+export const BINARY_MAGIC = 0x56454346; // "VECF"
+
+/** Currently supported binary format versions.  Add future versions here. */
+export const SUPPORTED_BINARY_VERSIONS = [1] as const;
+export type BinaryFormatVersion = (typeof SUPPORTED_BINARY_VERSIONS)[number];
+
+/** Byte offsets for fixed-header fields. */
+const OFFSET_MAGIC = 0;
+const OFFSET_VERSION = 4;
+// bytes 5-7: reserved padding
+const OFFSET_VECTOR_LENGTH = 8;
+const OFFSET_META_LENGTH = 12;
+const OFFSET_CHECKSUM = 16;
+const HEADER_SIZE = 20; // multiple of 4 for Float32Array alignment
 
 /** Fields stored in the JSON tail of the binary format (everything except the raw vector). */
 interface BinaryRemainingFields {
@@ -127,6 +158,39 @@ interface BinaryRemainingFields {
   accessCount?: number;
   compression?: VectorData['compression'];
 }
+
+// ---------------------------------------------------------------------------
+// CRC-32 — pure TypeScript, no external dependency
+// ---------------------------------------------------------------------------
+
+/** Lookup table for CRC-32 computation. */
+const CRC_TABLE: Uint32Array = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) {
+      c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c;
+  }
+  return table;
+})();
+
+/**
+ * Compute a CRC-32 checksum over a Uint8Array view of a buffer.
+ * Returns an unsigned 32-bit integer.
+ */
+function crc32(data: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < data.length; i++) {
+    crc = (CRC_TABLE[(crc ^ data[i]!) & 0xff]! ^ (crc >>> 8)) >>> 0;
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function buildBinaryRemainingFields(data: VectorData): BinaryRemainingFields {
   const fields: BinaryRemainingFields = {
@@ -190,8 +254,208 @@ function binaryFieldsToVectorData(
   return data;
 }
 
-/** Serialize a VectorData record to a binary ArrayBuffer. */
+// ---------------------------------------------------------------------------
+// Public serialization API
+// ---------------------------------------------------------------------------
+
+/**
+ * Serialize a VectorData record to a versioned binary ArrayBuffer.
+ *
+ * The output includes a magic marker, format version, field lengths, and a
+ * CRC-32 integrity checksum so readers can detect corruption before parsing.
+ */
 export function vectorDataToBinary(data: VectorData): ArrayBuffer {
+  const remaining = buildBinaryRemainingFields(data);
+
+  const jsonBytes = new TextEncoder().encode(JSON.stringify(remaining));
+  const vectorLength = data.vector.length;
+  const vectorByteLength = vectorLength * Float32Array.BYTES_PER_ELEMENT;
+  const metaLength = jsonBytes.byteLength;
+
+  const totalSize = HEADER_SIZE + vectorByteLength + metaLength;
+  const buffer = new ArrayBuffer(totalSize);
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+
+  // Header fields
+  view.setUint32(OFFSET_MAGIC, BINARY_MAGIC, true);
+  view.setUint8(OFFSET_VERSION, 1);
+  view.setUint32(OFFSET_VECTOR_LENGTH, vectorLength, true);
+  view.setUint32(OFFSET_META_LENGTH, metaLength, true);
+  // Checksum field is zeroed initially (set after computing)
+  view.setUint32(OFFSET_CHECKSUM, 0, true);
+
+  // Payload
+  const float32View = new Float32Array(buffer, HEADER_SIZE, vectorLength);
+  float32View.set(data.vector);
+  bytes.set(jsonBytes, HEADER_SIZE + vectorByteLength);
+
+  // Compute and write checksum over the whole buffer (checksum field = 0)
+  const checksum = crc32(bytes);
+  view.setUint32(OFFSET_CHECKSUM, checksum, true);
+
+  return buffer;
+}
+
+/**
+ * Deserialize a versioned binary ArrayBuffer into a VectorData record.
+ *
+ * Validates the magic marker, format version, field lengths, and CRC-32
+ * checksum before parsing.  Throws `StorageCorruptionError` when the
+ * payload is structurally invalid or the checksum does not match.
+ * Throws `StorageFormatError` when the version is unsupported.
+ */
+export function binaryToVectorData(buffer: ArrayBuffer): VectorData {
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+
+  // ---- Minimum size check ------------------------------------------------
+  if (buffer.byteLength < HEADER_SIZE) {
+    throw new StorageCorruptionError(
+      `Buffer too small: ${buffer.byteLength} bytes (minimum ${HEADER_SIZE})`,
+    );
+  }
+
+  // ---- Magic marker ------------------------------------------------------
+  const magic = view.getUint32(OFFSET_MAGIC, true);
+  if (magic !== BINARY_MAGIC) {
+    // Could be a legacy (non-versioned) buffer — let the caller handle it via
+    // tryBinaryToVectorData.  We throw here so the caller can distinguish.
+    throw new StorageCorruptionError(
+      `Invalid magic marker: 0x${magic.toString(16).padStart(8, '0').toUpperCase()} (expected 0x56454346)`,
+    );
+  }
+
+  // ---- Version -----------------------------------------------------------
+  const version = view.getUint8(OFFSET_VERSION);
+  if (!(SUPPORTED_BINARY_VERSIONS as readonly number[]).includes(version)) {
+    throw new StorageFormatError(version, SUPPORTED_BINARY_VERSIONS);
+  }
+
+  // ---- Field lengths -----------------------------------------------------
+  const vectorLength = view.getUint32(OFFSET_VECTOR_LENGTH, true);
+  const metaLength = view.getUint32(OFFSET_META_LENGTH, true);
+
+  const expectedSize =
+    HEADER_SIZE + vectorLength * Float32Array.BYTES_PER_ELEMENT + metaLength;
+  if (buffer.byteLength !== expectedSize) {
+    throw new StorageCorruptionError(
+      `Buffer size mismatch: expected ${expectedSize} bytes but got ${buffer.byteLength}`,
+    );
+  }
+
+  // ---- Checksum ----------------------------------------------------------
+  const storedChecksum = view.getUint32(OFFSET_CHECKSUM, true);
+
+  // Zero out the checksum field for recomputation
+  const checkBuffer = buffer.slice(0);
+  const checkView = new DataView(checkBuffer);
+  checkView.setUint32(OFFSET_CHECKSUM, 0, true);
+  const computed = crc32(new Uint8Array(checkBuffer));
+
+  if (computed !== storedChecksum) {
+    throw new StorageCorruptionError(
+      `CRC-32 checksum mismatch: stored 0x${storedChecksum.toString(16)} vs computed 0x${computed.toString(16)}`,
+    );
+  }
+
+  // ---- Payload -----------------------------------------------------------
+  const vectorByteLength = vectorLength * Float32Array.BYTES_PER_ELEMENT;
+  const vector = new Float32Array(
+    buffer.slice(HEADER_SIZE, HEADER_SIZE + vectorByteLength),
+  );
+
+  const jsonBytes = bytes.subarray(HEADER_SIZE + vectorByteLength);
+  let remaining: BinaryRemainingFields;
+  try {
+    remaining = JSON.parse(new TextDecoder().decode(jsonBytes)) as BinaryRemainingFields;
+  } catch (cause) {
+    throw new StorageCorruptionError(
+      `Failed to parse metadata JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+
+  // ---- Semantic validation -----------------------------------------------
+  if (typeof remaining.id !== 'string' || remaining.id.length === 0) {
+    throw new StorageCorruptionError('Metadata missing required field: id');
+  }
+  if (typeof remaining.magnitude !== 'number') {
+    throw new StorageCorruptionError('Metadata missing required field: magnitude');
+  }
+  if (typeof remaining.timestamp !== 'number') {
+    throw new StorageCorruptionError('Metadata missing required field: timestamp');
+  }
+
+  return binaryFieldsToVectorData(remaining, vector);
+}
+
+/**
+ * Attempt to read a binary buffer using the versioned format.
+ * Falls back to the legacy (unversioned) format if the magic marker is absent.
+ *
+ * Returns a `VectorData` on success.  Returns `null` when the buffer is
+ * completely unreadable and `failClosed` is `false`; throws when `failClosed`
+ * is `true` (default).
+ *
+ * The `onCorruption` callback, if provided, is called with the
+ * `StorageCorruptionError` or `StorageFormatError` before falling back or
+ * throwing, giving callers an opportunity to log or emit a signal.
+ */
+export function tryBinaryToVectorData(
+  buffer: ArrayBuffer,
+  options: {
+    failClosed?: boolean;
+    onCorruption?: (error: StorageCorruptionError | StorageFormatError) => void;
+  } = {},
+): VectorData | null {
+  const { failClosed = true, onCorruption } = options;
+
+  try {
+    return binaryToVectorData(buffer);
+  } catch (error) {
+    if (error instanceof StorageFormatError) {
+      onCorruption?.(error);
+      if (failClosed) throw error;
+      return null;
+    }
+
+    if (error instanceof StorageCorruptionError) {
+      const magic = buffer.byteLength >= 4 ? new DataView(buffer).getUint32(0, true) : -1;
+      const isLegacy = magic !== BINARY_MAGIC;
+
+      if (isLegacy) {
+        // Try to parse as legacy format (no header, starts with a uint32 vector length)
+        try {
+          return legacyBinaryToVectorData(buffer);
+        } catch {
+          // Legacy parse also failed — fall through to corruption handling
+        }
+      }
+
+      onCorruption?.(error);
+      if (failClosed) throw error;
+      return null;
+    }
+
+    // Unknown error — rethrow as-is
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy binary format (kept for backwards-compatibility reads)
+//
+// Wire format: [4-byte uint32 vector length (little-endian)]
+//              [Float32Array bytes]
+//              [UTF-8 JSON for remaining fields]
+// ---------------------------------------------------------------------------
+
+/**
+ * Serialize a VectorData record using the legacy binary format.
+ *
+ * @deprecated Prefer `vectorDataToBinary` which includes integrity headers.
+ */
+export function legacyVectorDataToBinary(data: VectorData): ArrayBuffer {
   const remaining = buildBinaryRemainingFields(data);
 
   const jsonBytes = new TextEncoder().encode(JSON.stringify(remaining));
@@ -202,31 +466,56 @@ export function vectorDataToBinary(data: VectorData): ArrayBuffer {
   const buffer = new ArrayBuffer(totalSize);
   const view = new DataView(buffer);
 
-  // Write vector length as little-endian uint32.
   view.setUint32(0, vectorLength, true);
 
-  // Write Float32Array bytes.
   const float32View = new Float32Array(buffer, 4, vectorLength);
   float32View.set(data.vector);
 
-  // Write JSON bytes after the vector.
   new Uint8Array(buffer, 4 + vectorByteLength).set(jsonBytes);
 
   return buffer;
 }
 
-/** Deserialize a binary ArrayBuffer into a VectorData record. */
-export function binaryToVectorData(buffer: ArrayBuffer): VectorData {
+/**
+ * Deserialize a legacy binary ArrayBuffer into a VectorData record.
+ * No integrity checks are performed; corrupt input may produce garbage data.
+ *
+ * @deprecated Prefer `binaryToVectorData` which validates integrity headers.
+ */
+export function legacyBinaryToVectorData(buffer: ArrayBuffer): VectorData {
+  if (buffer.byteLength < 4) {
+    throw new StorageCorruptionError(
+      `Legacy buffer too small: ${buffer.byteLength} bytes`,
+    );
+  }
+
   const view = new DataView(buffer);
   const vectorLength = view.getUint32(0, true);
   const vectorByteLength = vectorLength * Float32Array.BYTES_PER_ELEMENT;
 
+  if (buffer.byteLength < 4 + vectorByteLength) {
+    throw new StorageCorruptionError(
+      `Legacy buffer truncated: need ${4 + vectorByteLength} bytes for vector, have ${buffer.byteLength}`,
+    );
+  }
+
   const vector = new Float32Array(buffer.slice(4, 4 + vectorByteLength));
 
   const jsonBytes = new Uint8Array(buffer, 4 + vectorByteLength);
-  const remaining = JSON.parse(
-    new TextDecoder().decode(jsonBytes),
-  ) as BinaryRemainingFields;
+  let remaining: BinaryRemainingFields;
+  try {
+    remaining = JSON.parse(new TextDecoder().decode(jsonBytes)) as BinaryRemainingFields;
+  } catch (cause) {
+    throw new StorageCorruptionError(
+      `Legacy buffer: failed to parse metadata JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+    );
+  }
+
+  if (typeof remaining.id !== 'string' || remaining.id.length === 0) {
+    throw new StorageCorruptionError(
+      'Legacy buffer: metadata missing required field: id',
+    );
+  }
 
   return binaryFieldsToVectorData(remaining, vector);
 }
