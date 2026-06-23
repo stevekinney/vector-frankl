@@ -1,3 +1,17 @@
+/**
+ * WebGPUManager unit tests — mock-only.
+ *
+ * These tests exercise the WebGPUManager class through a fully mocked WebGPU
+ * API (navigator.gpu, GPUDevice, GPUBuffer, etc.). They verify unit-level
+ * logic: error paths, pipeline caching, metric dispatch, and cleanup.
+ *
+ * CLASSIFICATION: mock-only unit tests. They do NOT constitute
+ * production-readiness evidence for real-browser WebGPU semantics. Real-
+ * browser coverage lives in tests/end-to-end/webgpu-acceleration.e2e.ts,
+ * which either runs against a real GPU or explicitly skips when WebGPU is
+ * unavailable in the test environment.
+ */
+
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import { WebGPUManager } from '@/gpu/webgpu-manager.js';

@@ -1,3 +1,17 @@
+/**
+ * GPUSearchEngine unit tests — mock-only.
+ *
+ * These tests exercise the GPUSearchEngine class through a fully mocked WebGPU
+ * API. They verify unit-level logic: fallback behavior, threshold decisions,
+ * batch handling, and error propagation.
+ *
+ * CLASSIFICATION: mock-only unit tests. They do NOT constitute
+ * production-readiness evidence for real-browser WebGPU semantics. Real-
+ * browser coverage lives in tests/end-to-end/webgpu-acceleration.e2e.ts,
+ * which either runs against a real GPU or explicitly skips when WebGPU is
+ * unavailable in the test environment.
+ */
+
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 
 import type { VectorData } from '../../src/core/types.js';

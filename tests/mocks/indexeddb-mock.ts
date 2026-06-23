@@ -1,5 +1,13 @@
 /**
- * Mock implementation of IndexedDB for testing purposes
+ * Mock implementation of IndexedDB for unit testing purposes.
+ *
+ * CLASSIFICATION: mock-only. This shim enables unit tests to exercise
+ * IndexedDB-backed code paths in the Bun test runner (which has no native
+ * IndexedDB). It does NOT constitute production-readiness evidence for real-
+ * browser IndexedDB semantics — durability, quota enforcement, versioning, and
+ * transaction isolation behavior are verified in the real browser by
+ * tests/end-to-end/indexeddb-storage.e2e.ts and
+ * tests/end-to-end/storage-adapters.e2e.ts.
  */
 
 // Type definitions for IndexedDB mock
