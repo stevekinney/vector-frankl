@@ -86,6 +86,9 @@ function generateRandomVector(dimension: number): number[] {
   return Array.from({ length: dimension }, () => Math.random() * 2 - 1);
 }
 
+/** Monotonic suffix for startup-benchmark database names (validator-safe). */
+let startupRunCounter = 0;
+
 /** Time `fn` over `iterations` calls and return average ops/sec. */
 async function measureOpsPerSec(
   fn: () => Promise<void> | void,
@@ -372,8 +375,12 @@ async function runTargetBenchmark(target: ProductionTarget): Promise<number> {
     case 'Startup Time (init + first search)': {
       const ops = await measureOpsPerSec(
         async () => {
+          // Math.random() would inject a "." into the name (e.g. "0.42"),
+          // which the database name validator rejects. Use a monotonic counter
+          // for a collision-free, validator-safe unique suffix across the rapid
+          // init/search/delete iterations of this startup loop.
           const db = new VectorDB(
-            `prod-bench-startup-${Date.now()}-${Math.random()}`,
+            `prod-bench-startup-${Date.now()}-${startupRunCounter++}`,
             dimensions,
             { storage: new MemoryStorageAdapter() },
           );
@@ -536,7 +543,11 @@ async function main(): Promise<void> {
     console.log('\n' + JSON.stringify(report, null, 2));
   }
 
-  if (failures > 0) {
+  // In --update-baselines mode the current run *is* the new reference, so
+  // deviations from the previous baselines are expected and must not fail the
+  // process — the whole point is to overwrite them. A non-zero exit here would
+  // also abort the CI commit step that persists the freshly captured numbers.
+  if (failures > 0 && !options.updateBaselines) {
     process.exit(1);
   }
 }
