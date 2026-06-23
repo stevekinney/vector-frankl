@@ -4,6 +4,8 @@
 
 import { VectorDB } from '@/api/database.js';
 import type { DistanceMetric, VectorFormat } from '@/core/types.js';
+import { SearchEngine } from '@/search/search-engine.js';
+import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 import { debugMethod } from '@/debug/hooks.js';
 import { VectorFormatHandler } from '@/vectors/formats.js';
 
@@ -109,6 +111,9 @@ export class BenchmarkSuite {
 
       // Search performance
       await this.benchmarkSearchPerformance();
+
+      // Production-size filtered search (adapter-assisted vs full scan)
+      await this.benchmarkFilteredSearch();
 
       // Indexing performance
       if (this.config.testIndexing) {
@@ -281,6 +286,158 @@ export class BenchmarkSuite {
           }
         }
       }
+    }
+  }
+
+  /**
+   * Benchmark production-size filtered search using the adapter-assisted scan
+   * path (`filteredScan()`) versus the full-materialization fallback path.
+   *
+   * This demonstrates that adapters implementing `filteredScan()` avoid loading
+   * the entire dataset into memory when a metadata filter is active.
+   */
+  private async benchmarkFilteredSearch(): Promise<void> {
+    console.log('🔎 Benchmarking production-size filtered search...');
+
+    const dimension = 128;
+    // Use production-representative dataset sizes.
+    const sizes = [1000, 5000, 10000];
+    // Fraction of vectors that match the filter (selectivity = 10%).
+    const selectivity = 0.1;
+
+    for (const size of sizes) {
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
+      await adapter.init();
+
+      // Populate the store.  10% of records have category = 'target'.
+      for (let i = 0; i < size; i++) {
+        const vectorValues = this.generateRandomVector(dimension);
+        const vector = new Float32Array(vectorValues);
+        const category = i < size * selectivity ? 'target' : 'other';
+        await adapter.put({
+          id: `pf-${i}`,
+          vector,
+          metadata: { category },
+          magnitude: Math.sqrt(vectorValues.reduce((s, v) => s + v * v, 0)),
+          timestamp: Date.now(),
+        });
+      }
+
+      const query = this.generateRandomVector(dimension);
+      const filter = { category: 'target' };
+
+      // --- Adapter-assisted path (filteredScan) ---
+      const engineAssisted = new SearchEngine(adapter, dimension, 'cosine', {
+        useWorkers: false,
+      });
+
+      await this.runBenchmark(
+        `Filtered Search — adapter-assisted (${size} docs, ${dimension}D, ${Math.round(selectivity * 100)}% match)`,
+        'search',
+        async () => {
+          await engineAssisted.search(new Float32Array(query), 10, { filter });
+        },
+        {
+          dimension,
+          datasetSize: size,
+          selectivity,
+          path: 'adapter-filteredScan',
+          filtered: true,
+        },
+      );
+
+      // --- Fallback path: wrap adapter so filteredScan is not exposed ---
+      // We construct a plain object that delegates everything to `adapter`
+      // but does not expose `filteredScan` or `capabilities`, so the search
+      // engine takes the full-materialization path.
+      const fallbackAdapter = {
+        async init() {},
+        async close() {},
+        async destroy() {
+          await adapter.destroy();
+        },
+        async put(v: Parameters<typeof adapter.put>[0]) {
+          return adapter.put(v);
+        },
+        async get(id: string) {
+          return adapter.get(id);
+        },
+        async exists(id: string) {
+          return adapter.exists(id);
+        },
+        async delete(id: string) {
+          return adapter.delete(id);
+        },
+        async getMany(ids: string[]) {
+          return adapter.getMany(ids);
+        },
+        async getAll() {
+          return adapter.getAll();
+        },
+        async count() {
+          return adapter.count();
+        },
+        async deleteMany(ids: string[]) {
+          return adapter.deleteMany(ids);
+        },
+        async clear() {
+          return adapter.clear();
+        },
+        async putBatch(
+          vectors: Parameters<typeof adapter.putBatch>[0],
+          options?: Parameters<typeof adapter.putBatch>[1],
+        ) {
+          return adapter.putBatch(vectors, options);
+        },
+        async updateVector(
+          id: string,
+          vector: Float32Array,
+          options?: Parameters<typeof adapter.updateVector>[2],
+        ) {
+          return adapter.updateVector(id, vector, options);
+        },
+        async updateMetadata(
+          id: string,
+          metadata: Record<string, unknown>,
+          options?: Parameters<typeof adapter.updateMetadata>[2],
+        ) {
+          return adapter.updateMetadata(id, metadata, options);
+        },
+        async updateBatch(
+          updates: Parameters<typeof adapter.updateBatch>[0],
+          options?: Parameters<typeof adapter.updateBatch>[1],
+        ) {
+          return adapter.updateBatch(updates, options);
+        },
+        async *scan(options?: Parameters<typeof adapter.scan>[0]) {
+          yield* adapter.scan(options);
+        },
+        getScanCapabilities() {
+          return adapter.getScanCapabilities();
+        },
+      };
+
+      const engineFallback = new SearchEngine(fallbackAdapter, dimension, 'cosine', {
+        useWorkers: false,
+      });
+
+      await this.runBenchmark(
+        `Filtered Search — full-scan fallback (${size} docs, ${dimension}D, ${Math.round(selectivity * 100)}% match)`,
+        'search',
+        async () => {
+          await engineFallback.search(new Float32Array(query), 10, { filter });
+        },
+        {
+          dimension,
+          datasetSize: size,
+          selectivity,
+          path: 'getAll-fallback',
+          filtered: true,
+        },
+      );
     }
   }
 

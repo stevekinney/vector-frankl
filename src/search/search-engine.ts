@@ -666,20 +666,35 @@ export class SearchEngine {
   }
 
   /**
-   * Get candidate vectors based on filter
+   * Get candidate vectors based on filter.
+   *
+   * When the adapter reports `capabilities.metadataIndexing = true` and
+   * implements `filteredScan()`, the scan is delegated to the adapter so the
+   * full dataset is never materialized into memory. Adapters that do not
+   * implement `filteredScan()` are documented as lacking metadata indexing;
+   * the search engine falls back to `getAll()` + in-memory filtering, which
+   * loads the entire store.
    */
   private async getCandidates(filter?: MetadataFilter): Promise<VectorData[]> {
     if (!filter) {
       return this.storage.getAll();
     }
 
-    // Compile the filter for efficient matching
+    // Compile the filter once so both paths share the same predicate.
     const matcher = MetadataFilterCompiler.compile(filter);
 
-    // For now, get all and filter in memory
-    // TODO: Optimize with metadata indices
+    // Prefer adapter-assisted scanning when the adapter supports it.
+    if (this.storage.capabilities?.metadataIndexing && this.storage.filteredScan) {
+      return this.storage.filteredScan(matcher);
+    }
+
+    // Fallback: load all vectors and filter in memory.
+    // NOTE: Adapters that reach this path lack metadata indexing — see
+    // AdapterCapabilities.metadataIndexing. At production dataset sizes this
+    // will materialize the full store. Consider using an adapter that
+    // implements filteredScan() for filtered search on large collections.
     const allVectors = await this.storage.getAll();
-    return allVectors.filter((vector) => matcher(vector.metadata || {}));
+    return allVectors.filter((vector) => matcher(vector.metadata ?? {}));
   }
 
   /**
@@ -1131,7 +1146,10 @@ export class SearchEngine {
     queries: Float32Array[],
     metric: DistanceMetricType = 'cosine',
   ): Promise<number[][]> {
-    if (this.workerPool && vectors.length * queries.length >= WORKER_BATCH_SIMILARITY_THRESHOLD) {
+    if (
+      this.workerPool &&
+      vectors.length * queries.length >= WORKER_BATCH_SIMILARITY_THRESHOLD
+    ) {
       try {
         await this.workerPool.init();
         return await this.workerPool.batchSimilarity(vectors, queries, metric);

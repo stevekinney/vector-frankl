@@ -72,6 +72,116 @@ describe('MemoryStorageAdapter-specific', () => {
     });
   });
 
+  // ── capabilities ──────────────────────────────────────────────────────
+
+  describe('capabilities', () => {
+    it('reports metadataIndexing: true', () => {
+      const adapter = new MemoryStorageAdapter();
+      expect(adapter.capabilities.metadataIndexing).toBe(true);
+    });
+
+    it('reports persistence: false', () => {
+      const adapter = new MemoryStorageAdapter();
+      expect(adapter.capabilities.persistence).toBe(false);
+    });
+
+    it('reports transactions: false', () => {
+      const adapter = new MemoryStorageAdapter();
+      expect(adapter.capabilities.transactions).toBe(false);
+    });
+  });
+
+  // ── filteredScan ──────────────────────────────────────────────────────
+
+  describe('filteredScan()', () => {
+    function makeVector(
+      id: string,
+      values: number[],
+      metadata?: Record<string, unknown>,
+    ): VectorData {
+      const vector = new Float32Array(values);
+      const magnitude = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0));
+      const result: VectorData = { id, vector, magnitude, timestamp: Date.now() };
+      if (metadata !== undefined) {
+        result.metadata = metadata;
+      }
+      return result;
+    }
+
+    it('returns only vectors whose metadata satisfies the predicate', async () => {
+      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0], { category: 'science' }));
+      await adapter.put(makeVector('b', [0, 1], { category: 'art' }));
+      await adapter.put(makeVector('c', [1, 1], { category: 'science' }));
+
+      const results = await adapter.filteredScan((m) => m['category'] === 'science');
+      const ids = results.map((v) => v.id).sort();
+      expect(ids).toEqual(['a', 'c']);
+    });
+
+    it('returns an empty array when no vectors match', async () => {
+      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1], { type: 'x' }));
+
+      const results = await adapter.filteredScan((m) => m['type'] === 'z');
+      expect(results).toHaveLength(0);
+    });
+
+    it('returns all vectors when the predicate always returns true', async () => {
+      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1]));
+      await adapter.put(makeVector('b', [2]));
+
+      const results = await adapter.filteredScan(() => true);
+      expect(results).toHaveLength(2);
+    });
+
+    it('handles vectors with no metadata by treating metadata as {}', async () => {
+      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      // Vector without metadata field
+      await adapter.put(makeVector('no-meta', [1]));
+      await adapter.put(makeVector('has-meta', [2], { tag: 'yes' }));
+
+      // Predicate that checks for 'tag' key — only 'has-meta' should match
+      const results = await adapter.filteredScan((m) => 'tag' in m);
+      const ids = results.map((v) => v.id);
+      expect(ids).toEqual(['has-meta']);
+    });
+
+    it('clones results when cloneOnRead is true', async () => {
+      const adapter = new MemoryStorageAdapter({ cloneOnRead: true, cloneOnWrite: true });
+      await adapter.put(makeVector('a', [1], { tag: 'original' }));
+
+      const [result] = await adapter.filteredScan(() => true);
+      // Mutate the returned record — store should be unaffected
+      result!.magnitude = 999;
+
+      const [fresh] = await adapter.filteredScan(() => true);
+      expect(fresh!.magnitude).toBeCloseTo(1);
+    });
+
+    it('returns only the matching subset from a large store without materializing all vectors', async () => {
+      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      const total = 1000;
+      const targetCount = 50;
+
+      for (let i = 0; i < total; i++) {
+        const category = i < targetCount ? 'target' : 'other';
+        await adapter.put(makeVector(`v${i}`, [i], { category }));
+      }
+
+      let predicateCalls = 0;
+      const results = await adapter.filteredScan((m) => {
+        predicateCalls++;
+        return m['category'] === 'target';
+      });
+
+      expect(results).toHaveLength(targetCount);
+      // The predicate should have been called exactly once per record
+      expect(predicateCalls).toBe(total);
+    });
+  });
+
   describe('clone isolation', () => {
     it('returns cloned data when cloneOnRead is true (mutation safe)', async () => {
       const adapter = new MemoryStorageAdapter({ cloneOnRead: true, cloneOnWrite: true });

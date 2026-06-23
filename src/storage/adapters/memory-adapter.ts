@@ -1,5 +1,6 @@
 import { VectorNotFoundError } from '@/core/errors.js';
 import type {
+  AdapterCapabilities,
   BatchOptions,
   BatchProgress,
   ScanCapabilities,
@@ -14,10 +15,29 @@ interface MemoryStorageAdapterOptions {
   cloneOnWrite?: boolean;
 }
 
+/**
+ * In-memory storage adapter backed by a plain `Map`.
+ *
+ * Supports `filteredScan()` — predicate evaluation is done record-by-record as
+ * the Map is iterated, so only matching records are included in the returned
+ * array. This avoids building a full-dataset array just to discard most of it.
+ */
 export class MemoryStorageAdapter implements StorageAdapter {
   private readonly store = new Map<string, VectorData>();
   private readonly cloneOnRead: boolean;
   private readonly cloneOnWrite: boolean;
+
+  /**
+   * Capabilities reported to the search engine.
+   *
+   * `metadataIndexing: true` because `filteredScan()` evaluates the predicate
+   * inline as the Map is iterated—no full materialization required.
+   */
+  readonly capabilities: AdapterCapabilities = {
+    metadataIndexing: true,
+    persistence: false,
+    transactions: false,
+  };
 
   constructor(options: MemoryStorageAdapterOptions = {}) {
     this.cloneOnRead = options.cloneOnRead ?? true;
@@ -104,6 +124,28 @@ export class MemoryStorageAdapter implements StorageAdapter {
 
     for (const entry of this.store.values()) {
       results.push(this.cloneOnRead ? this.clone(entry) : entry);
+    }
+
+    return results;
+  }
+
+  /**
+   * Scan the store and return only the records whose metadata satisfies
+   * `predicate`.
+   *
+   * The predicate is evaluated inline while iterating the Map — only matching
+   * records are cloned and included in the result, so the full dataset is
+   * never materialized into a separate array.
+   */
+  async filteredScan(
+    predicate: (metadata: Record<string, unknown>) => boolean,
+  ): Promise<VectorData[]> {
+    const results: VectorData[] = [];
+
+    for (const entry of this.store.values()) {
+      if (predicate(entry.metadata ?? {})) {
+        results.push(this.cloneOnRead ? this.clone(entry) : entry);
+      }
     }
 
     return results;

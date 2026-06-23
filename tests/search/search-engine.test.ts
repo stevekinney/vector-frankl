@@ -1,11 +1,17 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 
 import {
   DimensionMismatchError,
   SearchAbortedError,
   SearchTimeoutError,
 } from '@/core/errors.js';
-import type { SearchResult, StorageAdapter, VectorData, VectorAbortSignal } from '@/core/types.js';
+import type {
+  AdapterCapabilities,
+  SearchResult,
+  StorageAdapter,
+  VectorData,
+  VectorAbortSignal,
+} from '@/core/types.js';
 import { SearchEngine } from '@/search/search-engine.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
@@ -1064,6 +1070,255 @@ describe('SearchEngine', () => {
 
       expect(results).toHaveLength(1);
       expect(results[0]!.id).toBe('cat');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Adapter-assisted filtered search (metadata indexing)
+  // -----------------------------------------------------------------------
+  describe('adapter-assisted filtered search', () => {
+    it('delegates to filteredScan() when adapter reports metadataIndexing: true', async () => {
+      const vectors = [
+        makeVector('cat', [1, 0, 0], { animal: 'cat' }),
+        makeVector('dog', [0.9, 0.1, 0], { animal: 'dog' }),
+        makeVector('bird', [0, 0, 1], { animal: 'bird' }),
+      ];
+      const adapter = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      for (const v of vectors) {
+        await adapter.put(v);
+      }
+
+      // MemoryStorageAdapter reports metadataIndexing: true
+      expect(adapter.capabilities.metadataIndexing).toBe(true);
+
+      const filteredScanSpy = mock(adapter.filteredScan.bind(adapter));
+      adapter.filteredScan = filteredScanSpy;
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+      const results = await engine.search(new Float32Array([1, 0, 0]), 10, {
+        filter: { animal: 'cat' },
+      });
+
+      // filteredScan should have been called (not getAll)
+      expect(filteredScanSpy).toHaveBeenCalledTimes(1);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('cat');
+    });
+
+    it('falls back to getAll() when adapter lacks filteredScan()', async () => {
+      // Build a minimal StorageAdapter that omits filteredScan and reports
+      // metadataIndexing: false (the absence of capabilities is also fine).
+      const store = new Map<string, VectorData>();
+      const allVectors: VectorData[] = [
+        makeVector('cat', [1, 0, 0], { animal: 'cat' }),
+        makeVector('dog', [0.9, 0.1, 0], { animal: 'dog' }),
+      ];
+      for (const v of allVectors) {
+        store.set(v.id, v);
+      }
+
+      let getAllCalls = 0;
+      const minimalAdapter: StorageAdapter = {
+        capabilities: {
+          metadataIndexing: false,
+          persistence: false,
+          transactions: false,
+        } satisfies AdapterCapabilities,
+        async init() {},
+        async close() {},
+        async destroy() {
+          store.clear();
+        },
+        async put(v) {
+          store.set(v.id, v);
+        },
+        async get(id) {
+          const v = store.get(id);
+          if (!v) throw new Error(`not found: ${id}`);
+          return v;
+        },
+        async exists(id) {
+          return store.has(id);
+        },
+        async delete(id) {
+          store.delete(id);
+        },
+        async getMany(ids) {
+          return ids.flatMap((id) => {
+            const v = store.get(id);
+            return v ? [v] : [];
+          });
+        },
+        async getAll() {
+          getAllCalls++;
+          return [...store.values()];
+        },
+        async count() {
+          return store.size;
+        },
+        async deleteMany(ids) {
+          let n = 0;
+          for (const id of ids) {
+            if (store.delete(id)) n++;
+          }
+          return n;
+        },
+        async clear() {
+          store.clear();
+        },
+        async putBatch(vectors) {
+          for (const v of vectors) store.set(v.id, v);
+        },
+        async updateVector(id, vector) {
+          const v = store.get(id);
+          if (!v) throw new Error(`not found: ${id}`);
+          v.vector = vector;
+        },
+        async updateMetadata(id, metadata) {
+          const v = store.get(id);
+          if (!v) throw new Error(`not found: ${id}`);
+          v.metadata = metadata;
+        },
+        async updateBatch(updates) {
+          let succeeded = 0;
+          const errors: Array<{ id: string; error: Error }> = [];
+          for (const u of updates) {
+            const v = store.get(u.id);
+            if (!v) {
+              errors.push({ id: u.id, error: new Error('not found') });
+            } else {
+              if (u.vector) v.vector = u.vector;
+              if (u.metadata) v.metadata = u.metadata;
+              succeeded++;
+            }
+          }
+          return { succeeded, failed: errors.length, errors };
+        },
+        async *scan() {
+          for (const v of store.values()) yield v;
+        },
+        getScanCapabilities() {
+          return { nativeStreaming: false, limitationReason: 'in-memory stub' };
+        },
+      };
+
+      const engine = new SearchEngine(minimalAdapter, 3, 'cosine', { useWorkers: false });
+      const results = await engine.search(new Float32Array([1, 0, 0]), 10, {
+        filter: { animal: 'cat' },
+      });
+
+      // Should have used getAll() because filteredScan is absent
+      expect(getAllCalls).toBeGreaterThanOrEqual(1);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('cat');
+    });
+
+    it('produces the same results whether filteredScan or getAll path is used', async () => {
+      const vectors = Array.from({ length: 50 }, (_, i) =>
+        makeVector(`v${i}`, [Math.random(), Math.random(), Math.random()], {
+          group: i % 5 === 0 ? 'target' : 'other',
+        }),
+      );
+
+      // Path A: adapter with filteredScan (MemoryStorageAdapter)
+      const adapterA = new MemoryStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      for (const v of vectors) {
+        await adapterA.put(v);
+      }
+      const engineA = new SearchEngine(adapterA, 3, 'cosine', { useWorkers: false });
+
+      // Path B: adapter without filteredScan
+      const storeB = new Map<string, VectorData>();
+      for (const v of vectors) {
+        storeB.set(v.id, v);
+      }
+      const adapterB: StorageAdapter = {
+        async init() {},
+        async close() {},
+        async destroy() {
+          storeB.clear();
+        },
+        async put(v) {
+          storeB.set(v.id, v);
+        },
+        async get(id) {
+          const v = storeB.get(id);
+          if (!v) throw new Error('not found');
+          return v;
+        },
+        async exists(id) {
+          return storeB.has(id);
+        },
+        async delete(id) {
+          storeB.delete(id);
+        },
+        async getMany(ids) {
+          return ids.flatMap((id) => {
+            const v = storeB.get(id);
+            return v ? [v] : [];
+          });
+        },
+        async getAll() {
+          return [...storeB.values()];
+        },
+        async count() {
+          return storeB.size;
+        },
+        async deleteMany(ids) {
+          let n = 0;
+          for (const id of ids) {
+            if (storeB.delete(id)) n++;
+          }
+          return n;
+        },
+        async clear() {
+          storeB.clear();
+        },
+        async putBatch(vs) {
+          for (const v of vs) storeB.set(v.id, v);
+        },
+        async updateVector(id, vector) {
+          const v = storeB.get(id);
+          if (!v) throw new Error('not found');
+          v.vector = vector;
+        },
+        async updateMetadata(id, metadata) {
+          const v = storeB.get(id);
+          if (!v) throw new Error('not found');
+          v.metadata = metadata;
+        },
+        async updateBatch(updates) {
+          let succeeded = 0;
+          const errors: Array<{ id: string; error: Error }> = [];
+          for (const u of updates) {
+            const v = storeB.get(u.id);
+            if (!v) {
+              errors.push({ id: u.id, error: new Error('not found') });
+            } else {
+              if (u.vector) v.vector = u.vector;
+              if (u.metadata) v.metadata = u.metadata;
+              succeeded++;
+            }
+          }
+          return { succeeded, failed: errors.length, errors };
+        },
+        async *scan() {
+          for (const v of storeB.values()) yield v;
+        },
+        getScanCapabilities() {
+          return { nativeStreaming: false, limitationReason: 'in-memory stub' };
+        },
+      };
+      const engineB = new SearchEngine(adapterB, 3, 'cosine', { useWorkers: false });
+
+      const query = new Float32Array([1, 0, 0]);
+      const filter = { group: 'target' };
+
+      const resultsA = await engineA.search(query, 5, { filter });
+      const resultsB = await engineB.search(query, 5, { filter });
+
+      // Both paths must return the same IDs in the same order.
+      expect(resultsA.map((r) => r.id)).toEqual(resultsB.map((r) => r.id));
     });
   });
 

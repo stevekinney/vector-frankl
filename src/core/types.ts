@@ -384,6 +384,25 @@ export interface ScanCapabilities {
 }
 
 /**
+ * Capability flags reported by a storage adapter.
+ *
+ * - `metadataIndexing`: the adapter can evaluate a metadata predicate without
+ *   materializing the full dataset into memory (e.g. via a database index or a
+ *   cursor scan). Adapters that set this to `true` MUST implement
+ *   `filteredScan()`.
+ * - `persistence`: data survives process restarts.
+ * - `transactions`: all writes within a batch are atomic.
+ */
+export interface AdapterCapabilities {
+  /** Whether the adapter supports filtered scanning without full materialization. */
+  metadataIndexing: boolean;
+  /** Whether data is durable across process restarts. */
+  persistence: boolean;
+  /** Whether batch writes are atomic. */
+  transactions: boolean;
+}
+
+/**
  * Storage adapter interface for pluggable storage backends.
  *
  * Each adapter manages vector persistence for a single logical database.
@@ -406,8 +425,26 @@ export interface ScanCapabilities {
  *
  * This is an intentional design decision: one clear validation boundary rather
  * than duplicated partial checks spread across every adapter implementation.
+ *
+ * ## Metadata indexing
+ *
+ * Adapters that set `capabilities.metadataIndexing = true` MUST implement
+ * `filteredScan()`. The search engine calls `filteredScan()` instead of
+ * `getAll()` for filtered searches, avoiding full dataset materialization.
+ *
+ * Adapters that do NOT implement `filteredScan()` are documented as lacking
+ * metadata indexing—filtered search on them always loads the full store.
  */
 export interface StorageAdapter {
+  /**
+   * Reports the capabilities of this adapter. Used by the search engine to
+   * decide whether it can delegate filtered scans to the adapter.
+   *
+   * Adapters that do not implement this property are treated as having no
+   * metadata indexing support (`metadataIndexing: false`).
+   */
+  readonly capabilities?: AdapterCapabilities;
+
   // Lifecycle
   init(): Promise<void>;
   close(): Promise<void>;
@@ -442,6 +479,19 @@ export interface StorageAdapter {
    * `scan()` provides bounded-memory iteration on large stores.
    */
   getScanCapabilities(): ScanCapabilities;
+
+  /**
+   * Scan the store and return only the vectors whose metadata satisfies
+   * `predicate`, without materializing the full dataset.
+   *
+   * Implementing this method is optional. Adapters that implement it MUST also
+   * set `capabilities.metadataIndexing = true`. Adapters that do NOT implement
+   * it are documented as lacking metadata indexing; filtered search falls back
+   * to `getAll()` + in-memory filtering.
+   */
+  filteredScan?(
+    predicate: (metadata: Record<string, unknown>) => boolean,
+  ): Promise<VectorData[]>;
 
   // Multi-item writes
   deleteMany(ids: string[]): Promise<number>;
