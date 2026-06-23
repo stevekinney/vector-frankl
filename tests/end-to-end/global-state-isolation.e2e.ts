@@ -76,7 +76,9 @@ test.describe('Global-state isolation', () => {
   test('add-search-clear cycle leaves no residual state', async ({ page }) => {
     await page.evaluate(async () => {
       try {
-        const DIMENSION = 64;
+        // Must match the shared window.db dimension from the test harness
+        // (index.html initialises `new VectorDB('test-db', 384)`).
+        const DIMENSION = 384;
 
         // Deterministic pseudo-random generator (mulberry32 seed 42).
         let seed = 42;
@@ -226,7 +228,9 @@ test.describe('Global-state isolation', () => {
   }) => {
     await page.evaluate(async () => {
       try {
-        const DIMENSION = 64;
+        // Must match the shared window.db dimension from the test harness
+        // (index.html initialises `new VectorDB('test-db', 384)`).
+        const DIMENSION = 384;
 
         const makeVector = (seed: number) => {
           let s = seed;
