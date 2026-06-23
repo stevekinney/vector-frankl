@@ -88,7 +88,7 @@ export default [
   // Ignore patterns
   {
     ignores: [
-      '**/{dist,build,coverage,.bun}/**',
+      '**/{dist,build,coverage,.bun,tmp}/**',
       '**/node_modules/**',
       '**/*.lock',
       '**/README.md',
