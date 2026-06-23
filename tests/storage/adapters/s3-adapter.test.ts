@@ -310,3 +310,101 @@ describe.skipIf(!integrationMode || integrationSkip)(
     });
   },
 );
+
+// ---------------------------------------------------------------------------
+// Concurrent behaviour — single-writer contract
+// ---------------------------------------------------------------------------
+
+function makeVector(id: string, values: number[]) {
+  const vector = new Float32Array(values);
+  const magnitude = Math.sqrt(values.reduce((sum, v) => sum + v * v, 0));
+  return { id, vector, magnitude, timestamp: Date.now() };
+}
+
+describe('concurrent writes — single-writer contract', () => {
+  it('preserves all IDs when concurrent puts are issued on the same instance', async () => {
+    // Within one adapter instance the promise-based mutex serialises all
+    // manifest updates, so every ID must survive.
+    objectStore.clear();
+    const adapter = new S3StorageAdapter({ bucket: 'test-bucket', prefix: 'concurrent/' });
+    await adapter.init();
+
+    const ids = Array.from({ length: 20 }, (_, i) => `concurrent-${i}`);
+
+    // Fire all puts at the same time — none may be lost.
+    await Promise.all(ids.map((id) => adapter.put(makeVector(id, [1, 2, 3]))));
+
+    const count = await adapter.count();
+    expect(count).toBe(ids.length);
+
+    // Every ID must be retrievable.
+    for (const id of ids) {
+      expect(await adapter.exists(id)).toBe(true);
+    }
+
+    await adapter.destroy();
+  });
+
+  it('singleWriter discriminant is true on every instance', () => {
+    // Consumers can inspect .singleWriter to detect the concurrency model.
+    const adapter = new S3StorageAdapter({ bucket: 'test-bucket' });
+    expect(adapter.singleWriter).toBe(true);
+  });
+
+  it('documents that two separate instances diverge on the same prefix (single-writer limitation)', async () => {
+    // This test demonstrates — and therefore catches any regression of — the
+    // known single-writer limitation: two adapter instances sharing the same
+    // bucket + prefix each maintain an independent in-memory manifest. Writes
+    // on instance B are invisible to instance A's manifest (and vice-versa)
+    // unless both instances are re-initialised from the shared object store.
+    //
+    // This is intentional behaviour: S3StorageAdapter is single-writer only.
+    // Multi-writer support would require conditional writes (ETag CAS) that
+    // Bun.s3 does not currently expose.
+
+    objectStore.clear();
+
+    const adapterA = new S3StorageAdapter({
+      bucket: 'test-bucket',
+      prefix: 'diverge/',
+    });
+    const adapterB = new S3StorageAdapter({
+      bucket: 'test-bucket',
+      prefix: 'diverge/',
+    });
+
+    await adapterA.init();
+    await adapterB.init();
+
+    // A writes two vectors; B writes two different vectors — all four are
+    // written to the backing store (objectStore) but each adapter only knows
+    // about its own writes.
+    await adapterA.put(makeVector('a1', [1]));
+    await adapterA.put(makeVector('a2', [2]));
+    await adapterB.put(makeVector('b1', [3]));
+    await adapterB.put(makeVector('b2', [4]));
+
+    // From A's perspective only a1 and a2 exist.
+    expect(await adapterA.count()).toBe(2);
+    expect(await adapterA.exists('a1')).toBe(true);
+    expect(await adapterA.exists('a2')).toBe(true);
+    // B's IDs are NOT visible to A (single-writer limitation).
+    expect(await adapterA.exists('b1')).toBe(false);
+    expect(await adapterA.exists('b2')).toBe(false);
+
+    // From B's perspective only b1 and b2 exist.
+    expect(await adapterB.count()).toBe(2);
+    expect(await adapterB.exists('b1')).toBe(true);
+    expect(await adapterB.exists('b2')).toBe(true);
+    // A's IDs are NOT visible to B (single-writer limitation).
+    expect(await adapterB.exists('a1')).toBe(false);
+    expect(await adapterB.exists('a2')).toBe(false);
+
+    // Cleanup: destroy whichever instance wrote last so the store is clean.
+    // We destroy A first (which rewrites the manifest with only a1/a2), then
+    // B (which would overwrite with b1/b2). Both are wiped at the end.
+    await adapterA.destroy();
+    await adapterB.destroy();
+    objectStore.clear();
+  });
+});
