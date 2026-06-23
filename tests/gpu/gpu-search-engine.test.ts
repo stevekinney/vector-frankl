@@ -587,11 +587,12 @@ describe('GPUSearchEngine', () => {
         'cosine',
       );
 
-      // v[1] (y) and v[2] (z) are orthogonal to query — score should be ~0
+      // v[1] (y) and v[2] (z) are orthogonal to query — cosine distance=1, score=0.5
+      // (cosine distance is in [0,2]; score = 1 - distance/2, so orthogonal → 0.5)
       const yResult = results.find((r) => r.id === 'y');
       const zResult = results.find((r) => r.id === 'z');
-      expect(Math.abs(yResult?.score ?? 0)).toBeLessThan(TOLERANCE);
-      expect(Math.abs(zResult?.score ?? 0)).toBeLessThan(TOLERANCE);
+      expect(Math.abs((yResult?.score ?? 0) - 0.5)).toBeLessThan(TOLERANCE);
+      expect(Math.abs((zResult?.score ?? 0) - 0.5)).toBeLessThan(TOLERANCE);
       await engine.cleanup();
     });
 
@@ -776,8 +777,8 @@ describe('GPUSearchEngine', () => {
       const { results } = await engine.search(orthogonalVectors, query, 3, 'cosine');
 
       for (const result of results) {
-        // cosine: score = 1 - distance, so distance = 1 - score
-        const reconstructed = 1 - result.score;
+        // cosine: score = 1 - distance/2, so distance = 2 * (1 - score)
+        const reconstructed = 2 * (1 - result.score);
         expect(result.distance).toBeDefined();
         expect(Math.abs((result.distance ?? 0) - reconstructed)).toBeLessThan(TOLERANCE);
       }
