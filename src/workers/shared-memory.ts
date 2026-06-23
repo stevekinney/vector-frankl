@@ -402,7 +402,7 @@ export class SharedMemoryManager {
       }
 
       const age = now - block.lastUsed;
-      return age <= maxAge; // Keep recent blocks
+      return age < maxAge; // Keep blocks younger than maxAge; cleanup(0) drops all unused
     });
 
     const removedCount = initialLength - this.memoryPool.length;

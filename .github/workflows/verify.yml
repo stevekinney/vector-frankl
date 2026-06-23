@@ -175,6 +175,11 @@ jobs:
         run: bun run benchmark:production --update-baselines
 
       - name: Commit updated baselines
+        # HUSKY=0 is husky's own opt-out: the local pre-commit hook targets bash
+        # and breaks under the runner's /bin/sh, and these are machine-generated
+        # baselines committed by a bot — no developer pre-commit checks apply.
+        env:
+          HUSKY: '0'
         run: |
           if git diff --quiet -- benchmarks/baselines.json; then
             echo "No baseline changes to commit."
