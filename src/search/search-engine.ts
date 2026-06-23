@@ -201,8 +201,8 @@ export class SearchEngine {
       metric || { name: 'cosine' },
     );
 
-    // Sort by distance (ascending) and take top k
-    scoredCandidates.sort((a, b) => a.distance - b.distance);
+    // Sort by distance ascending; use id as a stable tie-breaker.
+    scoredCandidates.sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
     const topK = scoredCandidates.slice(0, k);
 
     // Convert to search results
@@ -364,8 +364,8 @@ export class SearchEngine {
       metric || { name: 'cosine' },
     );
 
-    // Sort by distance (ascending) and take top k
-    scoredCandidates.sort((a, b) => a.distance - b.distance);
+    // Sort by distance ascending; use id as a stable tie-breaker.
+    scoredCandidates.sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
     const topK = scoredCandidates.slice(0, k);
 
     // Convert to search results
@@ -386,7 +386,12 @@ export class SearchEngine {
   }
 
   /**
-   * Search for vectors within a distance threshold
+   * Search for vectors within a distance threshold.
+   *
+   * All vectors whose distance to the query is at most `maxDistance` are
+   * collected first, then sorted by distance ascending with vector id as a
+   * stable tie-breaker. When `options.maxResults` is set the nearest N
+   * results are returned — independent of insertion order.
    */
   async searchRange(
     queryVector: Float32Array,
@@ -416,7 +421,9 @@ export class SearchEngine {
       // Calculate distance
       const distance = this.distanceCalculator.calculate(processedQuery, processedVector);
 
-      // Check if within threshold
+      // Collect all matches — do NOT break early; maxResults is applied after
+      // sorting so that the nearest vectors are returned regardless of insertion
+      // order.
       if (distance <= maxDistance) {
         const searchResult: SearchResult = {
           id: candidate.id,
@@ -430,17 +437,17 @@ export class SearchEngine {
           searchResult.vector = candidate.vector;
         }
         results.push(searchResult);
-
-        // Check max results limit
-        if (options?.maxResults && results.length >= options.maxResults) {
-          break;
-        }
       }
     }
 
-    // Sort by distance
-    results.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-    return results;
+    // Sort by distance ascending; use id as a stable tie-breaker so that
+    // equal-distance results are returned in a consistent, documented order.
+    results.sort(
+      (a, b) => (a.distance ?? 0) - (b.distance ?? 0) || a.id.localeCompare(b.id),
+    );
+
+    // Apply maxResults limit after sorting to guarantee nearest results are kept.
+    return options?.maxResults != null ? results.slice(0, options.maxResults) : results;
   }
 
   /**
@@ -585,8 +592,8 @@ export class SearchEngine {
       metric || { name: 'cosine' },
     );
 
-    // Sort and take top k
-    scoredCandidates.sort((a, b) => a.distance - b.distance);
+    // Sort by distance ascending; use id as a stable tie-breaker.
+    scoredCandidates.sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
     const topK = scoredCandidates.slice(0, k);
 
     return topK.map((candidate) => {

@@ -565,6 +565,111 @@ describe('SearchEngine', () => {
         expect(results[i]!.distance!).toBeGreaterThanOrEqual(results[i - 1]!.distance!);
       }
     });
+
+    it('searchRange maxResults returns nearest vectors independent of insertion order', async () => {
+      // Set up 10 vectors at distances 1..10 from origin, inserted in reverse order
+      // (farthest first) so that an early-break implementation would return the
+      // wrong results.
+      const vectors = Array.from({ length: 10 }, (_, i) => {
+        // Insert from farthest (distance 10) down to nearest (distance 1).
+        const dist = 10 - i;
+        return makeVector(`d${dist}`, [dist, 0, 0]);
+      });
+
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      // All 10 are within threshold 100; ask for the nearest 3.
+      const results = await engine.searchRange(new Float32Array([0, 0, 0]), 100, {
+        maxResults: 3,
+      });
+
+      expect(results).toHaveLength(3);
+      // The 3 nearest should be at distances 1, 2, 3 — not 10, 9, 8.
+      expect(results[0]!.id).toBe('d1');
+      expect(results[1]!.id).toBe('d2');
+      expect(results[2]!.id).toBe('d3');
+    });
+
+    it('searchRange stable tie-breaking orders equal-distance results by id', async () => {
+      // Three vectors all at distance 1 from origin (one unit along each axis).
+      const vectors = [
+        makeVector('charlie', [1, 0, 0]),
+        makeVector('alpha', [0, 1, 0]),
+        makeVector('bravo', [0, 0, 1]),
+      ];
+
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      const results = await engine.searchRange(new Float32Array([0, 0, 0]), 1.1);
+
+      // All distances are 1.0 — tie-breaking by id should produce alphabetical order.
+      expect(results).toHaveLength(3);
+      expect(results[0]!.id).toBe('alpha');
+      expect(results[1]!.id).toBe('bravo');
+      expect(results[2]!.id).toBe('charlie');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Stable tie-breaking in brute-force search
+  // -----------------------------------------------------------------------
+  describe('stable tie-breaking', () => {
+    it('search returns equal-distance results in stable id order', async () => {
+      // Three orthogonal unit vectors: all at cosine distance 1 from [0,0,1]
+      // (completely orthogonal). Insert in non-alphabetical order.
+      const vectors = [
+        makeVector('zulu', [1, 0, 0]),
+        makeVector('alpha', [0, 1, 0]),
+        makeVector('mike', [1, 0, 0]), // duplicate direction of zulu but different id
+      ];
+
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      // Query the zero vector — all results have the same distance (1.0).
+      const results = await engine.search(new Float32Array([0, 0, 0]), 3);
+
+      expect(results).toHaveLength(3);
+      // Distances are all equal (1); tie-breaking must be by id ascending.
+      const ids = results.map((r) => r.id);
+      const sorted = [...ids].sort();
+      expect(ids).toEqual(sorted);
+    });
+
+    it('searchRange tie-breaking is insertion-order-independent', async () => {
+      // Insert vectors in two different orders and confirm identical output.
+      const makeVectors = () => [
+        makeVector('charlie', [1, 0, 0]),
+        makeVector('alpha', [0, 1, 0]),
+        makeVector('bravo', [0, 0, 1]),
+      ];
+
+      const orderedVectors = makeVectors();
+      const reversedVectors = [...makeVectors()].reverse();
+
+      const engineA = new SearchEngine(
+        await createMockStorage(orderedVectors),
+        3,
+        'euclidean',
+        { useWorkers: false },
+      );
+      const engineB = new SearchEngine(
+        await createMockStorage(reversedVectors),
+        3,
+        'euclidean',
+        { useWorkers: false },
+      );
+
+      const resultsA = await engineA.searchRange(new Float32Array([0, 0, 0]), 1.1);
+      const resultsB = await engineB.searchRange(new Float32Array([0, 0, 0]), 1.1);
+
+      expect(resultsA.map((r) => r.id)).toEqual(resultsB.map((r) => r.id));
+    });
   });
 
   // -----------------------------------------------------------------------
