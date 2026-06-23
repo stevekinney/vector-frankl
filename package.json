@@ -146,7 +146,7 @@
     "start": "bun run dist/index.js",
     "test": "r=0; bun test src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test tests/gpu tests/integration tests/search || r=$?; bun test tests/vectors tests/wasm tests/workers || r=$?; bun test tests/storage || r=$?; exit $r",
     "test:all": "bun run test && bun run test:end-to-end",
-    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage",
+    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage && bun run scripts/check-coverage.ts",
     "test:end-to-end": "playwright test",
     "test:end-to-end:chromium": "playwright test --project=chromium",
     "test:end-to-end:firefox": "playwright test --project=firefox",
