@@ -89,6 +89,70 @@ The broader pattern here is moving vector search compute to the edge—the brows
 - Modern browser with IndexedDB support
 - Chrome/Edge recommended for optimal performance (SIMD, WebGPU)
 
+## Runtime Support
+
+### Browser Support
+
+Vector Frankl's browser-native path requires no build tooling beyond a standard
+bundler. The minimum tested versions are:
+
+| Browser             | Minimum Version | IndexedDB | OPFS    | WebGPU  | SIMD / WASM | SharedArrayBuffer | Workers |
+| ------------------- | --------------- | --------- | ------- | ------- | ----------- | ----------------- | ------- |
+| Chromium / Chrome   | 80              | ✅        | ✅ 86   | ✅ 113  | ✅ 91       | ✅ 92             | ✅      |
+| Firefox             | 75              | ✅        | ✅ 111  | ❌ Beta | ✅ 89       | ✅ 79             | ✅      |
+| Safari / WebKit     | 14.0            | ✅        | ✅ 15.2 | ❌ Beta | ✅ 16.4     | ✅ 15.2           | ✅      |
+| Edge (Chromium)     | 80              | ✅        | ✅ 86   | ✅ 113  | ✅ 91       | ✅ 92             | ✅      |
+| Chrome for Android  | 80              | ✅        | ✅ 86   | ❌      | ✅ 91       | ✅ 92             | ✅      |
+| Firefox for Android | 79              | ✅        | ✅ 111  | ❌      | ✅ 89       | ✅ 79             | ✅      |
+| Safari on iOS       | 14.0            | ✅        | ✅ 15.2 | ❌      | ✅ 16.4     | ✅ 15.2           | ✅      |
+
+Notes:
+
+- **WebGPU** is fully supported in Chrome/Edge 113+. Firefox and Safari ship
+  WebGPU behind a flag as of mid-2026; Vector Frankl detects availability at
+  runtime and falls back to SIMD or scalar operations automatically.
+- **SharedArrayBuffer** requires a cross-origin-isolated context
+  (`Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp`).
+  Without it, the Worker pool runs without shared memory (slightly higher overhead).
+- **Chrome extensions:** IndexedDB is unavailable in Manifest V3 background service
+  workers. Use `ChromeStorageAdapter` (`chrome.storage.local`) instead.
+
+### Server Runtime Support
+
+| Runtime | Minimum Version | SQLite | File system | LevelDB | LMDB | Redis  | S3     |
+| ------- | --------------- | ------ | ----------- | ------- | ---- | ------ | ------ |
+| Bun     | 1.0             | ✅     | ✅          | ✅      | ✅   | ✅ 1.1 | ✅ 1.1 |
+| Node.js | 18.0            | ❌     | ❌          | ✅      | ✅   | ❌     | ❌     |
+
+Notes:
+
+- `SQLiteStorageAdapter`, `FileSystemStorageAdapter`, `RedisStorageAdapter`, and
+  `S3StorageAdapter` use Bun-native built-ins (`bun:sqlite`, `Bun.RedisClient`,
+  `Bun.s3`). They throw at construction time if `typeof Bun === 'undefined'`.
+- `LevelStorageAdapter` and `LmdbStorageAdapter` use optional peer dependencies
+  (`level`, `lmdb`) and work in both Bun and Node.js ≥ 18.
+- `MemoryStorageAdapter` and `IndexedDatabaseStorageAdapter` work in any runtime
+  that has the required global (`Map` for memory; browser `indexedDB` global for
+  IndexedDB).
+
+### Storage Adapter Support
+
+For full setup instructions, limits, persistence guarantees, concurrency behavior,
+quota handling, and cleanup steps for each adapter, see [docs/ADAPTERS.md](docs/ADAPTERS.md).
+
+| Adapter                         | Backend                    | Environment       | Peer dependency |
+| ------------------------------- | -------------------------- | ----------------- | --------------- |
+| `IndexedDatabaseStorageAdapter` | IndexedDB                  | Browser           | None            |
+| `MemoryStorageAdapter`          | In-memory `Map`            | Any               | None            |
+| `OPFSStorageAdapter`            | Origin Private File System | Browser           | None            |
+| `ChromeStorageAdapter`          | `chrome.storage`           | Chrome extensions | None            |
+| `SQLiteStorageAdapter`          | `bun:sqlite`               | Bun ≥ 1.0         | None            |
+| `FileSystemStorageAdapter`      | File system (JSON/binary)  | Bun ≥ 1.0         | None            |
+| `LevelStorageAdapter`           | LevelDB                    | Bun / Node ≥ 18   | `level`         |
+| `LmdbStorageAdapter`            | LMDB                       | Bun / Node ≥ 18   | `lmdb`          |
+| `RedisStorageAdapter`           | Redis                      | Bun ≥ 1.1         | None            |
+| `S3StorageAdapter`              | S3 / S3-compatible         | Bun ≥ 1.1         | None            |
+
 ## 🚀 Quick Start
 
 ### Installation
