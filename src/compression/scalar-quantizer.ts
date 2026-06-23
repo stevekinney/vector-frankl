@@ -326,6 +326,13 @@ export class ScalarQuantizer extends BaseCompressor {
    * Decompress data from buffer
    */
   private async decompressData(buffer: ArrayBuffer): Promise<Float32Array> {
+    // The header is exactly 128 bytes; anything shorter is unreadable
+    if (buffer.byteLength < 128) {
+      throw new Error(
+        `Compressed payload too short to contain header: ${buffer.byteLength} < 128 bytes`,
+      );
+    }
+
     const metadataView = new DataView(buffer, 0, 128);
 
     // Read metadata
@@ -339,6 +346,21 @@ export class ScalarQuantizer extends BaseCompressor {
     const dimension = metadataView.getUint32(offset, true);
     offset += 4;
 
+    // Validate header fields before using them to prevent runaway allocation
+    // on corrupt payloads. Valid bits are 4, 8, 12, or 16 only.
+    if (bits !== 4 && bits !== 8 && bits !== 12 && bits !== 16) {
+      throw new Error(
+        `Invalid bits value in compressed header: ${bits} (expected 4, 8, 12, or 16)`,
+      );
+    }
+    // Dimension must be > 0 and the data section must fit inside the buffer.
+    const expectedDataSize = Math.ceil((dimension * bits) / 8);
+    if (dimension === 0 || expectedDataSize > buffer.byteLength - 128) {
+      throw new Error(
+        `Invalid dimension ${dimension} in compressed header: expected data section of ${expectedDataSize} bytes does not fit in buffer of ${buffer.byteLength} bytes`,
+      );
+    }
+
     const globalMin = metadataView.getFloat32(offset, true);
     offset += 4;
     const globalMax = metadataView.getFloat32(offset, true);
@@ -351,7 +373,7 @@ export class ScalarQuantizer extends BaseCompressor {
     const hasPerDimBounds = metadataView.getUint32(offset, true);
 
     // Calculate quantized data size
-    const dataSize = Math.ceil((dimension * bits) / 8);
+    const dataSize = expectedDataSize;
 
     // Unpack quantized data (starts at byte 128)
     const dataBuffer = buffer.slice(128, 128 + dataSize);

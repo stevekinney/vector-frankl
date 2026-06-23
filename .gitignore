@@ -108,3 +108,5 @@ tmp/
 .env.local
 .env.*.local
 
+requirements
+REQUIREMENTS.md

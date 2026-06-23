@@ -3,6 +3,8 @@
  */
 
 import { VectorDB } from '@/api/database.js';
+import { CompressionManager } from '@/compression/compression-manager.js';
+import { ProductQuantizer } from '@/compression/product-quantizer.js';
 import type { DistanceMetric, VectorFormat } from '@/core/types.js';
 import { SearchEngine } from '@/search/search-engine.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
@@ -575,36 +577,105 @@ export class BenchmarkSuite {
   }
 
   /**
-   * Benchmark compression performance
+   * Benchmark compression performance using real compression strategies
    */
   private async benchmarkCompression(): Promise<void> {
     console.log('🗜️ Benchmarking compression...');
 
-    // This would test the compression system once it's available
-    // For now, we'll simulate compression benchmarks
-    for (const dimension of [256, 512, 1024]) {
-      this.generateRandomVectors(1000, dimension);
+    const scalarManager = new CompressionManager({
+      defaultStrategy: 'scalar',
+      autoSelect: false,
+      minSizeForCompression: 64,
+      validateQuality: false,
+    });
 
+    for (const dimension of [256, 512, 1024]) {
+      const vectors = this.generateRandomVectors(100, dimension);
+
+      // Scalar quantization — compress one vector at a time
       await this.runBenchmark(
-        `Scalar Quantization (${dimension}D, 1000 vectors)`,
+        `Scalar Quantization (${dimension}D, 100 vectors)`,
         'compression',
-        () => {
-          // Simulate compression time
-          const simulationTime = dimension * 0.01;
-          return new Promise((resolve) => setTimeout(resolve, simulationTime));
+        async () => {
+          const vector = new Float32Array(
+            vectors[Math.floor(Math.random() * vectors.length)]!,
+          );
+          await scalarManager.compress(vector, 'scalar');
         },
-        { dimension, compressionType: 'scalar', vectorCount: 1000 },
+        { dimension, compressionType: 'scalar', vectorCount: 100 },
       );
 
+      // Scalar decompression round-trip
+      const sampleVector = new Float32Array(vectors[0]!);
+      const sampleCompressed = await scalarManager.compress(sampleVector, 'scalar');
+
       await this.runBenchmark(
-        `Product Quantization (${dimension}D, 1000 vectors)`,
+        `Scalar Decompression (${dimension}D)`,
         'compression',
-        () => {
-          // Simulate compression time
-          const simulationTime = dimension * 0.05;
-          return new Promise((resolve) => setTimeout(resolve, simulationTime));
+        async () => {
+          await scalarManager.decompress(sampleCompressed);
         },
-        { dimension, compressionType: 'product', vectorCount: 1000 },
+        { dimension, compressionType: 'scalar-decompress' },
+      );
+    }
+
+    // Product quantization requires a trained codebook — train once per dimension.
+    // Use ProductQuantizer directly so maxIterations can be capped for benchmarks.
+    // 256 centroids per subspace requires ≥256 training vectors.
+    for (const dimension of [256, 512]) {
+      const trainingVectors = this.generateRandomVectors(300, dimension);
+
+      const pq = new ProductQuantizer({
+        subspaces: 8,
+        centroidsPerSubspace: 256,
+        validateQuality: false,
+        maxIterations: 5,
+      });
+
+      // Train the codebook once before timing begins
+      const float32TrainingVectors = trainingVectors.map((v) => new Float32Array(v));
+      await pq.trainCodebook(float32TrainingVectors);
+
+      await this.runBenchmark(
+        `Product Quantization (${dimension}D, trained codebook)`,
+        'compression',
+        async () => {
+          const vector = new Float32Array(
+            trainingVectors[Math.floor(Math.random() * trainingVectors.length)]!,
+          );
+          await pq.compress(vector);
+        },
+        { dimension, compressionType: 'product', vectorCount: 300 },
+      );
+
+      // PQ decompression
+      const sampleVec = new Float32Array(trainingVectors[0]!);
+      const sampleCompressedPQ = await pq.compress(sampleVec);
+
+      await this.runBenchmark(
+        `Product Decompression (${dimension}D)`,
+        'compression',
+        async () => {
+          await pq.decompress(sampleCompressedPQ);
+        },
+        { dimension, compressionType: 'product-decompress' },
+      );
+    }
+
+    // Batch scalar compression
+    for (const dimension of [256, 512]) {
+      const batchVectors = this.generateRandomVectors(50, dimension);
+
+      await this.runBenchmark(
+        `Scalar Batch Compression (${dimension}D, 50 vectors)`,
+        'compression',
+        async () => {
+          await scalarManager.compressBatch(
+            batchVectors.map((v) => new Float32Array(v)),
+            'scalar',
+          );
+        },
+        { dimension, compressionType: 'scalar-batch', vectorCount: 50 },
       );
     }
   }
