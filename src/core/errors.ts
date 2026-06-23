@@ -180,7 +180,7 @@ export abstract class VectorDatabaseError extends Error {
  * Rules:
  * - Keys in {@link REDACTED_KEYS} (case-insensitive, stripped of separators) → `'[REDACTED]'`
  * - Keys whose lower-case form contains `'password'`, `'secret'`, `'token'`,
- *   `'key'`, or `'url'` → `'[REDACTED]'`
+ *   `'credential'`, or `'accesskey'` → `'[REDACTED]'`
  * - Strings longer than 1000 characters → truncated to 100 chars + `'... [TRUNCATED]'`
  * - Nested plain objects → recursed
  * - Everything else → passed through unchanged
