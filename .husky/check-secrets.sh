@@ -36,12 +36,13 @@ SECRET_PATTERNS=(
   "-----BEGIN EC PRIVATE KEY-----"
   "-----BEGIN PGP PRIVATE KEY BLOCK-----"
   
-  # Connection Strings
-  "mongodb://[^[:space:]]+"
-  "postgres://[^[:space:]]+"
-  "mysql://[^[:space:]]+"
-  "amqp://[^[:space:]]+"
-  "redis://[^[:space:]]+"
+  # Connection Strings — only flag URLs with EMBEDDED CREDENTIALS (user:pass@host).
+  # Credential-less examples like redis://localhost:6379 are safe to document.
+  "mongodb://[^/[:space:]]+:[^/@[:space:]]+@"
+  "postgres://[^/[:space:]]+:[^/@[:space:]]+@"
+  "mysql://[^/[:space:]]+:[^/@[:space:]]+@"
+  "amqp://[^/[:space:]]+:[^/@[:space:]]+@"
+  "redis://[^/[:space:]]+:[^/@[:space:]]+@"
   
   # Other secrets
   "secret[[:space:]]*[=:][[:space:]]*[\"'][^\"']{8,}[\"']"
