@@ -440,7 +440,8 @@ db.init()
         type: 'module',
         scripts: {
           // Bundle with bun targeting browser; success = bundler resolves all imports.
-          verify: 'bun build src/index.ts --target=browser --outdir=dist',
+          // NOTE: Use ./src/index.ts (not src/index.ts) to ensure Bun treats it as a relative file path.
+          verify: 'bun build ./src/index.ts --target=browser --outdir=dist',
         },
       },
       verifyCommand: ['bun', 'run', 'verify'],
