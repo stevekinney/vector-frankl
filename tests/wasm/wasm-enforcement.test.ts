@@ -54,21 +54,24 @@ describe('enableWASM', () => {
 
     it('rejects dot product operations when enableWASM is false', async () => {
       const manager = new WASMManager({ enableWASM: false });
-      await expect(
+      await manager.init();
+      expect(
         manager.dotProduct(new Float32Array([1, 2]), new Float32Array([3, 4])),
       ).rejects.toThrow('WebAssembly not available');
     });
 
     it('rejects magnitude operations when enableWASM is false', async () => {
       const manager = new WASMManager({ enableWASM: false });
-      await expect(manager.magnitude(new Float32Array([1, 2, 3]))).rejects.toThrow(
+      await manager.init();
+      expect(manager.magnitude(new Float32Array([1, 2, 3]))).rejects.toThrow(
         'WebAssembly not available',
       );
     });
 
     it('rejects vector add operations when enableWASM is false', async () => {
       const manager = new WASMManager({ enableWASM: false });
-      await expect(
+      await manager.init();
+      expect(
         manager.vectorAdd(new Float32Array([1, 2]), new Float32Array([3, 4])),
       ).rejects.toThrow('WebAssembly not available');
     });
