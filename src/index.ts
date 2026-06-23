@@ -111,7 +111,14 @@ export { IndexPersistence, IndexCache } from './search/index-persistence.js';
 // Storage adapters (universally usable)
 export { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';
 export { IndexedDatabaseStorageAdapter } from './storage/adapters/indexed-database-adapter.js';
-export { OPFSStorageAdapter } from './storage/adapters/opfs-adapter.js';
+export {
+  OPFSStorageAdapter,
+  CorruptVectorFileError,
+} from './storage/adapters/opfs-adapter.js';
+export {
+  ChromeStorageAdapter,
+  CHROME_STORAGE_MAX_SERIALIZED_BYTES,
+} from './storage/adapters/chrome-storage-adapter.js';
 
 // Storage adapter resolution
 export {

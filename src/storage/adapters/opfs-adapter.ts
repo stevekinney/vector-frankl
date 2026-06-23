@@ -16,6 +16,36 @@ import {
   vectorDataToSerializable,
 } from './serialization.js';
 
+// ---------------------------------------------------------------------------
+// EXPERIMENTAL CLASSIFICATION
+// ---------------------------------------------------------------------------
+//
+// OPFSStorageAdapter is classified as EXPERIMENTAL.
+//
+// Known limitations:
+//
+//   1. No cross-instance locking — two OPFSStorageAdapter instances targeting
+//      the same directory can corrupt each other's data via concurrent writes.
+//      The Origin Private File System does not yet provide advisory file locks
+//      in the standard File System Access API.
+//
+//   2. No quota pre-flight — write operations may fail mid-stream if the
+//      origin's storage quota is exhausted.  The adapter does not check
+//      navigator.storage.estimate() before writing and does not guarantee
+//      atomicity when a write is interrupted.
+//
+//   3. Corrupt file recovery is limited to discarding the affected record.
+//      Partial binary writes are detected and the entry is treated as missing,
+//      but no repair or rebuild path exists beyond re-inserting the vector.
+//
+//   4. OPFS availability is browser-dependent.  init() throws BrowserSupportError
+//      when navigator.storage.getDirectory is absent.
+//
+// These limitations must be resolved (or the adapter promoted to a dedicated
+// locked-IO implementation) before OPFS storage can be considered production
+// ready.
+// ---------------------------------------------------------------------------
+
 // OPFS types declared inline since they may not be in the TypeScript lib.
 
 interface FileSystemDirectoryHandle {
@@ -32,6 +62,8 @@ interface FileSystemDirectoryHandle {
 }
 
 interface FileSystemFileHandle {
+  /** The filename (leaf name without directory path). */
+  name: string;
   getFile(): Promise<File>;
   createWritable(): Promise<FileSystemWritableFileStream>;
 }
@@ -70,6 +102,13 @@ function idToFilename(id: string): string {
 
 // Magnitude calculation is imported from shared serialization utilities.
 
+/**
+ * Storage adapter backed by the browser's Origin Private File System (OPFS).
+ *
+ * @experimental — See the limitation notes at the top of this file.  Do not
+ * use in production without understanding the cross-instance locking and quota
+ * constraints described there.
+ */
 export class OPFSStorageAdapter implements StorageAdapter {
   private readonly directory: string;
   private readonly format: 'binary' | 'json';
@@ -213,8 +252,17 @@ export class OPFSStorageAdapter implements StorageAdapter {
     for await (const entry of directory.values()) {
       if (entry.kind === 'file' && entry.name.endsWith('.vec')) {
         const fileHandle = await directory.getFileHandle(entry.name);
-        const data = await this.readVectorFromHandle(fileHandle);
-        results.push(data);
+        try {
+          const data = await this.readVectorFromHandle(fileHandle);
+          results.push(data);
+        } catch (error: unknown) {
+          // Skip corrupt files rather than aborting the entire getAll().
+          // Callers that need to detect corruption should use get() on
+          // individual IDs — getAll() returns the recoverable subset.
+          if (!(error instanceof CorruptVectorFileError)) {
+            throw error;
+          }
+        }
       }
     }
 
@@ -530,10 +578,35 @@ export class OPFSStorageAdapter implements StorageAdapter {
 
     if (this.format === 'binary') {
       const buffer = await file.arrayBuffer();
-      return binaryToVectorData(buffer);
+      // Detect truncated/corrupt binary files: a valid record has at least a
+      // non-zero byte count.  binaryToVectorData will throw for malformed data.
+      if (buffer.byteLength === 0) {
+        throw new CorruptVectorFileError(fileHandle.name);
+      }
+      try {
+        return binaryToVectorData(buffer);
+      } catch {
+        throw new CorruptVectorFileError(fileHandle.name);
+      }
     } else {
       const text = await file.text();
-      const serialized = JSON.parse(text) as SerializedVectorData;
+      if (!text.trim()) {
+        throw new CorruptVectorFileError(fileHandle.name);
+      }
+      let serialized: SerializedVectorData;
+      try {
+        serialized = JSON.parse(text) as SerializedVectorData;
+      } catch {
+        throw new CorruptVectorFileError(fileHandle.name);
+      }
+      if (
+        typeof serialized.id !== 'string' ||
+        !Array.isArray(serialized.vector) ||
+        typeof serialized.magnitude !== 'number' ||
+        typeof serialized.timestamp !== 'number'
+      ) {
+        throw new CorruptVectorFileError(fileHandle.name);
+      }
       return serializableToVectorData(serialized);
     }
   }
@@ -550,4 +623,22 @@ function isNotFoundError(error: unknown): boolean {
     return true;
   }
   return false;
+}
+
+/**
+ * Thrown when a vector file in OPFS cannot be parsed.
+ *
+ * Callers should treat the associated vector as missing and re-insert if
+ * recovery is required.  The corrupt file is not automatically deleted so
+ * that the caller can inspect or back up the raw bytes.
+ */
+export class CorruptVectorFileError extends Error {
+  /** The raw OPFS filename (not the original vector ID). */
+  public readonly filename: string;
+
+  constructor(filename: string) {
+    super(`OPFS vector file '${filename}' is corrupt or truncated and cannot be read.`);
+    this.name = 'CorruptVectorFileError';
+    this.filename = filename;
+  }
 }

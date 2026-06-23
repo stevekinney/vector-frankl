@@ -1,6 +1,7 @@
 import {
   BatchOperationError,
   BrowserSupportError,
+  QuotaExceededError,
   VectorNotFoundError,
 } from '@/core/errors.js';
 import type {
@@ -17,6 +18,45 @@ import {
   serializableToVectorData,
   vectorDataToSerializable,
 } from './serialization.js';
+
+// ---------------------------------------------------------------------------
+// EXPERIMENTAL CLASSIFICATION
+// ---------------------------------------------------------------------------
+//
+// ChromeStorageAdapter is classified as EXPERIMENTAL.
+//
+// Known limitations:
+//
+//   1. Chrome extension storage enforces a per-item quota of
+//      CHROME_STORAGE_ITEM_QUOTA_BYTES (8 192 bytes) for chrome.storage.sync
+//      and has a total quota of ~5 MB for chrome.storage.local (10 MB for
+//      managed storage).  Vectors with many dimensions will exceed the per-item
+//      limit.  This adapter rejects writes that exceed
+//      CHROME_STORAGE_MAX_SERIALIZED_BYTES before attempting the write.
+//
+//   2. The in-process mutex prevents lost-update races within a single
+//      extension context, but concurrent writes from separate extension contexts
+//      (e.g. background service worker + content script) can still produce
+//      interleaved ID-index updates that lose entries.  Cross-context locking
+//      is not supported by the chrome.storage API.
+//
+//   3. Partial write rollback is best-effort.  If writing the vector data
+//      succeeds but the ID-index write fails (e.g. due to quota exhaustion),
+//      the vector data remains but the ID will not appear in getAll() or
+//      count() results.  A repair path exists via re-inserting the vector.
+//
+//   4. This adapter targets Chrome extension environments only.  It requires
+//      the chrome.storage permission in the extension manifest.
+//
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum serialized size (in bytes) for a single vector entry before
+ * attempting a chrome.storage write.  Chrome enforces ~8 KB per item for
+ * sync storage; local storage is less restricted but we apply the same guard
+ * as a conservative safety net.
+ */
+export const CHROME_STORAGE_MAX_SERIALIZED_BYTES = 8_192;
 
 declare const chrome: {
   storage: {
@@ -38,6 +78,21 @@ interface ChromeStorageAdapterOptions {
 
 const DEFAULT_BATCH_SIZE = 100;
 
+/**
+ * Estimate the serialized byte size of a value when stored via chrome.storage.
+ * Uses a rough JSON-encoding estimate rather than exact V8 serialization size.
+ */
+function estimateSerializedBytes(value: unknown): number {
+  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
+}
+
+/**
+ * Storage adapter backed by the Chrome Extension `chrome.storage` API.
+ *
+ * @experimental — See the limitation notes at the top of this file.  Do not
+ * use in production without understanding the cross-context concurrency and
+ * per-item quota constraints described there.
+ */
 export class ChromeStorageAdapter implements StorageAdapter {
   private readonly prefix: string;
   private readonly area: 'local' | 'session';
@@ -149,6 +204,16 @@ export class ChromeStorageAdapter implements StorageAdapter {
       lastAccessed: Date.now(),
     };
     const serialized = this.serialize(normalized);
+
+    // Guard against per-item quota violations before attempting the write.
+    // chrome.storage enforces an 8 KB per-item limit for sync storage and a
+    // softer limit for local storage.  We reject oversized vectors pre-flight
+    // so that the ID index is never updated for a vector that cannot be stored.
+    const byteSize = estimateSerializedBytes(serialized);
+    if (byteSize > CHROME_STORAGE_MAX_SERIALIZED_BYTES) {
+      throw new QuotaExceededError(byteSize, CHROME_STORAGE_MAX_SERIALIZED_BYTES);
+    }
+
     const key = this.vectorKey(vector.id);
 
     await this.withMutex(async () => {
@@ -357,7 +422,15 @@ export class ChromeStorageAdapter implements StorageAdapter {
             timestamp: vector.timestamp || Date.now(),
             lastAccessed: Date.now(),
           };
-          items[this.vectorKey(vector.id)] = this.serialize(normalized);
+          const serialized = this.serialize(normalized);
+
+          // Reject oversized vectors before writing, consistent with put().
+          const byteSize = estimateSerializedBytes(serialized);
+          if (byteSize > CHROME_STORAGE_MAX_SERIALIZED_BYTES) {
+            throw new QuotaExceededError(byteSize, CHROME_STORAGE_MAX_SERIALIZED_BYTES);
+          }
+
+          items[this.vectorKey(vector.id)] = serialized;
           batchIds.push(vector.id);
         } catch (error) {
           failed++;
