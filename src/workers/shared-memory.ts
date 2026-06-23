@@ -354,7 +354,7 @@ export class SharedMemoryManager {
         },
       );
 
-      // This would be processed by workers in parallel
+      // Process this chunk via brute-force search over shared memory
       const chunkResults = await this.processChunkInWorkers(
         buffer,
         layout.batches[0]!, // Use the first batch layout
