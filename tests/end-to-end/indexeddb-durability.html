@@ -258,17 +258,29 @@
             const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
             await adapter.init();
 
-            let quotaInfo = null;
-            if ('storage' in navigator && 'estimate' in navigator.storage) {
-                const before = await navigator.storage.estimate();
-                const vectors = [];
-                for (let i = 0; i < 20; i++) {
-                    vectors.push(makeVector(
-                        `quota-vec-${i}`,
-                        Array.from({ length: 64 }, (_, j) => (i * j) / 1000),
-                    ));
-                }
-                await adapter.putBatch(vectors);
+            // The Storage estimate API is unavailable in some browsers (notably
+            // WebKit/Safari), so gate only the estimate calls behind the
+            // feature check. The 20 inserts must happen unconditionally — the
+            // test asserts the store holds 20 records regardless of whether the
+            // browser exposes a quota estimate.
+            const hasStorageEstimate =
+                'storage' in navigator && 'estimate' in navigator.storage;
+
+            const before = hasStorageEstimate
+                ? await navigator.storage.estimate()
+                : null;
+
+            const vectors = [];
+            for (let i = 0; i < 20; i++) {
+                vectors.push(makeVector(
+                    `quota-vec-${i}`,
+                    Array.from({ length: 64 }, (_, j) => (i * j) / 1000),
+                ));
+            }
+            await adapter.putBatch(vectors);
+
+            let quotaInfo;
+            if (hasStorageEstimate) {
                 const after = await navigator.storage.estimate();
                 quotaInfo = {
                     available: true,
