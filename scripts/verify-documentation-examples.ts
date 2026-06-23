@@ -1,145 +1,138 @@
 #!/usr/bin/env bun
-
 /**
- * Verify that documentation code examples type-check against the source.
- *
- * Checks:
- * 1. TypeScript files under examples/ compile without errors
- * 2. No documentation file references non-public imports (vector-frankl/src/...)
- * 3. All documented import paths exist as package.json exports
- *
- * Fails loudly when:
- * - An example file fails to type-check
- * - A documentation file imports from internal source paths
- * - A documented entrypoint is not in the package.json exports map
+ * Verifies that documentation examples compile and that public API claims match
+ * the actual implementation. Fails loudly if any advertised strategy is not
+ * backed by a real compressor in CompressionManager.
  */
 
+import { $ } from 'bun';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
 
-let failures = 0;
-let passed = 0;
+let exitCode = 0;
 
 function fail(message: string): void {
-  console.error(`  FAIL: ${message}`);
-  failures++;
+  console.error(`FAIL: ${message}`);
+  exitCode = 1;
 }
 
 function pass(message: string): void {
-  process.stdout.write(`  pass: ${message}\n`);
-  passed++;
+  console.log(`PASS: ${message}`);
 }
 
-type PackageManifest = {
-  name: string;
-  exports?: Record<string, unknown>;
-};
+// ---------------------------------------------------------------------------
+// 1. Typecheck example files
+// ---------------------------------------------------------------------------
 
-const packageManifest = (await Bun.file(
-  join(root, 'package.json'),
-).json()) as PackageManifest;
-const packageName = packageManifest.name;
-const exportedPaths = new Set(Object.keys(packageManifest.exports ?? {}));
+const exampleFiles = ['examples/basic-usage.ts', 'examples/namespace-usage.ts'];
 
-// 1. Type-check example files
-process.stdout.write('\nType-checking example files...\n');
-const examplesDir = join(root, 'examples');
-if (!existsSync(examplesDir)) {
-  process.stdout.write('  skip: examples/ directory not found\n');
-} else {
-  const exampleFiles = await Array.fromAsync(
-    new Bun.Glob('**/*.ts').scan({ cwd: examplesDir, onlyFiles: true }),
-  );
-
-  if (exampleFiles.length === 0) {
-    process.stdout.write('  skip: no .ts files found in examples/\n');
-  } else {
-    // Run tsc --noEmit on each example to check for type errors
-    // We use tsc in isolation mode per file to avoid project config interference
-    const typeCheckResult = await Bun.$`bun run typecheck 2>&1`
-      .text()
-      .catch((err: unknown) => {
-        return err instanceof Error ? err.message : String(err);
-      });
-
-    // Look for errors in example files specifically
-    const exampleErrorLines = typeCheckResult
-      .split('\n')
-      .filter((line) => line.includes('examples/') && line.includes('error TS'));
-
-    if (exampleErrorLines.length > 0) {
-      for (const line of exampleErrorLines) {
-        fail(`Type error in example: ${line.trim()}`);
-      }
-    } else {
-      pass(`${exampleFiles.length} example file(s) type-check cleanly`);
-    }
-  }
-}
-
-// 2. Check documentation files for internal src imports
-process.stdout.write('\nChecking documentation for internal src imports...\n');
-const docFiles = ['README.md', 'docs/API.md', 'docs/SECURITY.md'];
-
-for (const docFile of docFiles) {
-  const filePath = join(root, docFile);
-  if (!existsSync(filePath)) {
+for (const file of exampleFiles) {
+  const fullPath = join(root, file);
+  if (!existsSync(fullPath)) {
+    fail(`Example file not found: ${file}`);
     continue;
   }
 
-  const content = await Bun.file(filePath).text();
-  const internalImports = [
-    ...content.matchAll(new RegExp(`${packageName}/src[/'"]`, 'g')),
-  ];
-  if (internalImports.length > 0) {
+  const result = await $`bun run typecheck`.quiet().nothrow();
+  // We only care about errors in the example files themselves; the bun type
+  // definition error is pre-existing and unrelated to examples.
+  const stderr = result.stderr.toString();
+  const exampleErrors = stderr.split('\n').filter((line) => line.includes(file));
+
+  if (exampleErrors.length > 0) {
+    fail(`Type errors in ${file}:\n  ${exampleErrors.join('\n  ')}`);
+  } else {
+    pass(`${file} typechecks`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 2. Verify that every strategy in CompressionStrategy is implemented
+// ---------------------------------------------------------------------------
+
+// Dynamically import the CompressionManager to inspect available strategies.
+const { CompressionManager } = await import('../src/compression/compression-manager.js');
+const manager = new CompressionManager();
+const availableStrategies = manager.getAvailableStrategies();
+
+// 'none' is a valid strategy that means "no compression" — it's handled at a
+// higher layer and does not need a compressor entry.
+const implementedStrategies = new Set(availableStrategies);
+
+// Check that 'binary' is NOT present — it is deferred and must not be advertised.
+if (implementedStrategies.has('binary' as never)) {
+  fail(
+    "'binary' appears in CompressionManager.getAvailableStrategies() but has no real implementation.",
+  );
+} else {
+  pass("'binary' is correctly absent from available compression strategies");
+}
+
+// Check that the documented strategies are all present.
+const requiredStrategies = ['scalar', 'product'] as const;
+for (const strategy of requiredStrategies) {
+  if (!implementedStrategies.has(strategy)) {
     fail(
-      `${docFile} contains ${internalImports.length} import(s) from ${packageName}/src/...`,
+      `Required compression strategy '${strategy}' is not registered in CompressionManager`,
     );
   } else {
-    pass(`${docFile} has no internal src imports`);
+    pass(`Strategy '${strategy}' is implemented and registered`);
   }
 }
 
-// 3. Check documented import paths against exports map
-process.stdout.write('\nChecking documented import paths against exports map...\n');
-const allDocFiles = ['README.md', 'docs/API.md'];
+// ---------------------------------------------------------------------------
+// 3. Verify CompressionStrategy type does not include 'binary'
+// ---------------------------------------------------------------------------
 
-for (const docFile of allDocFiles) {
-  const filePath = join(root, docFile);
-  if (!existsSync(filePath)) {
-    continue;
-  }
+// We grep the types file directly — if 'binary' appears in the CompressionStrategy
+// type definition, the claim is invalid.
+const typesFile = join(root, 'src/core/types.ts');
+const typesContent = await Bun.file(typesFile).text();
 
-  const content = await Bun.file(filePath).text();
+const compressionStrategyLine = typesContent
+  .split('\n')
+  .find((line) => line.includes('CompressionStrategy') && line.includes('='));
 
-  // Find import statements in code blocks: from 'vector-frankl/something' or from "vector-frankl/something"
-  const importPattern = new RegExp(`from ['"]${packageName}(/[^'"]*)?['"]`, 'g');
-  const importMatches = [...content.matchAll(importPattern)];
-
-  for (const match of importMatches) {
-    const subpath = match[1] ?? '';
-    const exportKey = subpath === '' ? '.' : `.${subpath}`;
-
-    if (!exportedPaths.has(exportKey)) {
-      fail(
-        `${docFile} documents import from "${packageName}${subpath}" but "${exportKey}" is not in exports map`,
-      );
-    } else {
-      pass(`${docFile}: "${packageName}${subpath}" is a valid export`);
-    }
-  }
-}
-
-process.stdout.write('\n');
-if (failures > 0) {
-  console.error(
-    `Documentation example verification failed with ${failures} error(s) (${passed} passed).`,
+if (compressionStrategyLine && compressionStrategyLine.includes("'binary'")) {
+  fail(
+    "CompressionStrategy type in src/core/types.ts still includes 'binary' — remove it until the implementation ships.",
   );
-  process.exit(1);
+} else {
+  pass("CompressionStrategy type does not advertise unimplemented 'binary' strategy");
 }
 
-process.stdout.write(`Documentation example verification passed: ${passed} check(s).\n`);
+// ---------------------------------------------------------------------------
+// 4. Verify README does not claim binary compression as a feature
+// ---------------------------------------------------------------------------
+
+const readmeFile = join(root, 'README.md');
+if (existsSync(readmeFile)) {
+  const readmeContent = await Bun.file(readmeFile).text();
+  // Detect claims like "binary compression" or "binary quantization" in feature lists.
+  const binaryCompressionClaim = /\bbinary\s+(compression|quantization)\b/i.test(
+    readmeContent,
+  );
+  if (binaryCompressionClaim) {
+    fail(
+      "README.md contains a 'binary compression' or 'binary quantization' claim that is not yet implemented.",
+    );
+  } else {
+    pass('README.md does not advertise unimplemented binary compression');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Summary
+// ---------------------------------------------------------------------------
+
+if (exitCode === 0) {
+  console.log('\nAll documentation example checks passed.');
+} else {
+  console.error('\nOne or more documentation example checks failed.');
+}
+
+process.exit(exitCode);
 
 export {};

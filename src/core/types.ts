@@ -162,9 +162,13 @@ export type DistanceMetric =
 export type IndexStrategy = 'auto' | 'brute' | 'kdtree' | 'hnsw';
 
 /**
- * Compression strategies
+ * Compression strategies.
+ *
+ * Only strategies with full implementations, tests, quality budgets, and
+ * persistence support are listed here. Binary quantization is not yet
+ * implemented and is intentionally excluded.
  */
-export type CompressionStrategy = 'none' | 'scalar' | 'product' | 'binary';
+export type CompressionStrategy = 'none' | 'scalar' | 'product';
 
 /**
  * Search options

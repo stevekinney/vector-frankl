@@ -125,6 +125,18 @@ describe('Compression Integration', () => {
       expect(scalarComparison.reasoning).toBeDefined();
     });
 
+    it('should not advertise binary quantization (not yet implemented)', () => {
+      const vector = new Float32Array(Array.from({ length: 100 }, () => Math.random()));
+
+      const strategies = compressionManager.getAvailableStrategies();
+      const comparisons = compressionManager.compareStrategies(vector);
+
+      // Binary quantization is deferred — it must not appear as an available
+      // strategy until a real compressor is registered and tested.
+      expect(strategies).not.toContain('binary');
+      expect(comparisons.has('binary' as never)).toBe(false);
+    });
+
     it('should provide meaningful comparison data', () => {
       const vector = new Float32Array(
         Array.from({ length: 200 }, () => Math.random() * 100),

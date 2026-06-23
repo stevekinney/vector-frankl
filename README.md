@@ -51,7 +51,7 @@ The broader pattern here is moving vector search compute to the edge—the brows
 - 🏗️ **Namespace Management**: Isolated vector collections with independent configurations
 - 🎯 **Multiple Distance Metrics**: Cosine, Euclidean, Manhattan, Hamming, Jaccard, and custom metrics
 - 🚀 **Performance Optimizations**: SIMD operations, WebGPU acceleration, and scalar fallbacks
-- 📦 **Vector Compression**: Scalar quantization, product quantization, and binary compression
+- 📦 **Vector Compression**: Scalar quantization and product quantization
 - 🔄 **Background Processing**: Web Workers for parallel operations
 
 **Developer Experience**
@@ -258,21 +258,20 @@ import {
   decompressVector,
 } from 'vector-frankl/compression';
 
-// Quick compression
-const compressed = await compressVector(vector, {
-  strategy: 'scalar',
-  precision: 8,
-});
+// Quick compression with auto-selected strategy
+const compressed = await compressVector(vector);
+const decompressed = await decompressVector(compressed);
 
 // Advanced compression management
 const manager = new CompressionManager({
-  defaultStrategy: 'product',
+  defaultStrategy: 'scalar',
   autoSelect: true,
   targetCompressionRatio: 4.0,
   maxPrecisionLoss: 0.05,
 });
 
-const result = await manager.compress(vector);
+// Compress with explicit strategy ('scalar' or 'product')
+const result = await manager.compress(vector, 'scalar');
 ```
 
 ### Performance Acceleration
