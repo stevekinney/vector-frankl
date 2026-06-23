@@ -939,17 +939,23 @@ export class SearchEngine {
   getIndexStats(): {
     enabled: boolean;
     nodeCount: number;
+    dirtyCount: number;
     levels?: number[];
     avgConnections?: number;
   } {
     if (!this.useIndex || !this.hnswIndex) {
-      return { enabled: false, nodeCount: 0 };
+      return {
+        enabled: false,
+        nodeCount: 0,
+        dirtyCount: this.indexCache?.getStats().dirtyCount ?? 0,
+      };
     }
 
     const stats = this.hnswIndex.getStats();
     return {
       enabled: true,
       nodeCount: stats.nodeCount,
+      dirtyCount: this.indexCache?.getStats().dirtyCount ?? 0,
       levels: stats.levels,
       avgConnections: stats.avgConnections,
     };

@@ -160,5 +160,34 @@ export {
   type EvictionResult,
 } from './storage/eviction-policy.js';
 
+// Observability and health (deep-import: vector-frankl/debug)
+// These are also available from the main entry point for convenience.
+export { ObservabilityManager, observability } from './debug/observability.js';
+export type {
+  ObservabilityEvent,
+  ObservabilityEventType,
+  ObservabilityHandler,
+  SearchLatencyEvent,
+  StorageLatencyEvent,
+  IndexRebuildEvent,
+  QuotaWarningEvent,
+  EvictionEvent,
+  WorkerFailureEvent,
+  GPUFallbackEvent,
+  WASMFallbackEvent,
+  AdapterConnectivityEvent,
+  CorruptionRecoveryEvent,
+} from './debug/observability.js';
+
+export { HealthMonitor, createHealthMonitor } from './debug/health.js';
+export type {
+  HealthStatus,
+  StorageHealth,
+  IndexHealth,
+  AccelerationHealth,
+  AdapterConnectivityResult,
+  DiagnosticsReport,
+} from './debug/health.js';
+
 // Version
 export { VERSION } from './version.js';

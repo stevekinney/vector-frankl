@@ -129,7 +129,11 @@ describe('SearchEngine', () => {
   describe('getIndexStats', () => {
     it('should report disabled when index is off', async () => {
       const engine = new SearchEngine(await createMockStorage(), 3);
-      expect(engine.getIndexStats()).toEqual({ enabled: false, nodeCount: 0 });
+      expect(engine.getIndexStats()).toEqual({
+        enabled: false,
+        nodeCount: 0,
+        dirtyCount: 0,
+      });
     });
 
     it('should report enabled with zero nodes for a fresh index', async () => {

@@ -23,6 +23,35 @@ export type {
   ContextConsole,
 } from './console.js';
 
+// Observability
+export { ObservabilityManager, observability } from './observability.js';
+export type {
+  ObservabilityEvent,
+  ObservabilityEventType,
+  ObservabilityHandler,
+  SearchLatencyEvent,
+  StorageLatencyEvent,
+  IndexRebuildEvent,
+  QuotaWarningEvent,
+  EvictionEvent,
+  WorkerFailureEvent,
+  GPUFallbackEvent,
+  WASMFallbackEvent,
+  AdapterConnectivityEvent,
+  CorruptionRecoveryEvent,
+} from './observability.js';
+
+// Health and diagnostics
+export { HealthMonitor, createHealthMonitor } from './health.js';
+export type {
+  HealthStatus,
+  StorageHealth,
+  IndexHealth,
+  AccelerationHealth,
+  AdapterConnectivityResult,
+  DiagnosticsReport,
+} from './health.js';
+
 // Debug hooks and utilities
 export {
   debugMethod,

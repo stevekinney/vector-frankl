@@ -421,11 +421,12 @@ export class VectorDB {
   }
 
   /**
-   * Get index statistics
+   * Get index statistics including dirty-entry count from the persistence cache.
    */
   getIndexStats(): {
     enabled: boolean;
     nodeCount: number;
+    dirtyCount: number;
     levels?: number[];
     avgConnections?: number;
   } {
@@ -500,6 +501,43 @@ export class VectorDB {
 
     // Auto-eviction is disabled and we are over the threshold — reject write
     throw new QuotaSafetyMarginError(0, available);
+  }
+
+  /**
+   * Get worker pool statistics.
+   */
+  getWorkerStats(): {
+    enabled: boolean;
+    initialized: boolean;
+    stats?:
+      | {
+          totalWorkers: number;
+          busyWorkers: number;
+          queueLength: number;
+          activeTasks: number;
+          sharedMemoryEnabled: boolean;
+        }
+      | undefined;
+  } {
+    return this.searchEngine.getWorkerStats();
+  }
+
+  /**
+   * Get GPU acceleration statistics.
+   */
+  getGPUStats(): {
+    enabled: boolean;
+    available: boolean;
+    initialized: boolean;
+    capabilities?:
+      | {
+          maxBufferSize: number;
+          maxWorkgroupSize: number;
+          features: string[];
+        }
+      | undefined;
+  } {
+    return this.searchEngine.getGPUStats();
   }
 
   /**
