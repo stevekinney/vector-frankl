@@ -7,7 +7,7 @@
  *   - Main entrypoint (dist/index.js):     500 KB
  *   - GPU entrypoint (dist/gpu.js):        300 KB
  *   - Workers entrypoint (dist/workers.js): 200 KB
- *   - Debug entrypoint (dist/debug.js):    200 KB
+ *   - Debug entrypoint (dist/debug.js):    320 KB
  *   - Benchmarks entrypoint:               300 KB
  *   - Compression entrypoint:              200 KB
  *
@@ -26,7 +26,7 @@ const BUDGETS: Record<string, number> = {
   'dist/index.js': 500 * 1024, // 500 KB
   'dist/gpu.js': 300 * 1024, // 300 KB
   'dist/workers.js': 200 * 1024, // 200 KB
-  'dist/debug.js': 200 * 1024, // 200 KB
+  'dist/debug.js': 320 * 1024, // 320 KB — debug/health/diagnostics introspect the search+storage layer
   'dist/benchmarks.js': 300 * 1024, // 300 KB
   'dist/compression.js': 200 * 1024, // 200 KB
 };
