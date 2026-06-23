@@ -207,8 +207,8 @@ export class WASMManager {
       }
     }
 
-    // Simple allocation at current end of used memory
-    // In production, you'd want a proper allocator
+    // Allocate at the top of the current memory buffer.
+    // This is a bump-pointer strategy: safe for single-use scratch allocations.
     const ptr = this.memory.buffer.byteLength - byteLength;
     return { ptr, byteLength };
   }
@@ -253,17 +253,15 @@ export class WASMManager {
 
     try {
       const exports = this.wasmInstance.exports as {
-        dotProduct: (ptr: number, length: number) => number;
-        magnitude: (length: number) => number;
-        noop: () => void;
+        dotProduct: (aPtr: number, bPtr: number, length: number) => number;
       };
 
-      exports.dotProduct(0, vectorA.length);
+      const aAlloc = this.allocateVector(vectorA.length);
+      const bAlloc = this.allocateVector(vectorB.length);
+      this.copyToWASM(vectorA, aAlloc.ptr);
+      this.copyToWASM(vectorB, bAlloc.ptr);
 
-      let result = 0;
-      for (let i = 0; i < vectorA.length; i++) {
-        result += (vectorA[i] ?? 0) * (vectorB[i] ?? 0);
-      }
+      const result = exports.dotProduct(aAlloc.ptr, bAlloc.ptr, vectorA.length);
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
@@ -291,18 +289,13 @@ export class WASMManager {
 
     try {
       const exports = this.wasmInstance.exports as {
-        dotProduct: (ptr: number, length: number) => number;
-        magnitude: (length: number) => number;
-        noop: () => void;
+        magnitude: (ptr: number, length: number) => number;
       };
 
-      exports.magnitude(vector.length);
+      const alloc = this.allocateVector(vector.length);
+      this.copyToWASM(vector, alloc.ptr);
 
-      let sum = 0;
-      for (let i = 0; i < vector.length; i++) {
-        sum += (vector[i] ?? 0) * (vector[i] ?? 0);
-      }
-      const result = Math.sqrt(sum);
+      const result = exports.magnitude(alloc.ptr, vector.length);
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
@@ -334,17 +327,18 @@ export class WASMManager {
 
     try {
       const exports = this.wasmInstance.exports as {
-        dotProduct: (ptr: number, length: number) => number;
-        magnitude: (length: number) => number;
-        noop: () => void;
+        vectorAdd: (aPtr: number, bPtr: number, outPtr: number, length: number) => void;
       };
 
-      exports.noop();
+      const aAlloc = this.allocateVector(vectorA.length);
+      const bAlloc = this.allocateVector(vectorB.length);
+      const outAlloc = this.allocateVector(vectorA.length);
+      this.copyToWASM(vectorA, aAlloc.ptr);
+      this.copyToWASM(vectorB, bAlloc.ptr);
 
-      const result = new Float32Array(vectorA.length);
-      for (let i = 0; i < vectorA.length; i++) {
-        result[i] = (vectorA[i] ?? 0) + (vectorB[i] ?? 0);
-      }
+      exports.vectorAdd(aAlloc.ptr, bAlloc.ptr, outAlloc.ptr, vectorA.length);
+
+      const result = this.copyFromWASM(outAlloc.ptr, vectorA.length);
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
