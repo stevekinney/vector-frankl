@@ -113,6 +113,7 @@ export {
   MetadataRangeQuery,
   metadataQuery,
 } from './search/metadata-filter.js';
+/** @experimental HNSW recall, deletion, update, persistence, and rebuild guarantees are unvalidated. See {@link HNSWIndex} for details. */
 export { HNSWIndex } from './search/hnsw-index.js';
 export {
   IndexPersistence,

@@ -916,7 +916,12 @@ export class SearchEngine {
   }
 
   /**
-   * Enable/disable indexing
+   * Enable or disable HNSW approximate nearest-neighbor indexing.
+   *
+   * **Status: Experimental** — HNSW recall, deletion, update, persistence,
+   * and rebuild correctness are not validated. Brute-force search (the
+   * default) is recommended for production use until these limitations are
+   * resolved. See {@link HNSWIndex} for the full list of known gaps.
    */
   setIndexing(enabled: boolean, distanceMetric?: DistanceMetricType): void {
     this.useIndex = enabled;

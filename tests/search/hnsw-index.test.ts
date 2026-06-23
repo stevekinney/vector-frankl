@@ -85,6 +85,172 @@ function bruteForceKNN(
 }
 
 describe('HNSWIndex', () => {
+  /**
+   * Classification: Experimental
+   *
+   * These tests document the verified support level for this implementation.
+   * Tests that expose known limitations are explicitly labelled to prevent
+   * production reliance before the gaps are closed.
+   */
+  describe('classification: experimental', () => {
+    it('should return correct nearest neighbor for well-separated vectors (basic recall)', async () => {
+      // Regression anchor: HNSW must at minimum return the exact nearest
+      // neighbor for orthogonal unit vectors where the search space is trivial.
+      const index = new HNSWIndex('cosine', { m: 16, efConstruction: 200 });
+      const stored: VectorData[] = [];
+
+      for (let i = 0; i < 10; i++) {
+        const values = new Array<number>(10).fill(0);
+        values[i] = 1; // one-hot
+        const v = makeVector(`v${i}`, values);
+        stored.push(v);
+        await index.addVector(v);
+      }
+
+      // Each query should find itself as the nearest neighbor
+      for (let i = 0; i < 10; i++) {
+        const query = new Float32Array(10).fill(0);
+        query[i] = 1;
+        const results = await index.search(query, 1);
+        expect(results[0]?.id).toBe(`v${i}`);
+      }
+    });
+
+    it('should achieve ≥ 80% recall against brute-force on 100 random 16-D vectors', async () => {
+      // Minimum recall bar for the experimental classification.
+      // 80% is deliberately conservative — it confirms the index is functional,
+      // not that it meets a production quality bar. Production recall targets
+      // (tracked separately in ROADMAP) require per-dataset benchmarks across
+      // dataset sizes, dimensions, metrics, and parameter settings.
+      const dim = 16;
+      const n = 100;
+      const k = 5;
+
+      const index = new HNSWIndex('cosine', { m: 16, efConstruction: 200 });
+      const stored: VectorData[] = [];
+
+      // Deterministic pseudo-random vectors via a simple LCG
+      let seed = 12345;
+      const rng = (): number => {
+        seed = (seed * 1664525 + 1013904223) & 0xffffffff;
+        return (seed >>> 0) / 0x100000000;
+      };
+
+      for (let i = 0; i < n; i++) {
+        const values = Array.from({ length: dim }, () => rng() * 2 - 1);
+        const v = makeVector(`v${i}`, values);
+        stored.push(v);
+        await index.addVector(v);
+      }
+
+      let totalRecall = 0;
+      const queryCount = 20;
+
+      for (let q = 0; q < queryCount; q++) {
+        const queryValues = Array.from({ length: dim }, () => rng() * 2 - 1);
+        const query = new Float32Array(queryValues);
+
+        const hnswResults = await index.search(query, k);
+        const hnswIds = new Set(hnswResults.map((r) => r.id));
+        const bruteIds = bruteForceKNN(query, stored, k, 'cosine');
+
+        const intersect = [...bruteIds].filter((id) => hnswIds.has(id)).length;
+        totalRecall += intersect / k;
+      }
+
+      const avgRecall = totalRecall / queryCount;
+      // 80% recall is the minimum bar for the experimental classification.
+      expect(avgRecall).toBeGreaterThanOrEqual(0.8);
+    });
+
+    it('should not return deleted vectors — known limitation: graph may degrade after deletion', async () => {
+      // This test verifies the hard correctness requirement: a deleted vector
+      // must never appear in results, even if the graph structure degrades.
+      // The graph-reconnection problem (deleted high-degree nodes leaving
+      // unreachable regions) is a known limitation documented on the class.
+      const index = new HNSWIndex('cosine', { m: 4, efConstruction: 50 });
+
+      const stored: VectorData[] = [];
+      for (let i = 0; i < 10; i++) {
+        const values = new Array<number>(4).fill(0);
+        values[i % 4] = 1;
+        const v = makeVector(`v${i}`, values);
+        stored.push(v);
+        await index.addVector(v);
+      }
+
+      // Delete v0
+      await index.removeVector('v0');
+
+      // v0 must not appear in any result
+      for (let q = 0; q < 5; q++) {
+        const values = new Array<number>(4).fill(0);
+        values[q % 4] = 1;
+        const query = new Float32Array(values);
+        const results = await index.search(query, 5);
+        const ids = results.map((r) => r.id);
+        expect(ids).not.toContain('v0');
+      }
+    });
+
+    it('should keep size() consistent after insertions and deletions', async () => {
+      const index = new HNSWIndex('cosine', { m: 4, efConstruction: 50 });
+
+      for (let i = 0; i < 5; i++) {
+        await index.addVector(makeVector(`v${i}`, [i + 1, 0, 0, 0]));
+      }
+
+      expect(index.size()).toBe(5);
+
+      await index.removeVector('v2');
+      expect(index.size()).toBe(4);
+
+      await index.removeVector('v0');
+      expect(index.size()).toBe(3);
+    });
+
+    it('should return an empty result set on a freshly cleared index', async () => {
+      const index = new HNSWIndex('cosine');
+
+      for (let i = 0; i < 5; i++) {
+        await index.addVector(makeVector(`v${i}`, [i + 1, 0, 0]));
+      }
+
+      index.clear();
+
+      const results = await index.search(new Float32Array([1, 0, 0]), 3);
+      expect(results).toHaveLength(0);
+      expect(index.size()).toBe(0);
+    });
+
+    it('should preserve recall after a rebuild from exported state', async () => {
+      // Rebuild correctness anchor: exporting and re-importing state must
+      // reproduce equivalent search behavior for the trivial case.
+      const original = new HNSWIndex('cosine', { m: 4, efConstruction: 50 });
+      const stored: VectorData[] = [];
+
+      for (let i = 0; i < 8; i++) {
+        const values = new Array<number>(4).fill(0);
+        values[i % 4] = i % 4 === 0 ? 1 : 0.5;
+        const v = makeVector(`v${i}`, values);
+        stored.push(v);
+        await original.addVector(v);
+      }
+
+      const state = original.exportState();
+
+      const rebuilt = new HNSWIndex('cosine', { m: 4, efConstruction: 50 });
+      rebuilt.importState(state);
+
+      const query = new Float32Array([1, 0, 0, 0]);
+      const originalResults = await original.search(query, 3);
+      const rebuiltResults = await rebuilt.search(query, 3);
+
+      // Top result must agree
+      expect(rebuiltResults[0]?.id).toBe(originalResults[0]!.id);
+    });
+  });
+
   describe('exportState / importState round-trip', () => {
     it('should export and import an empty index', () => {
       const index = new HNSWIndex('cosine');

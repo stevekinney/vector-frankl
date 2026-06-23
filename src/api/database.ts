@@ -394,7 +394,13 @@ export class VectorDB {
   }
 
   /**
-   * Enable or disable HNSW indexing
+   * Enable or disable HNSW approximate nearest-neighbor indexing.
+   *
+   * **Status: Experimental** — HNSW recall, deletion, update, persistence,
+   * and rebuild correctness are not validated. Brute-force search (the
+   * default, `useIndex: false`) is recommended for production use until these
+   * limitations are resolved. See {@link HNSWIndex} for the full list of
+   * known gaps.
    */
   async setIndexing(enabled: boolean): Promise<void> {
     await this.ensureInitialized();
