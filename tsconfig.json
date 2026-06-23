@@ -54,9 +54,7 @@
     "baseUrl": ".",
     "rootDir": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "vector-frankl": ["./src/index.ts"],
-      "vector-frankl/*": ["./src/*"]
+      "@/*": ["./src/*"]
     },
 
     // DX improvements

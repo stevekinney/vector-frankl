@@ -61,7 +61,7 @@ Vector Frankl manages its own IndexedDB schema. The default schema contains five
 The `VectorDatabase` constructor accepts an `onUpgrade` callback that receives the live `IDBDatabase` reference and the previous schema version number. Use this when a future release requires you to rename a store, add an index, or transform stored records.
 
 ```typescript
-import { VectorDatabase } from 'vector-frankl/core';
+import { VectorDatabase } from 'vector-frankl';
 
 const database = new VectorDatabase({
   name: 'my-vectors',
@@ -162,7 +162,7 @@ When an index persisted by an older version of the library is loaded by a newer 
 
 ```typescript
 import { VectorDB } from 'vector-frankl';
-import { IndexError } from 'vector-frankl/errors';
+import { IndexError } from 'vector-frankl';
 
 const db = new VectorDB('my-vectors', 384);
 await db.init();
@@ -196,7 +196,7 @@ Recovery options, in order of preference:
 
 ```typescript
 import { VectorDB } from 'vector-frankl';
-import { TransactionError } from 'vector-frankl/errors';
+import { TransactionError } from 'vector-frankl';
 
 const db = new VectorDB('my-vectors', 384);
 await db.init();
@@ -242,7 +242,7 @@ await db.destroy();
 Use `StorageQuotaMonitor` to track usage trends. An unexpected sudden drop in reported usage can indicate that the browser evicted data under quota pressure.
 
 ```typescript
-import { StorageQuotaMonitor } from 'vector-frankl/storage';
+import { StorageQuotaMonitor } from 'vector-frankl';
 
 const monitor = StorageQuotaMonitor.getInstance();
 monitor.addListener((warning) => {
@@ -266,7 +266,7 @@ monitor.addListener((warning) => {
 
 ```typescript
 import { VectorDB } from 'vector-frankl';
-import { QuotaExceededError } from 'vector-frankl/errors';
+import { QuotaExceededError } from 'vector-frankl';
 
 try {
   await db.addVector('id', vector, metadata);
@@ -311,7 +311,7 @@ const db = new VectorDB('my-vectors', 384, {
 
 ```typescript
 import { WorkerPool } from 'vector-frankl/workers';
-import { BrowserSupportError } from 'vector-frankl/errors';
+import { BrowserSupportError } from 'vector-frankl';
 
 let pool: WorkerPool | null = null;
 try {
@@ -506,7 +506,7 @@ The library does not require WebAssembly. If `WASMManager.getCapabilities().supp
 If you integrate your own compiled WASM module and it fails to load:
 
 ```typescript
-import { WASMManager } from 'vector-frankl/wasm';
+import { WASMManager } from 'vector-frankl';
 
 const wasm = new WASMManager({ enableWASM: true, modulePath: '/wasm/vectors.wasm' });
 

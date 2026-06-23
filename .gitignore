@@ -110,3 +110,6 @@ tmp/
 
 requirements
 REQUIREMENTS.md
+
+# Stray build artifacts — src is TypeScript-only
+src/**/*.js

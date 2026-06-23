@@ -26,6 +26,7 @@
 
 import type { DistanceMetric, VectorData } from '../core/types.js';
 import { log } from '../utilities/logger.js';
+import { getDefaultWorkerScript } from './default-worker-script.js';
 import { SharedMemoryManager } from './shared-memory.js';
 
 export interface WorkerTask {
@@ -84,8 +85,7 @@ export class WorkerPool {
     // Resolve the worker script relative to this module so it works in any
     // package consumer.  The `.js` extension targets the compiled output that
     // is shipped in `dist/workers/vector-worker.js`.
-    this.workerScript =
-      config.workerScript || new URL('./vector-worker.js', import.meta.url).href;
+    this.workerScript = config.workerScript || getDefaultWorkerScript();
     this.defaultTimeout = config.timeout || 30000; // 30 seconds
     // Initialize shared memory manager if enabled
     if (

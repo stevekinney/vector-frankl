@@ -189,5 +189,9 @@ export type {
   DiagnosticsReport,
 } from './debug/health.js';
 
+// WebAssembly integration (experimental — see Production Readiness in the README).
+// Exposed for consumers integrating their own compiled WASM module.
+export { WASMManager } from './wasm/wasm-manager.js';
+
 // Version
 export { VERSION } from './version.js';

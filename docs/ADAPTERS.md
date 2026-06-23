@@ -150,7 +150,7 @@ to track usage. When usage exceeds the configured safety margin (default 85%), i
 emits `warning`, `critical`, or `emergency` events.
 
 ```typescript
-import { StorageQuotaMonitor } from 'vector-frankl/storage';
+import { StorageQuotaMonitor } from 'vector-frankl';
 
 const monitor = StorageQuotaMonitor.getInstance();
 monitor.addListener((warning) => {
@@ -236,7 +236,7 @@ contexts where IndexedDB access may be restricted.
 ### Setup
 
 ```typescript
-import { ChromeStorageAdapter } from 'vector-frankl/adapters/chrome';
+import { ChromeStorageAdapter } from 'vector-frankl/adapters/chrome-storage';
 import { VectorDB } from 'vector-frankl';
 
 const adapter = new ChromeStorageAdapter({
@@ -373,7 +373,7 @@ available.
 ### Setup
 
 ```typescript
-import { FileSystemStorageAdapter } from 'vector-frankl/adapters/filesystem';
+import { FileSystemStorageAdapter } from 'vector-frankl/adapters/file-system';
 import { VectorDB } from 'vector-frankl';
 
 const adapter = new FileSystemStorageAdapter({
