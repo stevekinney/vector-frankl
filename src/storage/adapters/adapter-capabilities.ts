@@ -277,10 +277,13 @@ export const S3_ADAPTER_CAPABILITIES: AdapterCapabilities = {
   batchAtomicity: false,
   metadataIndexing: false,
   quotaReporting: false,
-  concurrentWriters: true,
+  // Single-writer: separate instances can race while updating the manifest and
+  // lose vector IDs, so multi-writer workloads must not select this adapter.
+  concurrentWriters: false,
   notes:
     'Requires a Bun runtime and AWS S3 (or compatible) credentials. ' +
-    'Eventual consistency — concurrent writes to the same key may race.',
+    'Single-writer: concurrent writers can race on the manifest and lose vector ' +
+    'IDs. Eventual consistency — concurrent writes to the same key may race.',
 };
 
 // ---------------------------------------------------------------------------

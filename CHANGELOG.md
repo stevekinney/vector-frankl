@@ -60,6 +60,10 @@ support tiers.
 - Default ESM worker URL resolves to `./workers/vector-worker.js`, matching the build output, so `WorkerPool` starts without a manual `workerScript`
 - Shared-memory pool reuses released blocks before enforcing the pool size limit, instead of rejecting allocations that free blocks could satisfy
 - `vector-frankl/debug` entrypoint re-exports the full diagnostics surface (`HealthMonitor`, `ObservabilityManager`); adapter capability matrix and new error codes (`SEARCH_TIMEOUT`, `SEARCH_ABORTED`, `STORAGE_CORRUPTION`, `NAMESPACE_DELETION_BLOCKED`, …) are now part of the public API
+- `searchStream()` with no `maxResults` now defaults to the bounded 50,000-result cap instead of `Infinity`, so the default streaming path never materializes and sorts the entire candidate set
+- `rebuildIndex()` rebuilds a persisted HNSW snapshot when the distance metric changed (not just when node counts differ), preventing a cosine-built graph from being traversed under euclidean (and vice versa)
+- Range search now accepts negative `maxDistance` for the `dot` metric (whose distance is `-dotProduct`), so positive-similarity cutoffs are expressible; other metrics still reject negatives
+- Adapter capability matrix marks `S3StorageAdapter` as single-writer (`concurrentWriters: false`), matching its documented model, so multi-writer selection no longer corrupts manifest-tracked IDs
 
 ### Added
 

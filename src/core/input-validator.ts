@@ -127,11 +127,20 @@ export class InputValidator {
       throw new Error('Distance must be finite');
     }
 
-    if (distance < 0) {
-      throw new Error('Distance must be non-negative');
+    const max = this.maxDistanceForMetric(context?.metric, context?.dimensions);
+    // The dot metric's distance is `-dotProduct`, so a "similarity ≥ s" range
+    // query is expressed as a negative threshold (maxDistance = -s). Every other
+    // metric is non-negative. Make the lower bound metric-aware accordingly.
+    const min = context?.metric === 'dot' ? -max : 0;
+
+    if (distance < min) {
+      throw new Error(
+        context?.metric === 'dot'
+          ? `Distance ${distance} is below the minimum ${min} for the dot metric`
+          : 'Distance must be non-negative',
+      );
     }
 
-    const max = this.maxDistanceForMetric(context?.metric, context?.dimensions);
     if (distance > max) {
       throw new Error(
         `Distance ${distance} exceeds the maximum ${max} for the ` +
@@ -445,8 +454,13 @@ export class InputValidator {
     'batchSize',
   ]);
 
-  /** Upper bound on result/batch counts; rejects values that would invite memory exhaustion. */
-  private static readonly MAX_SEARCH_RESULT_LIMIT = 50_000;
+  /**
+   * Upper bound on result/batch counts; rejects values that would invite memory
+   * exhaustion. Also used as the bounded default for streaming search when no
+   * `maxResults` is supplied, so the default path never materializes an
+   * unbounded candidate set.
+   */
+  static readonly MAX_SEARCH_RESULT_LIMIT = 50_000;
 
   /**
    * Validate search options against the closed `SearchOptions` contract.

@@ -12,6 +12,7 @@ import type {
   VectorData,
   VectorAbortSignal,
 } from '@/core/types.js';
+import { InputValidator } from '@/core/input-validator.js';
 import { SearchEngine } from '@/search/search-engine.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
@@ -727,6 +728,36 @@ describe('SearchEngine', () => {
         totalYielded += batch.length;
       }
       expect(totalYielded).toBe(7);
+    });
+
+    it('bounds k to the result-limit cap (not Infinity) when maxResults is omitted', async () => {
+      const vectors = Array.from({ length: 5 }, (_, i) =>
+        makeVector(`v${i}`, [i + 1, 0, 0]),
+      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      // Spy on search() to capture the k the stream passes through.
+      let observedK = Number.NaN;
+      const originalSearch = engine.search.bind(engine);
+      engine.search = ((q: Float32Array, k?: number, o?: unknown) => {
+        observedK = k as number;
+        return originalSearch(q, k, o as never);
+      }) as typeof engine.search;
+
+      const batches: number[] = [];
+      for await (const batch of engine.searchStream(new Float32Array([0, 0, 0]), {
+        batchSize: 2,
+      })) {
+        batches.push(batch.length);
+      }
+
+      // k must be the finite contract cap, never Infinity.
+      expect(Number.isFinite(observedK)).toBe(true);
+      expect(observedK).toBe(InputValidator.MAX_SEARCH_RESULT_LIMIT);
+      // All 5 available results are still yielded.
+      expect(batches.reduce((a, b) => a + b, 0)).toBe(5);
     });
   });
 

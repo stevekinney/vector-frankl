@@ -409,6 +409,47 @@ describe('Vector Database Integration Tests', () => {
       expect(stats.enabled).toBe(true);
       expect(stats.nodeCount).toBe(vectorCount + 1); // All 6 vectors indexed
     });
+
+    it('rebuilds a persisted index when the distance metric changes on reopen', async () => {
+      const vectorCount = 6;
+      const vectors = Array.from({ length: vectorCount }, (_, i) => ({
+        id: `metric-${i}`,
+        vector: new Float32Array(dimension).fill((i + 1) / vectorCount),
+        metadata: { index: i },
+      }));
+
+      // Build and persist a cosine-metric index.
+      const cosineDB = new VectorDB(testDBName, dimension, {
+        useIndex: true,
+        distanceMetric: 'cosine',
+      });
+      await cosineDB.init();
+      await cosineDB.addBatch(vectors);
+      await cosineDB.rebuildIndex();
+      expect(cosineDB.getIndexStats().nodeCount).toBe(vectorCount);
+      await cosineDB.close();
+
+      // Reopen the SAME database/dimension under euclidean. The persisted index
+      // has a matching node count but was built for cosine, so reusing it would
+      // traverse a cosine graph while reporting euclidean scores. It must rebuild.
+      db = new VectorDB(testDBName, dimension, {
+        useIndex: true,
+        distanceMetric: 'euclidean',
+      });
+      await db.init();
+      await db.rebuildIndex();
+
+      const stats = db.getIndexStats();
+      expect(stats.enabled).toBe(true);
+      expect(stats.nodeCount).toBe(vectorCount);
+
+      // Indexed euclidean search agrees with the brute-force euclidean answer:
+      // the query equals the first stored vector, so it must be the top result.
+      const query = vectors[0]!.vector;
+      const results = await db.search(query, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('metric-0');
+    });
   });
 
   describe('Indexed Mutation Consistency', () => {

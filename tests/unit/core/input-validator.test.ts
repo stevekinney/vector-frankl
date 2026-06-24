@@ -264,6 +264,22 @@ describe('InputValidator', () => {
       );
     });
 
+    test('allows negative thresholds for the dot metric (distance = -dotProduct)', () => {
+      // "dot product ≥ 0.8" is expressed as maxDistance = -0.8 because the
+      // library's dot distance is the negated dot product.
+      expect(
+        InputValidator.validateDistance(-0.8, { metric: 'dot', dimensions: 256 }),
+      ).toBe(-0.8);
+      // Still bounded below by -max so absurd values are rejected.
+      expect(() =>
+        InputValidator.validateDistance(-1e9, { metric: 'dot', dimensions: 256 }),
+      ).toThrow('below the minimum');
+      // Non-dot metrics still reject negatives.
+      expect(() =>
+        InputValidator.validateDistance(-0.8, { metric: 'cosine', dimensions: 256 }),
+      ).toThrow('Distance must be non-negative');
+    });
+
     test('applies the conservative fixed cap (1000) when no metric context is given', () => {
       expect(() => InputValidator.validateDistance(1000.001)).toThrow(
         'exceeds the maximum 1000',

@@ -12,6 +12,7 @@ import type {
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import { InputValidator } from '@/core/input-validator.js';
 import { GPUSearchEngine, type GPUSearchConfig } from '@/gpu/gpu-search-engine.js';
 import {
   GPU_SEARCH_THRESHOLD,
@@ -616,7 +617,10 @@ export class SearchEngine {
     this.throwIfAborted(options?.signal);
 
     const batchSize = options?.batchSize || 10;
-    const maxResults = options?.maxResults || Infinity;
+    // Default to the bounded result cap rather than Infinity: omitting
+    // maxResults must not let search() materialize and sort the entire
+    // candidate set in memory, which would defeat the 50,000-result contract.
+    const maxResults = options?.maxResults ?? InputValidator.MAX_SEARCH_RESULT_LIMIT;
 
     // For progressive search, start with smaller candidate sets
     if (options?.progressive) {
@@ -907,17 +911,24 @@ export class SearchEngine {
     if (options.loadFromCache !== false && this.indexCache) {
       const cached = await this.indexCache.getIndex(this.indexId);
       if (cached) {
-        // Validate cached index against current storage state
+        // Validate cached index against current storage state. The cached index
+        // must match BOTH the storage node count AND the active distance metric:
+        // a cosine-built graph traversed under euclidean (or vice versa) yields
+        // incorrect indexed results even when the node count matches.
         const allVectors = await this.storage.getAll();
-        if (cached.index.size() === allVectors.length) {
+        const currentMetric = this.distanceCalculator.getMetricInfo().name || 'cosine';
+        const metricMatches = cached.distanceMetric === currentMetric;
+        if (cached.index.size() === allVectors.length && metricMatches) {
           this.hnswIndex = cached.index;
           this.indexDirty = false;
           return;
         }
 
-        // Stale index — node count doesn't match storage. Discard and rebuild.
+        // Stale or incompatible index — node count or distance metric differs.
+        // Discard and rebuild so results stay consistent with the active metric.
         log.warn(
-          `Persisted HNSW index has ${cached.index.size()} nodes but storage has ${allVectors.length} vectors; rebuilding`,
+          `Persisted HNSW index is incompatible (cached ${cached.index.size()} nodes/${cached.distanceMetric} ` +
+            `vs storage ${allVectors.length} vectors/${currentMetric}); rebuilding`,
           { indexId: this.indexId },
         );
 
