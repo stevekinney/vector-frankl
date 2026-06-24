@@ -7,7 +7,7 @@
     "description": "linux/x64, Bun 1.3.2, no GPU acceleration, no WASM SIMD override (GitHub Actions runner)"
   },
   "tolerances": {
-    "description": "Per-metric tolerance fractions. A result deviating beyond its tolerance fails CI. Throughput metrics use a wider 0.3 band to stay deterministic under variable machine load (observed run-to-run variance ~15%); they still catch real >30% regressions.",
+    "description": "Per-metric tolerance fractions. Only deterministic metrics (recall, memory) are hard-gated and fail CI on regression. Absolute throughput (ops/sec) is advisory-only: it varies ~2x run-to-run from CPU-steal on shared CI runners, which no per-run statistic can correct, so it is measured and logged for trend visibility but never fails CI. See scripts/verify-benchmarks.ts for the policy.",
     "default": 0.2
   },
   "baselines": [
