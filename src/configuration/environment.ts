@@ -8,22 +8,22 @@ const environmentSchema = z.object({
     .string()
     .transform((val) => parseInt(val, 10))
     .pipe(z.number().positive().max(65535))
-    .default('3000'),
+    .prefault('3000'),
   API_TIMEOUT: z
     .string()
     .transform((val) => parseInt(val, 10))
     .pipe(z.number().positive())
-    .default('30000'),
+    .prefault('30000'),
   API_RETRY_ATTEMPTS: z
     .string()
     .transform((val) => parseInt(val, 10))
     .pipe(z.number().positive().max(10))
-    .default('3'),
+    .prefault('3'),
   ENABLE_DEBUG_LOGGING: z
     .string()
     .transform((val) => val === 'true')
     .pipe(z.boolean())
-    .default('false'),
+    .prefault('false'),
 });
 
 export type Environment = z.infer<typeof environmentSchema>;
@@ -59,7 +59,7 @@ function validateEnvironment(env?: Record<string, string | undefined>): Environm
     return environmentSchema.parse(finalEnv);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const errorMessage = error.errors
+      const errorMessage = error.issues
         .map((err) => `${err.path.join('.')}: ${err.message}`)
         .join('\n');
       throw new Error(`Environment validation failed:\n${errorMessage}`, {
