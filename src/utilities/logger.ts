@@ -1,5 +1,5 @@
 import { LOG_LEVELS } from '../configuration/constants';
-import { environment, isProduction, isTest } from '../configuration/environment';
+import { getImportMetaEnvironmentVariables } from '../configuration/import-meta-environment.js';
 
 type LogLevel = keyof typeof LOG_LEVELS;
 type LogContext = Record<string, unknown>;
@@ -11,15 +11,41 @@ interface LogEntry {
   context?: LogContext;
 }
 
+/**
+ * Read a single raw environment variable without pulling in the zod-validated
+ * environment module. Logger only needs two raw string values (NODE_ENV and
+ * ENABLE_DEBUG_LOGGING); running them through the full schema would drag zod
+ * into every bundle entry point via the logger → environment import chain.
+ *
+ * Uses the same import.meta shim that environment.ts uses, so CJS builds still
+ * work correctly (the shim is already rewritten by the build plugin).
+ */
+function getRawEnvVar(key: string): string | undefined {
+  const fromImportMeta = getImportMetaEnvironmentVariables();
+  if (fromImportMeta) return fromImportMeta[key];
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env[key];
+    }
+  } catch {
+    // process not available in this context
+  }
+  return undefined;
+}
+
 export class Logger {
   private level: number;
+  private readonly debugLogging: boolean;
+  private readonly nodeEnv: string;
 
   constructor() {
-    this.level = environment.ENABLE_DEBUG_LOGGING ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO;
+    this.debugLogging = getRawEnvVar('ENABLE_DEBUG_LOGGING') === 'true';
+    this.nodeEnv = getRawEnvVar('NODE_ENV') ?? 'development';
+    this.level = this.debugLogging ? LOG_LEVELS.DEBUG : LOG_LEVELS.INFO;
   }
 
   private shouldLog(level: LogLevel): boolean {
-    if (isTest() && !environment.ENABLE_DEBUG_LOGGING) {
+    if (this.nodeEnv === 'test' && !this.debugLogging) {
       return false;
     }
     return LOG_LEVELS[level as keyof typeof LOG_LEVELS] <= this.level;
@@ -33,7 +59,7 @@ export class Logger {
       return base;
     }
 
-    if (isProduction()) {
+    if (this.nodeEnv === 'production') {
       return `${base} ${JSON.stringify(context)}`;
     }
 
