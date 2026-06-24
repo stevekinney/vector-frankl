@@ -184,7 +184,10 @@ export const SQLITE_ADAPTER_CAPABILITIES: AdapterCapabilities = {
  */
 export const FILE_SYSTEM_ADAPTER_CAPABILITIES: AdapterCapabilities = {
   tier: 'experimental',
-  runtimes: ['bun', 'node'],
+  // Bun only: the adapter throws on construction unless the Bun global exists
+  // and uses Bun.file/Bun.write for all I/O. Advertising 'node' here would make
+  // Node consumers select an adapter that cannot initialize.
+  runtimes: ['bun'],
   persistence: true,
   transactions: false,
   batchAtomicity: false,
@@ -193,7 +196,7 @@ export const FILE_SYSTEM_ADAPTER_CAPABILITIES: AdapterCapabilities = {
   concurrentWriters: false,
   notes:
     'One file per vector. No journaling — a crash during putBatch can leave partial state. ' +
-    'Concurrent writers require external file locking.',
+    'Concurrent writers require external file locking. Requires the Bun runtime.',
 };
 
 /**

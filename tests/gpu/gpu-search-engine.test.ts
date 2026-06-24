@@ -831,10 +831,14 @@ describe('GPUSearchEngine', () => {
       const { results, stats } = await engine.search(vecs, query, 2, 'hamming');
 
       expect(stats.usedGPU).toBe(false);
-      // 'same' should score 1 (distance 0), 'diff' should score 0 (distance 1)
+      // hamming distance is the raw count of differing positions (matching the
+      // core metric). 'same' => 0 differ (distance 0, score 1); 'diff' => all 4
+      // differ (distance 4, score 1 - 4/4 = 0).
       const same = results.find((r) => r.id === 'same');
       const diff = results.find((r) => r.id === 'diff');
+      expect(same?.distance).toBeCloseTo(0, 5);
       expect(same?.score).toBeCloseTo(1.0, 5);
+      expect(diff?.distance).toBeCloseTo(4, 5);
       expect(diff?.score).toBeCloseTo(0.0, 5);
       // Not a placeholder: diff has 0 score, not a hardcoded non-zero value
       expect(diff?.score).not.toBeCloseTo(1 / (1 + 1.0), 2); // old placeholder logic
@@ -846,7 +850,8 @@ describe('GPUSearchEngine', () => {
       const engine = new GPUSearchEngine({ enableFallback: true });
       await engine.init();
 
-      // [1,1,0,0] vs [1,0,0,0]: 1 bit differs out of 4 => distance = 0.25
+      // [1,1,0,0] vs [1,0,0,0]: 1 bit differs out of 4 => raw distance = 1,
+      // score = 1 - 1/4 = 0.75.
       const vecs: VectorData[] = [
         {
           id: 'partial',
@@ -860,7 +865,7 @@ describe('GPUSearchEngine', () => {
 
       const { results } = await engine.search(vecs, query, 1, 'hamming');
 
-      expect(results[0]!.distance).toBeCloseTo(0.25, 5);
+      expect(results[0]!.distance).toBeCloseTo(1, 5);
       expect(results[0]!.score).toBeCloseTo(0.75, 5);
       await engine.cleanup();
     });

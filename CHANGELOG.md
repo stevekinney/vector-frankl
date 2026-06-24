@@ -49,6 +49,17 @@ support tiers.
 - Persisted HNSW index lifecycle: validates against storage on reopen, rebuilds/disables stale indexes
 - WebGPU `uncapturederror` listener removed in `cleanup()`, preventing accumulation across `init()` calls
 - HNSW entry-point re-election crash on deletion of the current entry point
+- `searchRange()` and `searchStream()` now enforce the `SearchOptions` contract (`maxResults` bounded ≤ 50,000); previously they bypassed validation and `searchStream` could materialize the full candidate set via an `Infinity` limit
+- Range-search distance threshold is now metric/dimension-aware instead of a fixed 1,000 cap, so legitimate high-dimension `manhattan`/`euclidean` thresholds are no longer rejected
+- `addBatch()` validates the whole batch before the quota/eviction guard runs, so a malformed batch can no longer trigger destructive eviction
+- `timeout`/abort are now enforced inside synchronous brute-force and range scans, so long single-threaded searches honor cancellation instead of returning results for a cancelled request
+- Worker-search cancellation (`SearchAbortedError`/`SearchTimeoutError`) is rethrown instead of silently falling back to sequential search
+- `rebuildIndex()` clears the dirty flag when recovering from a stale persisted cache, re-enabling indexed search; index stats/health now surface the runtime `indexDirty` state
+- GPU CPU-fallback `hamming` distance returns the raw differing-position count, matching the core metric, so `db.search()` distances no longer differ based on WebGPU availability
+- Chrome adapter no longer applies the 8 KB `storage.sync` per-item limit to `local`/`session` writes, which it actually uses
+- Default ESM worker URL resolves to `./workers/vector-worker.js`, matching the build output, so `WorkerPool` starts without a manual `workerScript`
+- Shared-memory pool reuses released blocks before enforcing the pool size limit, instead of rejecting allocations that free blocks could satisfy
+- `vector-frankl/debug` entrypoint re-exports the full diagnostics surface (`HealthMonitor`, `ObservabilityManager`); adapter capability matrix and new error codes (`SEARCH_TIMEOUT`, `SEARCH_ABORTED`, `STORAGE_CORRUPTION`, `NAMESPACE_DELETION_BLOCKED`, …) are now part of the public API
 
 ### Added
 
@@ -76,6 +87,7 @@ No breaking changes to the core `VectorDB`/`VectorFrankl` method signatures sinc
 - **Acceleration claims are honest now.** WebAssembly reports unavailable unless you supply a real module (none is bundled); "SIMD" is optimized JavaScript, not hardware SIMD. Behavior is unchanged at runtime (fallbacks already applied) but capability reporting differs.
 - **CommonJS consumers must pass `workerScript`.** In CJS builds, `new WorkerPool()` without an explicit `workerScript` throws synchronously at construction (ESM resolves it automatically via `import.meta.url`).
 - **Removed dead `NamespaceConfig` fields** (`indexStrategy`, `compression`, `compressionConfig`) that never affected runtime.
+- **Binary on-disk format is versioned.** The OPFS and file-system adapters now read `format: 'binary'` files through a strict versioned parser. As a pre-1.0 beta, no on-disk compatibility is provided for binary stores written by earlier releases: re-import that data (read it out with the prior version, write it back under beta.3), or use the default JSON format, which is unaffected.
 
 ### Verification evidence
 

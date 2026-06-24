@@ -133,6 +133,7 @@ describe('SearchEngine', () => {
         enabled: false,
         nodeCount: 0,
         dirtyCount: 0,
+        indexDirty: false,
       });
     });
 

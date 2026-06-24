@@ -533,7 +533,7 @@ import { RedisStorageAdapter } from 'vector-frankl/adapters/redis';
 import { VectorDB } from 'vector-frankl';
 
 const db = new VectorDB('my-vectors', 384, {
-  adapter: new RedisStorageAdapter({ url: 'redis://localhost:6379', prefix: 'vf' }),
+  storage: new RedisStorageAdapter({ url: 'redis://localhost:6379', prefix: 'vf' }),
 });
 
 await db.init(); // Does not connect to Redis.

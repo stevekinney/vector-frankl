@@ -304,6 +304,7 @@ export class SearchEngine {
       processedQuery,
       candidates,
       metric || { name: 'cosine' },
+      options,
     );
 
     // Sort by distance ascending; use id as a stable tie-breaker.
@@ -452,6 +453,13 @@ export class SearchEngine {
         return searchResult;
       });
     } catch (error) {
+      // Cancellation is not a worker failure — rethrow it instead of falling
+      // back. The sequential fallback is synchronous and would otherwise resolve
+      // with results before the outer cancellation race observes the abort,
+      // returning data for a request the caller cancelled or that timed out.
+      if (error instanceof SearchAbortedError || error instanceof SearchTimeoutError) {
+        throw error;
+      }
       log.warn('Worker search failed, falling back to sequential search', {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -473,6 +481,7 @@ export class SearchEngine {
       queryVector,
       candidates,
       metric || { name: 'cosine' },
+      options,
     );
 
     // Sort by distance ascending; use id as a stable tie-breaker.
@@ -538,7 +547,23 @@ export class SearchEngine {
     const candidates = await this.getCandidates(options?.filter);
     const results: SearchResult[] = [];
 
-    for (const candidate of candidates) {
+    // Enforce abort/timeout inside this synchronous scan (see scoreVectors for
+    // why the timer race alone is insufficient on a blocked event loop).
+    const signal = options?.signal;
+    const timeout = options?.timeout;
+    const deadline = timeout !== undefined ? performance.now() + timeout : undefined;
+    const CANCELLATION_CHECK_INTERVAL = 1024;
+
+    for (let i = 0; i < candidates.length; i++) {
+      if (i % CANCELLATION_CHECK_INTERVAL === 0) {
+        if (signal?.aborted) {
+          throw new SearchAbortedError();
+        }
+        if (deadline !== undefined && performance.now() > deadline) {
+          throw new SearchTimeoutError(timeout as number);
+        }
+      }
+      const candidate = candidates[i] as VectorData;
       // Process vector if needed
       const processedVector = metric?.requiresNormalized
         ? VectorOperations.normalizeSync(candidate.vector)
@@ -704,18 +729,37 @@ export class SearchEngine {
     query: Float32Array,
     candidates: VectorData[],
     metric: { name: string; requiresNormalized?: boolean },
+    options?: SearchOptions,
   ): Array<VectorData & { distance: number }> {
-    return candidates.map((candidate) => {
-      // Process vector if needed
+    // The distance loop runs synchronously and blocks the event loop, so the
+    // timer/abort race in withCancellation() cannot fire until it finishes.
+    // Enforce the deadline and abort signal *inside* the loop (checked every
+    // CANCELLATION_CHECK_INTERVAL candidates to keep the overhead negligible)
+    // so a long sequential scan honours timeout/abort instead of returning
+    // results for a request that should have been cancelled.
+    const signal = options?.signal;
+    const timeout = options?.timeout;
+    const deadline = timeout !== undefined ? performance.now() + timeout : undefined;
+    const CANCELLATION_CHECK_INTERVAL = 1024;
+
+    const scored: Array<VectorData & { distance: number }> = new Array(candidates.length);
+    for (let i = 0; i < candidates.length; i++) {
+      if (i % CANCELLATION_CHECK_INTERVAL === 0) {
+        if (signal?.aborted) {
+          throw new SearchAbortedError();
+        }
+        if (deadline !== undefined && performance.now() > deadline) {
+          throw new SearchTimeoutError(timeout as number);
+        }
+      }
+      const candidate = candidates[i] as VectorData;
       const processedVector = metric?.requiresNormalized
         ? VectorOperations.normalizeSync(candidate.vector)
         : candidate.vector;
-
-      // Calculate distance
       const distance = this.distanceCalculator.calculate(query, processedVector);
-
-      return { ...candidate, distance };
-    });
+      scored[i] = { ...candidate, distance };
+    }
+    return scored;
   }
 
   /**
@@ -886,6 +930,11 @@ export class SearchEngine {
           await this.hnswIndex.addVector(vectorData);
         }
         await this.saveIndex();
+        // The index is now consistent with storage. Clear the dirty flag so a
+        // public rebuildIndex() that recovered via this stale-cache path
+        // re-enables indexed search; otherwise every later search would keep
+        // falling back to brute force.
+        this.indexDirty = false;
         return;
       }
     }
@@ -940,6 +989,12 @@ export class SearchEngine {
     enabled: boolean;
     nodeCount: number;
     dirtyCount: number;
+    /**
+     * Whether the runtime index is dirty (an index mutation failed and searches
+     * fall back to brute force). This reflects in-memory state and is true even
+     * when there are no unsaved cache entries, unlike `dirtyCount`.
+     */
+    indexDirty: boolean;
     levels?: number[];
     avgConnections?: number;
   } {
@@ -948,6 +1003,7 @@ export class SearchEngine {
         enabled: false,
         nodeCount: 0,
         dirtyCount: this.indexCache?.getStats().dirtyCount ?? 0,
+        indexDirty: this.indexDirty,
       };
     }
 
@@ -956,6 +1012,7 @@ export class SearchEngine {
       enabled: true,
       nodeCount: stats.nodeCount,
       dirtyCount: this.indexCache?.getStats().dirtyCount ?? 0,
+      indexDirty: this.indexDirty,
       levels: stats.levels,
       avgConnections: stats.avgConnections,
     };
@@ -984,19 +1041,53 @@ export class SearchEngine {
           message: 'Indexing is disabled for this search engine instance.',
         };
       }
-      // In-memory only index — always healthy if present.
+      // In-memory only index.
+      if (!this.hnswIndex) {
+        return {
+          indexId: this.indexId,
+          state: 'missing',
+          isDirty: false,
+          lastAccess: undefined,
+          message: 'No in-memory index is present. Call rebuildIndex() to populate it.',
+        };
+      }
+      // A runtime-dirty index (an index mutation failed) disables indexed search
+      // even with no persistence layer, so report it as dirty rather than healthy.
+      if (this.indexDirty) {
+        return {
+          indexId: this.indexId,
+          state: 'dirty',
+          isDirty: true,
+          lastAccess: undefined,
+          message:
+            'The in-memory index is dirty after a failed mutation; searches fall ' +
+            'back to brute force. Call rebuildIndex() to restore indexed search.',
+        };
+      }
       return {
         indexId: this.indexId,
-        state: this.hnswIndex ? 'healthy' : 'missing',
+        state: 'healthy',
         isDirty: false,
         lastAccess: undefined,
-        message: this.hnswIndex
-          ? 'In-memory index is loaded and ready (no persistence configured).'
-          : 'No in-memory index is present. Call rebuildIndex() to populate it.',
+        message: 'In-memory index is loaded and ready (no persistence configured).',
       };
     }
 
-    return this.indexCache.getHealthReport(this.indexId, this.useIndex);
+    const report = this.indexCache.getHealthReport(this.indexId, this.useIndex);
+    // The cache report only knows about unsaved cache entries. A runtime-dirty
+    // index (mutation failed, no unsaved cache entry) would otherwise read as
+    // healthy even though indexed search is disabled — overlay the runtime flag.
+    if (this.indexDirty && report.state === 'healthy') {
+      return {
+        ...report,
+        state: 'dirty',
+        isDirty: true,
+        message:
+          'The runtime index is dirty after a failed mutation; searches fall ' +
+          'back to brute force. Call rebuildIndex() to restore indexed search.',
+      };
+    }
+    return report;
   }
 
   /**

@@ -271,9 +271,11 @@ describe('capability — runtime compatibility', () => {
     expect(SQLITE_ADAPTER_CAPABILITIES.runtimes).toContain('bun');
   });
 
-  it('FileSystemStorageAdapter targets bun and node', () => {
+  it('FileSystemStorageAdapter targets bun only (uses Bun.file/Bun.write)', () => {
     expect(FILE_SYSTEM_ADAPTER_CAPABILITIES.runtimes).toContain('bun');
-    expect(FILE_SYSTEM_ADAPTER_CAPABILITIES.runtimes).toContain('node');
+    // The adapter throws on construction without the Bun global, so it must not
+    // advertise Node compatibility.
+    expect(FILE_SYSTEM_ADAPTER_CAPABILITIES.runtimes).not.toContain('node');
   });
 
   it('ChromeStorageAdapter targets chrome-extension', () => {
@@ -407,11 +409,12 @@ describe('capability — getAdaptersByRuntime', () => {
     expect(result).toContain('ChromeStorageAdapter');
   });
 
-  it('node runtime includes FileSystem, Level, Lmdb', () => {
+  it('node runtime includes Level and Lmdb but not FileSystem (Bun-only)', () => {
     const result = getAdaptersByRuntime('node');
-    expect(result).toContain('FileSystemStorageAdapter');
     expect(result).toContain('LevelStorageAdapter');
     expect(result).toContain('LmdbStorageAdapter');
+    // FileSystem requires Bun.file/Bun.write, so it must not appear for node.
+    expect(result).not.toContain('FileSystemStorageAdapter');
   });
 
   it('"any" runtime matches MemoryStorageAdapter', () => {

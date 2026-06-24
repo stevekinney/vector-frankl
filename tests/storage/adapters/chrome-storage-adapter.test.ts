@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import { QuotaExceededError, VectorNotFoundError } from '@/core/errors.js';
 import {
+  CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES,
   CHROME_STORAGE_MAX_SERIALIZED_BYTES,
   ChromeStorageAdapter,
 } from '@/storage/adapters/chrome-storage-adapter.js';
@@ -73,10 +74,13 @@ function makeVector(
 
 /** Build a vector whose JSON serialization exceeds the per-item quota. */
 function makeOversizedVector(id: string): VectorData {
-  // Each Float32 dimension serializes to ~7 bytes in JSON ("1.234567,").
-  // 8192 / 7 ≈ 1171 dims needed to exceed the limit; use 2000 to be safe.
-  const dims = 2_000;
-  const values = Array.from({ length: dims }, (_, i) => i * 0.001);
+  // This adapter targets the local/session areas, which allow far more than the
+  // 8 KB sync per-item cap — the binding limit is the ~10 MB area quota
+  // (CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES). Each Float32 dimension
+  // serializes to ~9 bytes in JSON ("1.2340001,"). 10 MB / 9 ≈ 1.17M dims; use
+  // 1.4M to comfortably exceed the local per-item guard.
+  const dims = 1_400_000;
+  const values = Array.from({ length: dims }, (_, i) => i * 0.0001);
   return makeVector(id, values);
 }
 
@@ -170,6 +174,29 @@ describe('ChromeStorageAdapter — large-vector rejection', () => {
 
   it('CHROME_STORAGE_MAX_SERIALIZED_BYTES is 8192', () => {
     expect(CHROME_STORAGE_MAX_SERIALIZED_BYTES).toBe(8_192);
+  });
+
+  it('CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES is the ~10 MB local-area cap', () => {
+    expect(CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES).toBe(10_485_760);
+    // The local/session per-item bound must be far larger than the 8 KB sync cap.
+    expect(CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES).toBeGreaterThan(
+      CHROME_STORAGE_MAX_SERIALIZED_BYTES,
+    );
+  });
+
+  it('accepts a vector larger than the 8 KB sync limit (local area allows it)', async () => {
+    // Regression: the adapter only uses the local/session areas, which do NOT
+    // enforce the 8 KB sync per-item cap. A ~3,000-dim embedding serializes to
+    // well over 8 KB but is far under the local quota and must be stored.
+    const dims = 3_000; // ~27 KB serialized, > 8 KB sync limit, << 10 MB local
+    const values = Array.from({ length: dims }, (_, i) => i * 0.0001);
+    const big = makeVector('over-8k', values);
+
+    await adapter.put(big);
+
+    expect(await adapter.exists('over-8k')).toBe(true);
+    const stored = await adapter.get('over-8k');
+    expect(stored.vector.length).toBe(dims);
   });
 });
 

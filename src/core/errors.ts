@@ -12,14 +12,21 @@ export const ErrorCode = {
   INVALID_FORMAT: 'INVALID_FORMAT',
   // ── Storage / quota errors ───────────────────────────────────────────────
   QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
+  QUOTA_SAFETY_MARGIN: 'QUOTA_SAFETY_MARGIN',
   DATABASE_INIT_FAILED: 'DATABASE_INIT_FAILED',
   TRANSACTION_FAILED: 'TRANSACTION_FAILED',
+  STORAGE_CORRUPTION: 'STORAGE_CORRUPTION',
+  STORAGE_FORMAT_ERROR: 'STORAGE_FORMAT_ERROR',
   // ── Namespace errors ─────────────────────────────────────────────────────
   NAMESPACE_EXISTS: 'NAMESPACE_EXISTS',
   NAMESPACE_NOT_FOUND: 'NAMESPACE_NOT_FOUND',
+  NAMESPACE_DELETION_BLOCKED: 'NAMESPACE_DELETION_BLOCKED',
   // ── Batch / index errors ─────────────────────────────────────────────────
   BATCH_OPERATION_FAILED: 'BATCH_OPERATION_FAILED',
   INDEX_ERROR: 'INDEX_ERROR',
+  // ── Search errors ────────────────────────────────────────────────────────
+  SEARCH_ABORTED: 'SEARCH_ABORTED',
+  SEARCH_TIMEOUT: 'SEARCH_TIMEOUT',
   // ── Environment errors ───────────────────────────────────────────────────
   BROWSER_NOT_SUPPORTED: 'BROWSER_NOT_SUPPORTED',
   // ── Catch-all ────────────────────────────────────────────────────────────

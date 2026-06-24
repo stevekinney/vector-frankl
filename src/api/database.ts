@@ -214,12 +214,10 @@ export class VectorDB {
   ): Promise<void> {
     await this.ensureInitialized();
 
-    // Assert quota is safe before any allocation.  Throws QuotaSafetyMarginError
-    // when quota is critically low and eviction cannot free enough space.
-    // Must be called BEFORE preparing/writing vectors to prevent dangling IDs.
-    await this.assertQuotaAvailable();
-
     // Validate and prepare all vectors (matching addVector's validation pattern)
+    // BEFORE the quota guard, which may evict existing vectors. Validating first
+    // means a malformed batch is rejected without any destructive eviction —
+    // otherwise a batch that fails validation could still have evicted data.
     const preparedVectors = await Promise.all(
       vectors.map(async ({ id, vector, metadata }) => {
         const validatedId = InputValidator.validateVectorId(id);
@@ -240,6 +238,12 @@ export class VectorDB {
         );
       }),
     );
+
+    // Assert quota is safe before writing.  Throws QuotaSafetyMarginError when
+    // quota is critically low and eviction cannot free enough space. Runs after
+    // validation (so no eviction happens for an invalid batch) but before
+    // putBatch, so writes never proceed past a critical quota state.
+    await this.assertQuotaAvailable();
 
     await this.storage.putBatch(preparedVectors, options);
 
@@ -331,11 +335,17 @@ export class VectorDB {
     maxDistance: number,
     options?: SearchOptions & { maxResults?: number },
   ): Promise<SearchResult[]> {
-    // Validate inputs
-    InputValidator.validateDistance(maxDistance);
-    // Extract maxResults before passing to validateSearchOptions (it only validates SearchOptions keys).
-    const { maxResults, ...searchOptions } = options ?? {};
-    const validatedOptions = InputValidator.validateSearchOptions(searchOptions);
+    // Validate inputs. maxDistance is bounded per metric/dimension, not a fixed
+    // cap, because legitimate thresholds scale with the metric (e.g. a
+    // high-dimension manhattan search can need a threshold of ~dimensions).
+    InputValidator.validateDistance(maxDistance, {
+      metric: this.distanceMetric,
+      dimensions: this.dimension,
+    });
+    // maxResults is a known SearchOptions key, so validateSearchOptions enforces
+    // its positive-integer/≤50,000 contract. Passing the whole options object
+    // through (rather than stripping maxResults first) keeps that guard intact.
+    const validatedOptions = InputValidator.validateSearchOptions(options);
 
     // Validate vector format and dimension
     VectorFormatHandler.validate(queryVector, this.dimension);
@@ -351,10 +361,11 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    return this.searchEngine.searchRange(query, maxDistance, {
-      ...(validatedOptions as SearchOptions),
-      ...(maxResults !== undefined && { maxResults }),
-    });
+    return this.searchEngine.searchRange(
+      query,
+      maxDistance,
+      validatedOptions as SearchOptions & { maxResults?: number },
+    );
   }
 
   /**
@@ -368,6 +379,18 @@ export class VectorDB {
       progressive?: boolean;
     },
   ): AsyncGenerator<SearchResult[], void, unknown> {
+    // Validate the SearchOptions subset (filter/timeout/maxResults/batchSize/…)
+    // so streaming honours the same closed contract as search(); without this
+    // the engine defaults a missing maxResults to Infinity and passes it as k,
+    // materialising the entire candidate set on large datasets.
+    const { progressive, ...searchOptions } = options ?? {};
+    const validatedOptions = InputValidator.validateSearchOptions(
+      searchOptions,
+    ) as SearchOptions & { batchSize?: number; maxResults?: number };
+    if (progressive !== undefined && typeof progressive !== 'boolean') {
+      throw new Error('progressive must be a boolean');
+    }
+
     // Validate vector format and dimension
     VectorFormatHandler.validate(queryVector, this.dimension);
 
@@ -382,7 +405,10 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    yield* this.searchEngine.searchStream(query, options);
+    yield* this.searchEngine.searchStream(query, {
+      ...validatedOptions,
+      ...(progressive !== undefined && { progressive }),
+    });
   }
 
   /**

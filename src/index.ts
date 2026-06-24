@@ -132,6 +132,7 @@ export {
 export {
   ChromeStorageAdapter,
   CHROME_STORAGE_MAX_SERIALIZED_BYTES,
+  CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES,
 } from './storage/adapters/chrome-storage-adapter.js';
 
 // Storage adapter resolution
@@ -141,6 +142,18 @@ export {
   type ResolveStorageAdapterOptions,
   type StorageBackend,
 } from './storage/resolve-storage-adapter.js';
+
+// Adapter capability matrix — lets consumers query support tiers and runtime
+// compatibility before selecting an adapter.
+export {
+  ADAPTER_SUPPORT_MATRIX,
+  getAdaptersByTier,
+  getAdaptersByRuntime,
+  type AdapterCapabilities,
+  type AdapterSupportTier,
+  type AdapterRuntime,
+  type AdapterName,
+} from './storage/adapters/adapter-capabilities.js';
 
 // Storage management utilities
 export {

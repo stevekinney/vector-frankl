@@ -30,10 +30,10 @@ IndexedDB, Web Workers, and `crypto.subtle` are required. Environments that disa
 
 ### Server-Side Runtimes
 
-| Runtime | Minimum Version | Storage Adapter                                                 |
-| ------- | --------------- | --------------------------------------------------------------- |
-| Bun     | 1.3.0           | `FileSystemAdapter`, `SQLiteAdapter`, in-memory                 |
-| Node.js | 18.0.0          | `FileSystemAdapter`, `LevelDBAdapter`, `LMDBAdapter`, in-memory |
+| Runtime | Minimum Version | Storage Adapter                                 |
+| ------- | --------------- | ----------------------------------------------- |
+| Bun     | 1.3.0           | `FileSystemAdapter`, `SQLiteAdapter`, in-memory |
+| Node.js | 18.0.0          | `LevelDBAdapter`, `LMDBAdapter`, in-memory      |
 
 Node.js support is provided on a best-effort basis. Bun is the primary server-side target and receives the most testing.
 

@@ -967,11 +967,27 @@ describe('Vector Database Integration Tests', () => {
         expect(db.searchRange(vector, NaN)).rejects.toThrow('Distance must be finite');
       });
 
-      it('rejects a maxDistance exceeding 1000', () => {
+      it('rejects a maxDistance beyond the metric-aware bound (cosine ≤ 4)', () => {
+        // This db uses the default cosine metric, whose distance range is [0, 2];
+        // the validator allows a small headroom (≤ 4) and rejects beyond it.
         const vector = new Float32Array(dimension).fill(0.5);
-        expect(db.searchRange(vector, 1001)).rejects.toThrow(
-          'Distance cannot exceed 1000',
-        );
+        expect(db.searchRange(vector, 5)).rejects.toThrow('exceeds the maximum 4');
+      });
+
+      it('allows a large manhattan threshold proportional to the dimension', async () => {
+        // A manhattan db legitimately needs thresholds that scale with dimension,
+        // so a value that would exceed the old fixed 1000 cap must be accepted.
+        const manhattanDB = new VectorDB(`${testDBName}-manhattan`, dimension, {
+          distanceMetric: 'manhattan',
+          autoEviction: false,
+          useIndex: false,
+        });
+        await manhattanDB.init();
+        const vector = new Float32Array(dimension).fill(0.5);
+        // Should not throw on validation (no matching vectors is fine).
+        const results = await manhattanDB.searchRange(vector, 5000);
+        expect(Array.isArray(results)).toBe(true);
+        await manhattanDB.delete();
       });
 
       it('rejects a query vector with the wrong dimension', () => {

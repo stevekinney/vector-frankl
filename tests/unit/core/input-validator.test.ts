@@ -264,13 +264,37 @@ describe('InputValidator', () => {
       );
     });
 
-    test('throws when the value exceeds 1000', () => {
+    test('applies the conservative fixed cap (1000) when no metric context is given', () => {
       expect(() => InputValidator.validateDistance(1000.001)).toThrow(
-        'Distance cannot exceed 1000',
+        'exceeds the maximum 1000',
       );
       expect(() => InputValidator.validateDistance(1001)).toThrow(
-        'Distance cannot exceed 1000',
+        'exceeds the maximum 1000',
       );
+      expect(InputValidator.validateDistance(1000)).toBe(1000);
+    });
+
+    test('allows large metric/dimension-aware thresholds for range search', () => {
+      // A 2,000-dimension manhattan search can legitimately need a threshold
+      // near 2,000 (or far higher with component spread); the fixed 1000 cap
+      // would wrongly reject it.
+      expect(
+        InputValidator.validateDistance(2000, {
+          metric: 'manhattan',
+          dimensions: 2000,
+        }),
+      ).toBe(2000);
+      // hamming is bounded by the dimension count.
+      expect(
+        InputValidator.validateDistance(256, { metric: 'hamming', dimensions: 256 }),
+      ).toBe(256);
+      expect(() =>
+        InputValidator.validateDistance(257, { metric: 'hamming', dimensions: 256 }),
+      ).toThrow('exceeds the maximum 256');
+      // cosine stays tightly bounded.
+      expect(() =>
+        InputValidator.validateDistance(5, { metric: 'cosine', dimensions: 384 }),
+      ).toThrow('exceeds the maximum 4');
     });
   });
 

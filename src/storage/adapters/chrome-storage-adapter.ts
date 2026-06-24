@@ -55,12 +55,22 @@ import {
 // ---------------------------------------------------------------------------
 
 /**
- * Maximum serialized size (in bytes) for a single vector entry before
- * attempting a chrome.storage write.  Chrome enforces ~8 KB per item for
- * sync storage; local storage is less restricted but we apply the same guard
- * as a conservative safety net.
+ * Per-item serialized-size limit for `chrome.storage.sync` (~8 KB). This
+ * adapter does not use the sync area, but the constant documents the limit and
+ * remains the public bound for sync-style usage.
  */
 export const CHROME_STORAGE_MAX_SERIALIZED_BYTES = 8_192;
+
+/**
+ * Per-item serialized-size limit applied by this adapter, which only targets
+ * the `local` and `session` areas. Those areas have no 8 KB per-item cap — the
+ * binding constraint is the area's total quota (`chrome.storage.local` is
+ * ~10 MB) — so a single embedding well over 8 KB is valid. We still reject
+ * entries larger than the whole area quota as an obvious-error guard.
+ *
+ * @see CHROME_STORAGE_MAX_SERIALIZED_BYTES for the stricter sync-area limit.
+ */
+export const CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES = 10_485_760; // 10 MB
 
 declare const chrome: {
   storage: {
@@ -213,12 +223,12 @@ export class ChromeStorageAdapter implements StorageAdapter {
     const serialized = this.serialize(normalized);
 
     // Guard against per-item quota violations before attempting the write.
-    // chrome.storage enforces an 8 KB per-item limit for sync storage and a
-    // softer limit for local storage.  We reject oversized vectors pre-flight
-    // so that the ID index is never updated for a vector that cannot be stored.
+    // This adapter uses the local/session areas, which have no 8 KB per-item
+    // cap (unlike sync), so we bound against the area quota and reject oversized
+    // vectors pre-flight so the ID index is never updated for an unstorable one.
     const byteSize = estimateSerializedBytes(serialized);
-    if (byteSize > CHROME_STORAGE_MAX_SERIALIZED_BYTES) {
-      throw new QuotaExceededError(byteSize, CHROME_STORAGE_MAX_SERIALIZED_BYTES);
+    if (byteSize > CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES) {
+      throw new QuotaExceededError(byteSize, CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES);
     }
 
     const key = this.vectorKey(vector.id);
@@ -433,8 +443,11 @@ export class ChromeStorageAdapter implements StorageAdapter {
 
           // Reject oversized vectors before writing, consistent with put().
           const byteSize = estimateSerializedBytes(serialized);
-          if (byteSize > CHROME_STORAGE_MAX_SERIALIZED_BYTES) {
-            throw new QuotaExceededError(byteSize, CHROME_STORAGE_MAX_SERIALIZED_BYTES);
+          if (byteSize > CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES) {
+            throw new QuotaExceededError(
+              byteSize,
+              CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES,
+            );
           }
 
           items[this.vectorKey(vector.id)] = serialized;

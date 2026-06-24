@@ -2,6 +2,8 @@
  * Input validation utilities for vector database operations
  */
 
+import type { DistanceMetric } from './types.js';
+
 export interface ValidationOptions {
   /** Maximum allowed string length */
   maxStringLength?: number;
@@ -97,9 +99,26 @@ export class InputValidator {
   }
 
   /**
-   * Validate distance parameter
+   * Validate a distance threshold for range search.
+   *
+   * The upper bound is metric- and dimension-aware rather than a fixed cap: a
+   * legitimate threshold scales with the metric and the vector dimensionality.
+   * For example a {@link maxDistanceForMetric | manhattan} search over 2,000
+   * dimensions can legitimately need a threshold near 2,000 to include vectors
+   * that differ by ~1 in each dimension; a fixed cap of 1,000 would reject it.
+   * Memory exhaustion is bounded by the `maxResults` option, not by this cap;
+   * the cap only rejects nonsensical (infinite / negative) thresholds and
+   * values far outside the metric's possible range.
+   *
+   * @param distance - The candidate distance threshold.
+   * @param context - Optional metric/dimensions used to derive the upper bound.
+   *   When omitted, a conservative fixed cap is applied.
+   * @returns The validated distance.
    */
-  static validateDistance(distance: unknown): number {
+  static validateDistance(
+    distance: unknown,
+    context?: { metric?: DistanceMetric; dimensions?: number },
+  ): number {
     if (typeof distance !== 'number') {
       throw new Error('Distance must be a number');
     }
@@ -112,11 +131,55 @@ export class InputValidator {
       throw new Error('Distance must be non-negative');
     }
 
-    if (distance > 1000) {
-      throw new Error('Distance cannot exceed 1000');
+    const max = this.maxDistanceForMetric(context?.metric, context?.dimensions);
+    if (distance > max) {
+      throw new Error(
+        `Distance ${distance} exceeds the maximum ${max} for the ` +
+          `${context?.metric ?? 'default'} metric at ${context?.dimensions ?? 'unknown'} dimensions`,
+      );
     }
 
     return distance;
+  }
+
+  /**
+   * Compute the maximum sensible range-search threshold for a metric/dimension.
+   *
+   * Bounds reflect each metric's theoretical maximum given components in a
+   * normalized range, with generous headroom so legitimate queries are never
+   * rejected:
+   * - `cosine`/`jaccard`: bounded ranges ([0, 2] and [0, 1]) → small constant.
+   * - `hamming`: at most `dimensions` differing positions.
+   * - `euclidean`: scales with √dimensions; allow generous component spread.
+   * - `manhattan`/`dot`: scale linearly with `dimensions`.
+   *
+   * Falls back to a conservative fixed cap when metric/dimensions are unknown.
+   */
+  private static maxDistanceForMetric(
+    metric?: DistanceMetric,
+    dimensions?: number,
+  ): number {
+    if (metric === undefined || dimensions === undefined || dimensions <= 0) {
+      return 1000;
+    }
+    // Allow each component to differ by up to this much when deriving bounds;
+    // covers un-normalized inputs without admitting absurd thresholds.
+    const componentSpread = 100;
+    switch (metric) {
+      case 'cosine':
+        return 4; // range [0, 2]; headroom for clamped/scored variants
+      case 'jaccard':
+        return 2; // range [0, 1]; headroom
+      case 'hamming':
+        return dimensions; // count of differing positions
+      case 'euclidean':
+        return Math.sqrt(dimensions) * componentSpread;
+      case 'manhattan':
+      case 'dot':
+        return dimensions * componentSpread;
+      default:
+        return 1000;
+    }
   }
 
   /**

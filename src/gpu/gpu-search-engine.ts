@@ -399,7 +399,7 @@ export class GPUSearchEngine {
 
     for (const vector of vectors) {
       const distance = this.calculateDistance(queryVector, vector.vector, metric);
-      const score = this.distanceToScore(distance, metric);
+      const score = this.distanceToScore(distance, metric, queryVector.length);
 
       const result: SearchResult = {
         id: vector.id,
@@ -465,7 +465,11 @@ export class GPUSearchEngine {
    * converts back to a consistent [0, 1]-ish scale so that CPU and GPU
    * results sort in the same order.
    */
-  private distanceToScore(distance: number, metric: DistanceMetric): number {
+  private distanceToScore(
+    distance: number,
+    metric: DistanceMetric,
+    dimensions?: number,
+  ): number {
     switch (metric) {
       case 'cosine':
         // Clamp to [0, 1] to guard against floating-point drift with unit vectors.
@@ -476,8 +480,11 @@ export class GPUSearchEngine {
       case 'manhattan':
         return 1 / (1 + distance);
       case 'hamming':
+        // hammingDistance returns the raw count of differing positions (to match
+        // the core metric), so normalize by the dimension when scoring.
+        return dimensions && dimensions > 0 ? 1 - distance / dimensions : 1 - distance;
       case 'jaccard':
-        // distance is already in [0, 1]; score = 1 - distance
+        // jaccardDistance is already in [0, 1]; score = 1 - distance.
         return 1 - distance;
       default:
         return 1 / (1 + distance);
@@ -548,17 +555,19 @@ export class GPUSearchEngine {
   /**
    * Hamming distance between two binary-encoded float vectors.
    * Each element is treated as a bit: positive = 1, zero/negative = 0.
-   * Returns the fraction of differing positions in [0, 1].
+   * Returns the raw count of differing positions, matching the core search
+   * metric in src/search/distance-metrics.ts. Returning a normalized fraction
+   * here would make `db.search()` report different `distance` values for the
+   * same data depending on whether WebGPU acceleration is available.
    */
   private hammingDistance(a: Float32Array, b: Float32Array): number {
-    if (a.length === 0) return 0;
     let different = 0;
     for (let i = 0; i < a.length; i++) {
       const bitA = a[i]! > 0 ? 1 : 0;
       const bitB = b[i]! > 0 ? 1 : 0;
       if (bitA !== bitB) different++;
     }
-    return different / a.length;
+    return different;
   }
 
   /**

@@ -150,6 +150,9 @@ jobs:
   recapture-baselines:
     name: Recapture Performance Baselines
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.recapture_baselines }}
+    # Gate baseline capture on a green build + production gate so new baselines
+    # can never land on the branch when tests or the production gate are failing.
+    needs: [verify, production-verification]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
