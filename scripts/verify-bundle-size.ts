@@ -4,18 +4,12 @@
  * Verify the built package bundle sizes are within defined limits.
  *
  * Budget limits (uncompressed, post-minification):
- *   - Main entrypoint (dist/index.js):      500 KB
- *   - GPU entrypoint (dist/gpu.js):         320 KB
- *   - Workers entrypoint (dist/workers.js): 320 KB
- *   - Debug entrypoint (dist/debug.js):     510 KB
- *   - Benchmarks entrypoint:                520 KB
- *   - Compression entrypoint:               320 KB
- *
- * Note: Budgets were raised with the zod 3→4 migration (PR #34). Zod 4 is a
- * complete rewrite that is significantly larger than zod 3 (~220 KB extra per
- * bundle). Every entrypoint transitively includes zod via logger →
- * configuration/environment. The new limits reflect real zod 4 bundle sizes
- * with a small headroom margin.
+ *   - Main entrypoint (dist/index.js):     500 KB
+ *   - GPU entrypoint (dist/gpu.js):        300 KB
+ *   - Workers entrypoint (dist/workers.js): 200 KB
+ *   - Debug entrypoint (dist/debug.js):    320 KB
+ *   - Benchmarks entrypoint:               300 KB
+ *   - Compression entrypoint:              200 KB
  *
  * Fails loudly when:
  * - A required build output is missing
@@ -30,11 +24,11 @@ const root = process.cwd();
 // Size budgets in bytes (uncompressed, post-minification)
 const BUDGETS: Record<string, number> = {
   'dist/index.js': 500 * 1024, // 500 KB
-  'dist/gpu.js': 320 * 1024, // 320 KB — raised from 300 KB for zod 4 (PR #34)
-  'dist/workers.js': 320 * 1024, // 320 KB — raised from 200 KB for zod 4 (PR #34)
-  'dist/debug.js': 510 * 1024, // 510 KB — raised from 320 KB for zod 4 (PR #34); debug/health/diagnostics introspect the search+storage layer
-  'dist/benchmarks.js': 520 * 1024, // 520 KB — raised from 300 KB for zod 4 (PR #34)
-  'dist/compression.js': 320 * 1024, // 320 KB — raised from 200 KB for zod 4 (PR #34)
+  'dist/gpu.js': 300 * 1024, // 300 KB
+  'dist/workers.js': 200 * 1024, // 200 KB
+  'dist/debug.js': 320 * 1024, // 320 KB — debug/health/diagnostics introspect the search+storage layer
+  'dist/benchmarks.js': 300 * 1024, // 300 KB
+  'dist/compression.js': 200 * 1024, // 200 KB
 };
 
 let failures = 0;
