@@ -23,17 +23,14 @@ const adapterEntrypoints = [
 const commonjsImportMetaEnvironmentPlugin: Bun.BunPlugin = {
   name: 'commonjs-import-meta-environment',
   setup(build) {
-    build.onLoad(
-      { filter: /(^|[/\\])src[/\\]configuration[/\\]environment\.ts$/ },
-      async ({ path }) => {
-        const source = await Bun.file(path).text();
-
-        return {
-          contents: source.replaceAll('import.meta', 'undefined'),
-          loader: 'ts',
-        };
-      },
-    );
+    // Redirect the ESM import-meta shim to the CJS-safe counterpart so that
+    // `import.meta` never appears in the CommonJS output.
+    build.onResolve({ filter: /import-meta-environment\.(?:js|ts)$/ }, () => ({
+      path: new URL(
+        '../src/configuration/import-meta-environment.cjs.ts',
+        import.meta.url,
+      ).pathname,
+    }));
   },
 };
 
