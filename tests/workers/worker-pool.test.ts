@@ -154,3 +154,33 @@ describe('Worker Pool', () => {
     });
   });
 });
+
+describe('acceleration: Workers classification', () => {
+  it('WorkerPool constructs without throwing', () => {
+    const pool = new WorkerPool({ maxWorkers: 2 });
+    expect(pool).toBeDefined();
+  });
+
+  it('WorkerPool.sharedMemoryEnabled defaults to false', () => {
+    const pool = new WorkerPool();
+    expect(pool.getStats().sharedMemoryEnabled).toBe(false);
+  });
+
+  it('WorkerPool.init() throws a clear error when Worker API is absent', async () => {
+    const original = (globalThis as Record<string, unknown>)['Worker'];
+    // @ts-expect-error -- simulating absent Worker API for test
+    globalThis['Worker'] = undefined;
+
+    const pool = new WorkerPool({ maxWorkers: 1 });
+    let threw = false;
+    try {
+      await pool.init();
+    } catch (err) {
+      threw = true;
+      expect((err as Error).message).toContain('Web Workers are not supported');
+    }
+    expect(threw).toBe(true);
+
+    (globalThis as Record<string, unknown>)['Worker'] = original;
+  });
+});

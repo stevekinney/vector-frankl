@@ -10,37 +10,32 @@ test.describe('Vector Database Basic Operations', () => {
   });
 
   test('should initialize database successfully', async ({ page }) => {
-    // Listen for console messages to debug
-    page.on('console', (msg) => console.log('PAGE LOG:', msg.text()));
-    page.on('pageerror', (error) => console.log('PAGE ERROR:', error.message));
+    // Fail the test immediately on uncaught page errors
+    page.on('pageerror', (error) => {
+      throw new Error(`Uncaught page error: ${error.message}`);
+    });
 
     // Click initialize database button
     await page.click('#init-db');
 
-    // Wait a moment and check for errors
-    await page.waitForTimeout(2000);
-
-    // Check browser console for errors
-    const logs = await page.evaluate(() => {
-      return window.console ? 'Console exists' : 'No console';
-    });
-    console.log('Console check:', logs);
-
-    // Try to access the module manually to see if it loads
+    // Assert that the module loads successfully (not just that it exists)
     const moduleTest = await page.evaluate(async () => {
       try {
         // @ts-expect-error dynamic browser import
         const module = await import('/dist/index.js');
-        return { success: true, keys: Object.keys(module), module: typeof module };
+        return { success: true, keys: Object.keys(module) };
       } catch (error) {
         return {
           success: false,
           error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
         };
       }
     });
-    console.log('Module test:', moduleTest);
+
+    expect(
+      moduleTest.success,
+      `Module failed to load: ${(moduleTest as { success: false; error: string }).error ?? ''}`,
+    ).toBe(true);
 
     // Wait for initialization to complete
     await expect(page.locator('#db-status')).toContainText('Initialized', {
@@ -181,10 +176,12 @@ test.describe('Vector Database Basic Operations', () => {
         if (cosineResults.length !== 3)
           throw new Error('Cosine search should return 3 results');
 
-        // The most similar should be the base vector itself
+        // The most similar result must be the base vector itself — this is a hard
+        // correctness requirement, not an optional warning.
         if (cosineResults[0].id !== 'base') {
-          window.log(
-            `Warning: Expected 'base' as first result, got '${cosineResults[0].id}'`,
+          throw new Error(
+            `Expected 'base' as first result, got '${cosineResults[0].id}'. ` +
+              `Scores: ${cosineResults.map((r: any) => `${r.id}(${r.score.toFixed(3)})`).join(', ')}`,
           );
         }
 
@@ -265,19 +262,18 @@ test.describe('Vector Database Basic Operations', () => {
           `Search completed in ${searchTime.toFixed(2)}ms, found ${searchResults.length} results`,
         );
 
-        // Performance thresholds (adjust based on expected performance)
+        // Performance thresholds: slow operations are failures, not warnings.
         const avgAddTime = addTime / batchSize;
         if (avgAddTime > 10) {
-          // More than 10ms per vector is concerning
-          window.log(
-            `Warning: Slow vector addition (${avgAddTime.toFixed(2)}ms per vector)`,
-            'warning',
+          throw new Error(
+            `Slow vector addition: ${avgAddTime.toFixed(2)}ms per vector exceeds 10ms threshold`,
           );
         }
 
         if (searchTime > 1000) {
-          // More than 1 second for search is concerning
-          window.log(`Warning: Slow search (${searchTime.toFixed(2)}ms)`, 'warning');
+          throw new Error(
+            `Slow search: ${searchTime.toFixed(2)}ms exceeds 1000ms threshold`,
+          );
         }
 
         window.addTestResult(

@@ -149,8 +149,6 @@ export class CompressionManager {
         centroidsPerSubspace: 256,
       }),
     );
-
-    // Note: Binary quantization will be added in future phases
   }
 
   /**
@@ -368,15 +366,6 @@ export class CompressionManager {
         if (this.config.qualityBias > 0.7) score += 0.1; // Strong quality preference
         if (analysis.clustering.numClusters > 6) score += 0.1; // Very complex structure
         break;
-
-      case 'binary':
-        // Binary quantization would be good for:
-        // - Very sparse vectors
-        // - Binary-like patterns
-        if (analysis.sparsity >= this.adaptiveThresholds.sparsityThreshold) score += 0.4;
-        if (analysis.patterns.binaryLike) score += 0.3;
-        score -= 0.5; // Not implemented yet
-        break;
     }
 
     return Math.max(0, Math.min(1, score));
@@ -577,8 +566,6 @@ export class CompressionManager {
   private mapAlgorithmToStrategy(algorithmName: string): CompressionStrategy {
     if (algorithmName.startsWith('scalar')) return 'scalar';
     if (algorithmName.startsWith('product')) return 'product';
-    if (algorithmName.startsWith('binary')) return 'binary';
-
     return 'scalar'; // default fallback
   }
 
@@ -667,8 +654,6 @@ export class CompressionManager {
         return vectorSize * 0.01; // Very fast
       case 'product':
         return vectorSize * 0.1; // Slower due to training
-      case 'binary':
-        return vectorSize * 0.005; // Fastest
       default:
         return vectorSize * 0.05;
     }
@@ -688,8 +673,6 @@ export class CompressionManager {
         const subspaceDim = Math.ceil(vectorSize / subspaces);
         return subspaces * centroids * subspaceDim * 4; // Float32
       }
-      case 'binary':
-        return vectorSize * 0.5; // Much smaller
       default:
         return vectorSize * 2;
     }
@@ -815,8 +798,6 @@ export class CompressionManager {
         const subspaceDim = Math.ceil(vector.length / subspaces);
         return Math.min(0.08, 0.02 + subspaceDim / 1000); // Higher loss for larger subspaces
       }
-      case 'binary':
-        return 0.1; // ~10% precision loss for binary quantization
       default:
         return 0.05;
     }
@@ -831,8 +812,6 @@ export class CompressionManager {
         return 'Uniform quantization of all vector components to reduced bit precision';
       case 'product':
         return 'Divides vectors into subspaces and quantizes each using learned centroids via k-means';
-      case 'binary':
-        return 'Binarization of vector components for maximum compression';
       default:
         return 'Unknown compression strategy';
     }

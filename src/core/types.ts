@@ -5,6 +5,14 @@
 /**
  * Supported vector formats
  */
+/**
+ * Capability flags reported by a storage adapter.
+ *
+ * The authoritative definition lives in `./storage/adapters/adapter-capabilities`
+ * alongside the per-adapter constants; re-exported here for convenience.
+ */
+import type { AdapterCapabilities } from '@/storage/adapters/adapter-capabilities.js';
+
 export type VectorFormat =
   | Float32Array
   | Float64Array
@@ -81,6 +89,7 @@ export interface IndexedDatabaseCursor<T = unknown> {
 }
 
 export interface IndexedDatabaseTransaction {
+  readonly mode: IndexedDatabaseTransactionMode;
   oncomplete: ((event: unknown) => void) | null;
   onerror: ((event: unknown) => void) | null;
   onabort: ((event: unknown) => void) | null;
@@ -110,20 +119,16 @@ export interface DatabaseConfig {
 }
 
 /**
- * Namespace configuration
+ * Namespace configuration.
+ *
+ * `indexStrategy`, `compression`, and `compressionConfig` were removed because
+ * they were never wired to the underlying VectorDB and had no effect on runtime
+ * behavior. Use the VectorDB constructor options directly when you need to
+ * control indexing or compression at the storage level.
  */
 export interface NamespaceConfig {
   dimension: number;
   distanceMetric?: DistanceMetric;
-  indexStrategy?: IndexStrategy;
-  compression?: CompressionStrategy;
-  compressionConfig?: {
-    level?: number;
-    targetRatio?: number;
-    maxPrecisionLoss?: number;
-    validateQuality?: boolean;
-    autoSelect?: boolean;
-  };
   description?: string;
 }
 
@@ -165,9 +170,13 @@ export type DistanceMetric =
 export type IndexStrategy = 'auto' | 'brute' | 'kdtree' | 'hnsw';
 
 /**
- * Compression strategies
+ * Compression strategies.
+ *
+ * Only strategies with full implementations, tests, quality budgets, and
+ * persistence support are listed here. Binary quantization is not yet
+ * implemented and is intentionally excluded.
  */
-export type CompressionStrategy = 'none' | 'scalar' | 'product' | 'binary';
+export type CompressionStrategy = 'none' | 'scalar' | 'product';
 
 /**
  * Search options
@@ -178,6 +187,10 @@ export interface SearchOptions {
   includeMetadata?: boolean;
   timeout?: number;
   signal?: VectorAbortSignal;
+  /** Maximum number of results to return. Capped at 50,000 to prevent memory exhaustion. */
+  maxResults?: number;
+  /** Batch size for chunked operations. Capped at 50,000 to prevent memory exhaustion. */
+  batchSize?: number;
 }
 
 /**
@@ -215,6 +228,16 @@ export interface NotFilter {
 
 export type FilterValue = string | number | boolean | null | undefined;
 
+export type FilterTypeString =
+  | 'null'
+  | 'boolean'
+  | 'number'
+  | 'string'
+  | 'array'
+  | 'object';
+
+export type RegexFilter = string | RegExp | { pattern: string; flags?: string };
+
 export interface FilterOperator {
   $eq?: FilterValue;
   $ne?: FilterValue;
@@ -224,8 +247,30 @@ export interface FilterOperator {
   $lte?: number;
   $in?: FilterValue[];
   $nin?: FilterValue[];
+  /** Test whether a string field contains the given substring. */
   $contains?: string;
+  /** Test whether a numeric field falls within [min, max] (inclusive). */
   $between?: [number, number];
+  /** Test whether a field exists (true) or is absent (false). */
+  $exists?: boolean;
+  /** Test whether a field's JavaScript type matches the given type string. */
+  $type?: FilterTypeString;
+  /**
+   * Test whether a string field matches a regex pattern.
+   * Accepts a pattern string, a RegExp literal, or an object
+   * with `pattern` and optional `flags` strings.
+   * Patterns are validated against ReDoS heuristics before execution.
+   */
+  $regex?: RegexFilter;
+  /** Test whether an array field has exactly the given length. */
+  $size?: number;
+  /** Test whether an array field contains all of the given values. */
+  $all?: FilterValue[];
+  /**
+   * Test whether at least one element of an array field matches the
+   * given sub-filter or value.
+   */
+  $elemMatch?: MetadataFilter | FilterValue;
 }
 
 /**
@@ -236,6 +281,13 @@ export interface BatchOptions {
   onProgress?: (progress: BatchProgress) => void;
   abortSignal?: VectorAbortSignal;
   parallel?: boolean;
+  /**
+   * Maximum in-flight heap memory (bytes) per sub-batch. When not supplied the
+   * storage layer uses the default from
+   * `src/performance/execution-thresholds.ts` (64 MiB). Callers can lower this
+   * value to apply more aggressive backpressure on memory-constrained devices.
+   */
+  memoryLimitBytes?: number;
 }
 
 /**
@@ -316,13 +368,77 @@ export interface TransactionOptions {
 }
 
 /**
+ * Options for cursor/streaming scans over the full store.
+ */
+export interface ScanOptions {
+  /**
+   * Hint to the adapter for how many records to fetch per internal page or
+   * cursor advance. Adapters may ignore this if the underlying storage does
+   * not support paging (e.g. in-memory Map).
+   */
+  pageSize?: number;
+  /** Optional abort signal to cancel a long-running scan. */
+  signal?: VectorAbortSignal;
+}
+
+/**
+ * Describes whether a storage adapter supports native cursor/streaming scans
+ * or falls back to a fully-materialized scan via `getAll()`.
+ *
+ * Adapters that cannot support streaming scans must set `nativeStreaming` to
+ * `false` and document the limitation in `limitationReason`.
+ */
+export interface ScanCapabilities {
+  /** True when the adapter streams records from storage without loading all into memory. */
+  nativeStreaming: boolean;
+  /** Human-readable explanation when `nativeStreaming` is false. */
+  limitationReason?: string;
+}
+export type { AdapterCapabilities };
+
+/**
  * Storage adapter interface for pluggable storage backends.
  *
  * Each adapter manages vector persistence for a single logical database.
  * Access tracking (lastAccessed / accessCount) is the adapter's responsibility
  * — update on get/getMany so callers don't need a wrapper layer.
+ *
+ * ## Validation contract
+ *
+ * **Adapters are a low-level interface. They do not validate inputs.**
+ * Input validation (vector IDs, dimensions, metadata safety, batch sizes,
+ * serialized payload integrity) is guaranteed only through the high-level APIs:
+ * `VectorDB` and `VectorFrankl`. Those classes run every user-supplied value
+ * through `InputValidator` before it ever reaches an adapter.
+ *
+ * Callers that bypass `VectorDB`/`VectorFrankl` and drive an adapter directly
+ * are responsible for their own validation. Passing an empty string ID, an
+ * oversized vector, or malformed metadata to an adapter method is undefined
+ * behaviour — the adapter may store it, corrupt state, or surface a cryptic
+ * storage-engine error instead of a clear validation message.
+ *
+ * This is an intentional design decision: one clear validation boundary rather
+ * than duplicated partial checks spread across every adapter implementation.
+ *
+ * ## Metadata indexing
+ *
+ * Adapters that set `capabilities.metadataIndexing = true` MUST implement
+ * `filteredScan()`. The search engine calls `filteredScan()` instead of
+ * `getAll()` for filtered searches, avoiding full dataset materialization.
+ *
+ * Adapters that do NOT implement `filteredScan()` are documented as lacking
+ * metadata indexing—filtered search on them always loads the full store.
  */
 export interface StorageAdapter {
+  /**
+   * Reports the capabilities of this adapter. Used by the search engine to
+   * decide whether it can delegate filtered scans to the adapter.
+   *
+   * Adapters that do not implement this property are treated as having no
+   * metadata indexing support (`metadataIndexing: false`).
+   */
+  readonly capabilities?: AdapterCapabilities;
+
   // Lifecycle
   init(): Promise<void>;
   close(): Promise<void>;
@@ -338,6 +454,38 @@ export interface StorageAdapter {
   getMany(ids: string[]): Promise<VectorData[]>;
   getAll(): Promise<VectorData[]>;
   count(): Promise<number>;
+
+  /**
+   * Stream all vectors one at a time (or in pages, depending on the adapter).
+   *
+   * Prefer `scan()` over `getAll()` for search, eviction, and maintenance
+   * operations that do not need the full store in memory at once.
+   *
+   * Callers should treat `scan()` as the canonical iteration primitive and
+   * only fall back to `getAll()` when random access to the full slice is
+   * genuinely required (e.g. sorting across the entire corpus).
+   */
+  scan(options?: ScanOptions): AsyncIterable<VectorData>;
+
+  /**
+   * Report whether this adapter natively streams records from storage or
+   * materializes them in memory. Callers can inspect this to decide whether
+   * `scan()` provides bounded-memory iteration on large stores.
+   */
+  getScanCapabilities(): ScanCapabilities;
+
+  /**
+   * Scan the store and return only the vectors whose metadata satisfies
+   * `predicate`, without materializing the full dataset.
+   *
+   * Implementing this method is optional. Adapters that implement it MUST also
+   * set `capabilities.metadataIndexing = true`. Adapters that do NOT implement
+   * it are documented as lacking metadata indexing; filtered search falls back
+   * to `getAll()` + in-memory filtering.
+   */
+  filteredScan?(
+    predicate: (metadata: Record<string, unknown>) => boolean,
+  ): Promise<VectorData[]>;
 
   // Multi-item writes
   deleteMany(ids: string[]): Promise<number>;

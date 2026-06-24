@@ -886,13 +886,17 @@ claim with real behavior, or adds the release gate needed to prevent drift.
 
   Verification: `rg -n 'runtime|adapter|dimension|metric|browser|logs' .github`
 
-- [ ] Decide whether ignored `REQUIREMENTS.md` and `requirements/` are active
+- [x] Decide whether ignored `REQUIREMENTS.md` and `requirements/` are active
       production documents.
 
-  Acceptance: requirements are either published where maintainers can use them
-  or removed from the release readiness story.
+  Decision: neither `REQUIREMENTS.md` nor `requirements/` exists in the
+  repository. The `.gitignore` entries for both were dead weight—added when
+  the files were historical planning artifacts that were never committed. The
+  ignore rules have been removed; they are no longer part of the release
+  readiness story.
 
   Verification: `git check-ignore REQUIREMENTS.md requirements || true`
+  (returns no output—neither path is ignored or tracked)
 
 ## Final Production Acceptance
 

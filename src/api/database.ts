@@ -1,5 +1,5 @@
 import { VectorDatabase } from '@/core/database.js';
-import { DimensionMismatchError } from '@/core/errors.js';
+import { DimensionMismatchError, QuotaSafetyMarginError } from '@/core/errors.js';
 import { InputValidator } from '@/core/input-validator.js';
 import { VectorStorage } from '@/core/storage.js';
 import type {
@@ -101,7 +101,13 @@ export class VectorDB {
   }
 
   /**
-   * Initialize the database
+   * Initialize the database.
+   *
+   * When indexing is enabled and a persistence backend is available, any
+   * previously saved HNSW index is loaded and validated against current storage
+   * automatically so that `getIndexStats().nodeCount` reflects the stored vector
+   * count immediately after reopening without requiring an explicit
+   * `rebuildIndex()` call.  A stale or empty snapshot triggers a rebuild.
    */
   @debugMethod('database.init', 'basic', { profileEnabled: true, memoryTracking: true })
   async init(): Promise<void> {
@@ -111,6 +117,11 @@ export class VectorDB {
 
     await this.storage.init();
     this.initialized = true;
+
+    // Restore persisted HNSW index when indexing is enabled.
+    // rebuildIndex() tries the cache first (with validation) and falls back to
+    // building from storage when no valid snapshot exists.
+    await this.searchEngine.rebuildIndex();
   }
 
   /**
@@ -152,8 +163,10 @@ export class VectorDB {
       async () => {
         await this.ensureInitialized();
 
-        // Check quota before adding
-        await this.quotaMonitor.checkQuota();
+        // Assert quota is safe before any allocation.  Throws QuotaSafetyMarginError
+        // when quota is critically low and eviction cannot free enough space.
+        // This must be called BEFORE writing to prevent dangling partial records.
+        await this.assertQuotaAvailable();
 
         // Validate dimension
         if (vector.length !== this.dimension) {
@@ -177,7 +190,15 @@ export class VectorDB {
   }
 
   /**
-   * Add multiple vectors
+   * Add multiple vectors in a batch.
+   *
+   * **Atomicity model — partial success with index safety:**
+   * Storage writes use IndexedDB transactions and are best-effort within each
+   * sub-batch; if any write fails a {@link BatchOperationError} is thrown after
+   * the batch completes. Index updates are attempted after all storage writes
+   * succeed. If an index update fails mid-batch the index is marked dirty and
+   * all subsequent searches fall back to brute-force until
+   * {@link rebuildIndex} is called — stale index state is never used silently.
    */
   @debugMethod('database.addBatch', 'basic', {
     profileEnabled: true,
@@ -194,6 +215,9 @@ export class VectorDB {
     await this.ensureInitialized();
 
     // Validate and prepare all vectors (matching addVector's validation pattern)
+    // BEFORE the quota guard, which may evict existing vectors. Validating first
+    // means a malformed batch is rejected without any destructive eviction —
+    // otherwise a batch that fails validation could still have evicted data.
     const preparedVectors = await Promise.all(
       vectors.map(async ({ id, vector, metadata }) => {
         const validatedId = InputValidator.validateVectorId(id);
@@ -215,11 +239,27 @@ export class VectorDB {
       }),
     );
 
+    // Assert quota is safe before writing.  Throws QuotaSafetyMarginError when
+    // quota is critically low and eviction cannot free enough space. Runs after
+    // validation (so no eviction happens for an invalid batch) but before
+    // putBatch, so writes never proceed past a critical quota state.
+    await this.assertQuotaAvailable();
+
     await this.storage.putBatch(preparedVectors, options);
 
-    // Add each vector to the HNSW index
-    for (const vectorData of preparedVectors) {
-      await this.searchEngine.addVectorToIndex(vectorData);
+    // Add each vector to the HNSW index.
+    // If any index update fails, mark the index dirty so future searches fall
+    // back to brute-force rather than returning stale index results.
+    try {
+      for (const vectorData of preparedVectors) {
+        await this.searchEngine.addVectorToIndex(vectorData);
+      }
+    } catch (error) {
+      this.searchEngine.markIndexDirty();
+      log.error('Index update failed during addBatch — index marked dirty', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
   }
 
@@ -295,6 +335,21 @@ export class VectorDB {
     maxDistance: number,
     options?: SearchOptions & { maxResults?: number },
   ): Promise<SearchResult[]> {
+    // Validate inputs. maxDistance is bounded per metric/dimension, not a fixed
+    // cap, because legitimate thresholds scale with the metric (e.g. a
+    // high-dimension manhattan search can need a threshold of ~dimensions).
+    InputValidator.validateDistance(maxDistance, {
+      metric: this.distanceMetric,
+      dimensions: this.dimension,
+    });
+    // maxResults is a known SearchOptions key, so validateSearchOptions enforces
+    // its positive-integer/≤50,000 contract. Passing the whole options object
+    // through (rather than stripping maxResults first) keeps that guard intact.
+    const validatedOptions = InputValidator.validateSearchOptions(options);
+
+    // Validate vector format and dimension
+    VectorFormatHandler.validate(queryVector, this.dimension);
+
     await this.ensureInitialized();
 
     // Validate dimension
@@ -306,7 +361,11 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    return this.searchEngine.searchRange(query, maxDistance, options);
+    return this.searchEngine.searchRange(
+      query,
+      maxDistance,
+      validatedOptions as SearchOptions & { maxResults?: number },
+    );
   }
 
   /**
@@ -320,6 +379,21 @@ export class VectorDB {
       progressive?: boolean;
     },
   ): AsyncGenerator<SearchResult[], void, unknown> {
+    // Validate the SearchOptions subset (filter/timeout/maxResults/batchSize/…)
+    // so streaming honours the same closed contract as search(); without this
+    // the engine defaults a missing maxResults to Infinity and passes it as k,
+    // materialising the entire candidate set on large datasets.
+    const { progressive, ...searchOptions } = options ?? {};
+    const validatedOptions = InputValidator.validateSearchOptions(
+      searchOptions,
+    ) as SearchOptions & { batchSize?: number; maxResults?: number };
+    if (progressive !== undefined && typeof progressive !== 'boolean') {
+      throw new Error('progressive must be a boolean');
+    }
+
+    // Validate vector format and dimension
+    VectorFormatHandler.validate(queryVector, this.dimension);
+
     await this.ensureInitialized();
 
     // Validate dimension
@@ -331,7 +405,10 @@ export class VectorDB {
     const query = VectorFormatHandler.toFloat32Array(queryVector);
 
     // Use the search engine
-    yield* this.searchEngine.searchStream(query, options);
+    yield* this.searchEngine.searchStream(query, {
+      ...validatedOptions,
+      ...(progressive !== undefined && { progressive }),
+    });
   }
 
   /**
@@ -343,7 +420,13 @@ export class VectorDB {
   }
 
   /**
-   * Enable or disable HNSW indexing
+   * Enable or disable HNSW approximate nearest-neighbor indexing.
+   *
+   * **Status: Experimental** — HNSW recall, deletion, update, persistence,
+   * and rebuild correctness are not validated. Brute-force search (the
+   * default, `useIndex: false`) is recommended for production use until these
+   * limitations are resolved. See {@link HNSWIndex} for the full list of
+   * known gaps.
    */
   async setIndexing(enabled: boolean): Promise<void> {
     await this.ensureInitialized();
@@ -364,15 +447,123 @@ export class VectorDB {
   }
 
   /**
-   * Get index statistics
+   * Get index statistics including dirty-entry count from the persistence cache.
    */
   getIndexStats(): {
     enabled: boolean;
     nodeCount: number;
+    dirtyCount: number;
     levels?: number[];
     avgConnections?: number;
   } {
     return this.searchEngine.getIndexStats();
+  }
+
+  /**
+   * Assert that sufficient quota is available before a write operation.
+   *
+   * When the quota monitor reports a critical or emergency level:
+   * 1. If `autoEviction` is enabled, eviction runs and is fully **awaited**
+   *    before this method returns.
+   * 2. A forced re-check is performed after eviction.
+   * 3. If quota remains at a critical level after eviction (or eviction is
+   *    disabled), a `QuotaSafetyMarginError` is thrown so the caller aborts
+   *    before writing any partial data.
+   *
+   * Callers must invoke this method **before** writing any record to storage.
+   * The write must not proceed if this method throws.
+   */
+  private async assertQuotaAvailable(): Promise<void> {
+    const quotaEstimate = await this.quotaMonitor.checkQuota(true);
+
+    // No quota API available — cannot enforce; proceed optimistically
+    if (!quotaEstimate) return;
+
+    const { usageRatio, available, quota } = quotaEstimate;
+
+    // Safety margin: reject writes when less than 5% of quota remains
+    const HARD_REJECT_RATIO = 0.95;
+
+    if (usageRatio < HARD_REJECT_RATIO) return;
+
+    // Quota is critically low.  Try auto-eviction first if enabled.
+    if (this.autoEviction) {
+      const targetBytes =
+        usageRatio >= 0.98
+          ? Math.floor(quota * 0.2) // Emergency: free 20%
+          : Math.floor(quota * 0.1); // Critical: free 10%
+
+      log.info(
+        `Pre-write quota guard: usage at ${(usageRatio * 100).toFixed(1)}%. Attempting eviction to free ${this.formatBytes(targetBytes)}.`,
+      );
+
+      try {
+        const suggestion = await this.evictionManager.suggestStrategy(targetBytes);
+        const result = await this.evictionManager.evict(suggestion.config);
+
+        log.info(
+          `Pre-write eviction completed: freed ${this.formatBytes(result.freedBytes)} by removing ${result.evictedCount} vectors`,
+        );
+
+        if (result.evictedCount > 0) {
+          await this.searchEngine.rebuildIndex();
+        }
+      } catch (evictionError) {
+        log.error('Pre-write eviction failed', {
+          error:
+            evictionError instanceof Error
+              ? evictionError.message
+              : String(evictionError),
+        });
+      }
+
+      // Re-check quota after eviction
+      const postEviction = await this.quotaMonitor.checkQuota(true);
+      if (postEviction && postEviction.usageRatio >= HARD_REJECT_RATIO) {
+        throw new QuotaSafetyMarginError(0, postEviction.available);
+      }
+      return;
+    }
+
+    // Auto-eviction is disabled and we are over the threshold — reject write
+    throw new QuotaSafetyMarginError(0, available);
+  }
+
+  /**
+   * Get worker pool statistics.
+   */
+  getWorkerStats(): {
+    enabled: boolean;
+    initialized: boolean;
+    stats?:
+      | {
+          totalWorkers: number;
+          busyWorkers: number;
+          queueLength: number;
+          activeTasks: number;
+          sharedMemoryEnabled: boolean;
+        }
+      | undefined;
+  } {
+    return this.searchEngine.getWorkerStats();
+  }
+
+  /**
+   * Get GPU acceleration statistics.
+   */
+  getGPUStats(): {
+    enabled: boolean;
+    available: boolean;
+    initialized: boolean;
+    capabilities?:
+      | {
+          maxBufferSize: number;
+          maxWorkgroupSize: number;
+          features: string[];
+        }
+      | undefined;
+  } {
+    return this.searchEngine.getGPUStats();
   }
 
   /**
@@ -625,8 +816,11 @@ export class VectorDB {
    * Check if a vector exists
    */
   async exists(id: string): Promise<boolean> {
+    // Validate input
+    const validatedId = InputValidator.validateVectorId(id);
+
     await this.ensureInitialized();
-    return this.storage.exists(id);
+    return this.storage.exists(validatedId);
   }
 
   /**
@@ -641,7 +835,16 @@ export class VectorDB {
   }
 
   /**
-   * Delete multiple vectors
+   * Delete multiple vectors.
+   *
+   * **Atomicity model — partial success with index safety:**
+   * Storage deletions run inside a single IndexedDB transaction. Vectors that
+   * cannot be deleted (e.g. they do not exist) are silently skipped; the
+   * returned count reflects only the vectors that were actually removed. Index
+   * entries for successfully deleted vectors are removed after the storage
+   * transaction commits. If any index removal fails the index is marked dirty
+   * and future indexed searches fall back to brute-force until
+   * {@link rebuildIndex} is called.
    */
   async deleteMany(ids: string[]): Promise<number> {
     const validatedIds = InputValidator.validateVectorIds(ids);
@@ -649,9 +852,19 @@ export class VectorDB {
     await this.ensureInitialized();
     const count = await this.storage.deleteMany(validatedIds);
 
-    // Remove each vector from the HNSW index
-    for (const id of validatedIds) {
-      await this.searchEngine.removeVectorFromIndex(id);
+    // Remove each deleted vector from the HNSW index.
+    // If any removal fails, mark the index dirty so future searches fall back
+    // to brute-force rather than returning phantom index results.
+    try {
+      for (const id of validatedIds) {
+        await this.searchEngine.removeVectorFromIndex(id);
+      }
+    } catch (error) {
+      this.searchEngine.markIndexDirty();
+      log.error('Index update failed during deleteMany — index marked dirty', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
     }
 
     return count;
@@ -710,14 +923,28 @@ export class VectorDB {
       updateTimestamp?: boolean;
     },
   ): Promise<void> {
+    // Validate inputs
+    const validatedId = InputValidator.validateVectorId(id);
+    const validatedMetadata = InputValidator.validateMetadata(metadata);
+
     await this.ensureInitialized();
-    await this.storage.updateMetadata(id, metadata, options);
+    await this.storage.updateMetadata(validatedId, validatedMetadata, options);
 
     await this.searchEngine.rebuildIndex({ loadFromCache: false });
   }
 
   /**
-   * Update multiple vectors
+   * Update multiple vectors.
+   *
+   * **Atomicity model — partial success with index safety:**
+   * Storage updates are applied per vector inside IndexedDB transactions
+   * (chunked by `batchSize`). Vectors whose updates fail are recorded in the
+   * returned error list; the caller can inspect `succeeded` / `failed` counts
+   * to determine the final storage state. The HNSW index is rebuilt from
+   * storage after all updates are applied so it reflects the final storage
+   * state. If the index rebuild fails, the index is marked dirty and future
+   * indexed searches fall back to brute-force until {@link rebuildIndex} is
+   * called explicitly.
    */
   async updateBatch(
     updates: Array<{
@@ -735,13 +962,15 @@ export class VectorDB {
 
     // Validate and convert vectors
     const processedUpdates = updates.map((update) => {
+      const validatedId = InputValidator.validateVectorId(update.id);
       const processed: {
         id: string;
         vector?: Float32Array;
         metadata?: Record<string, unknown>;
-      } = { id: update.id };
+      } = { id: validatedId };
 
       if (update.vector) {
+        VectorFormatHandler.validate(update.vector, this.dimension);
         if (update.vector.length !== this.dimension) {
           throw new DimensionMismatchError(this.dimension, update.vector.length);
         }
@@ -749,14 +978,25 @@ export class VectorDB {
       }
 
       if (update.metadata !== undefined) {
-        processed.metadata = update.metadata;
+        processed.metadata = InputValidator.validateMetadata(update.metadata);
       }
 
       return processed;
     });
 
     const result = await this.storage.updateBatch(processedUpdates, options);
-    await this.searchEngine.rebuildIndex({ loadFromCache: false });
+
+    // Rebuild the index from the post-update storage state.
+    // If rebuild fails, mark dirty so future searches fall back to brute-force.
+    try {
+      await this.searchEngine.rebuildIndex({ loadFromCache: false });
+    } catch (error) {
+      this.searchEngine.markIndexDirty();
+      log.error('Index rebuild failed after updateBatch — index marked dirty', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     return result;
   }

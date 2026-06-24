@@ -100,6 +100,9 @@ playwright-report/
 # Repomix summary
 repomix-output.xml
 
+# Generated package-consumer verification workspaces
+tmp/
+
 # Environment variables
 .env
 .env.local
@@ -107,3 +110,6 @@ repomix-output.xml
 
 requirements
 REQUIREMENTS.md
+
+# Stray build artifacts — src is TypeScript-only
+src/**/*.js

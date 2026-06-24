@@ -44,6 +44,8 @@ export type {
   MetadataFilter,
   FilterOperator,
   FilterValue,
+  FilterTypeString,
+  RegexFilter,
   SimpleFilter,
   AndFilter,
   OrFilter,
@@ -68,6 +70,7 @@ export type {
 
 // Errors
 export {
+  ErrorCode,
   VectorDatabaseError,
   DimensionMismatchError,
   QuotaExceededError,
@@ -75,13 +78,21 @@ export {
   InvalidFormatError,
   NamespaceExistsError,
   NamespaceNotFoundError,
+  NamespaceDeletionBlockedError,
   DatabaseInitializationError,
   TransactionError,
   BatchOperationError,
   IndexError,
   BrowserSupportError,
+  SearchAbortedError,
+  SearchTimeoutError,
+  StorageCorruptionError,
+  StorageFormatError,
+  QuotaSafetyMarginError,
   isVectorDatabaseError,
+  sanitizeContext,
 } from './core/errors.js';
+export type { ErrorCodeValue } from './core/errors.js';
 
 // Vector utilities
 export { VectorOperations } from './vectors/operations.js';
@@ -102,13 +113,47 @@ export {
   MetadataRangeQuery,
   metadataQuery,
 } from './search/metadata-filter.js';
+/** @experimental HNSW recall, deletion, update, persistence, and rebuild guarantees are unvalidated. See {@link HNSWIndex} for details. */
 export { HNSWIndex } from './search/hnsw-index.js';
-export { IndexPersistence, IndexCache } from './search/index-persistence.js';
+export {
+  IndexPersistence,
+  IndexCache,
+  type IndexHealthState,
+  type IndexHealthReport,
+} from './search/index-persistence.js';
 
 // Storage adapters (universally usable)
 export { MemoryStorageAdapter } from './storage/adapters/memory-adapter.js';
 export { IndexedDatabaseStorageAdapter } from './storage/adapters/indexed-database-adapter.js';
-export { OPFSStorageAdapter } from './storage/adapters/opfs-adapter.js';
+export {
+  OPFSStorageAdapter,
+  CorruptVectorFileError,
+} from './storage/adapters/opfs-adapter.js';
+export {
+  ChromeStorageAdapter,
+  CHROME_STORAGE_MAX_SERIALIZED_BYTES,
+  CHROME_LOCAL_STORAGE_MAX_SERIALIZED_BYTES,
+} from './storage/adapters/chrome-storage-adapter.js';
+
+// Storage adapter resolution
+export {
+  resolveStorageAdapter,
+  isIndexedDBAvailable,
+  type ResolveStorageAdapterOptions,
+  type StorageBackend,
+} from './storage/resolve-storage-adapter.js';
+
+// Adapter capability matrix — lets consumers query support tiers and runtime
+// compatibility before selecting an adapter.
+export {
+  ADAPTER_SUPPORT_MATRIX,
+  getAdaptersByTier,
+  getAdaptersByRuntime,
+  type AdapterCapabilities,
+  type AdapterSupportTier,
+  type AdapterRuntime,
+  type AdapterName,
+} from './storage/adapters/adapter-capabilities.js';
 
 // Storage management utilities
 export {
@@ -128,5 +173,38 @@ export {
   type EvictionResult,
 } from './storage/eviction-policy.js';
 
+// Observability and health (deep-import: vector-frankl/debug)
+// These are also available from the main entry point for convenience.
+export { ObservabilityManager, observability } from './debug/observability.js';
+export type {
+  ObservabilityEvent,
+  ObservabilityEventType,
+  ObservabilityHandler,
+  SearchLatencyEvent,
+  StorageLatencyEvent,
+  IndexRebuildEvent,
+  QuotaWarningEvent,
+  EvictionEvent,
+  WorkerFailureEvent,
+  GPUFallbackEvent,
+  WASMFallbackEvent,
+  AdapterConnectivityEvent,
+  CorruptionRecoveryEvent,
+} from './debug/observability.js';
+
+export { HealthMonitor, createHealthMonitor } from './debug/health.js';
+export type {
+  HealthStatus,
+  StorageHealth,
+  IndexHealth,
+  AccelerationHealth,
+  AdapterConnectivityResult,
+  DiagnosticsReport,
+} from './debug/health.js';
+
+// WebAssembly integration (experimental — see Production Readiness in the README).
+// Exposed for consumers integrating their own compiled WASM module.
+export { WASMManager } from './wasm/wasm-manager.js';
+
 // Version
-export const VERSION = '1.0.0-beta.1';
+export { VERSION } from './version.js';

@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Storage Defaults E2E Tests</title>
+  </head>
+  <body>
+    <h1>Storage Defaults E2E Tests</h1>
+    <pre id="output"></pre>
+
+    <script type="module">
+      // Import from the built bundle.
+      const mainModule = await import('/dist/index.js');
+
+      const {
+        resolveStorageAdapter,
+        isIndexedDBAvailable,
+        IndexedDatabaseStorageAdapter,
+        MemoryStorageAdapter,
+        VectorDB,
+        BrowserSupportError,
+      } = mainModule;
+
+      // ── Helpers ──────────────────────────────────────────────────────
+
+      function assert(condition, message) {
+        if (!condition) throw new Error(message);
+      }
+
+      // ── Test: isIndexedDBAvailable returns true in a browser ─────────
+
+      window.testIsIndexedDBAvailable = function () {
+        const result = isIndexedDBAvailable();
+        return { available: result, isBoolean: typeof result === 'boolean' };
+      };
+
+      // ── Test: resolveStorageAdapter defaults to IndexedDB in browser ──
+
+      window.testResolveDefaultIsIndexedDB = function () {
+        const adapter = resolveStorageAdapter({
+          name: `storage-defaults-test-${Date.now()}`,
+        });
+        const isIndexedDB = adapter instanceof IndexedDatabaseStorageAdapter;
+        const isMemory = adapter instanceof MemoryStorageAdapter;
+        return { isIndexedDB, isMemory };
+      };
+
+      // ── Test: resolveStorageAdapter explicit indexeddb backend ────────
+
+      window.testResolveExplicitIndexedDB = function () {
+        const adapter = resolveStorageAdapter({
+          name: `storage-defaults-explicit-${Date.now()}`,
+          backend: 'indexeddb',
+        });
+        const isIndexedDB = adapter instanceof IndexedDatabaseStorageAdapter;
+        return { isIndexedDB };
+      };
+
+      // ── Test: resolveStorageAdapter explicit memory backend ───────────
+
+      window.testResolveExplicitMemory = function () {
+        const adapter = resolveStorageAdapter({
+          name: `storage-defaults-memory-${Date.now()}`,
+          backend: 'memory',
+        });
+        const isMemory = adapter instanceof MemoryStorageAdapter;
+        const isIndexedDB = adapter instanceof IndexedDatabaseStorageAdapter;
+        return { isMemory, isIndexedDB };
+      };
+
+      // ── Test: default adapter is initialized and durable ─────────────
+
+      window.testDefaultAdapterIsDurable = async function () {
+        const dbName = `storage-defaults-durable-${Date.now()}`;
+        const adapter = resolveStorageAdapter({ name: dbName });
+        const isIndexedDB = adapter instanceof IndexedDatabaseStorageAdapter;
+
+        // Initialize and write a vector
+        await adapter.init();
+        const vector = {
+          id: 'durable-vec',
+          vector: new Float32Array([1, 2, 3]),
+          magnitude: Math.sqrt(14),
+          timestamp: Date.now(),
+        };
+        await adapter.put(vector);
+
+        const count = await adapter.count();
+        await adapter.destroy();
+
+        return { isIndexedDB, count, wroteAndRead: count === 1 };
+      };
+
+      // ── Test: VectorDB default uses IndexedDB ─────────────────────────
+
+      window.testVectorDBDefaultIsIndexedDB = async function () {
+        // VectorDB default path (no storage option) uses VectorDatabase (IndexedDB).
+        // We verify it initializes without error and the underlying database
+        // is backed by IndexedDB (not memory).
+        const dbName = `storage-defaults-vectordb-${Date.now()}`;
+        const db = new VectorDB(dbName, 3);
+        await db.init();
+
+        const vector = new Array(3).fill(0).map((_, i) => i + 1);
+        await db.addVector('vec1', vector, { durable: true });
+        const stats = await db.getStats();
+        await db.delete();
+
+        return {
+          vectorCount: stats.vectorCount,
+          initialized: stats.initialized,
+        };
+      };
+
+      // Signal that the page is ready
+      window.__STORAGE_DEFAULTS_READY__ = true;
+    </script>
+  </body>
+</html>

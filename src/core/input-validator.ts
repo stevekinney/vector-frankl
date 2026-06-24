@@ -2,6 +2,8 @@
  * Input validation utilities for vector database operations
  */
 
+import type { DistanceMetric } from './types.js';
+
 export interface ValidationOptions {
   /** Maximum allowed string length */
   maxStringLength?: number;
@@ -97,9 +99,26 @@ export class InputValidator {
   }
 
   /**
-   * Validate distance parameter
+   * Validate a distance threshold for range search.
+   *
+   * The upper bound is metric- and dimension-aware rather than a fixed cap: a
+   * legitimate threshold scales with the metric and the vector dimensionality.
+   * For example a {@link maxDistanceForMetric | manhattan} search over 2,000
+   * dimensions can legitimately need a threshold near 2,000 to include vectors
+   * that differ by ~1 in each dimension; a fixed cap of 1,000 would reject it.
+   * Memory exhaustion is bounded by the `maxResults` option, not by this cap;
+   * the cap only rejects nonsensical (infinite / negative) thresholds and
+   * values far outside the metric's possible range.
+   *
+   * @param distance - The candidate distance threshold.
+   * @param context - Optional metric/dimensions used to derive the upper bound.
+   *   When omitted, a conservative fixed cap is applied.
+   * @returns The validated distance.
    */
-  static validateDistance(distance: unknown): number {
+  static validateDistance(
+    distance: unknown,
+    context?: { metric?: DistanceMetric; dimensions?: number },
+  ): number {
     if (typeof distance !== 'number') {
       throw new Error('Distance must be a number');
     }
@@ -108,15 +127,68 @@ export class InputValidator {
       throw new Error('Distance must be finite');
     }
 
-    if (distance < 0) {
-      throw new Error('Distance must be non-negative');
+    const max = this.maxDistanceForMetric(context?.metric, context?.dimensions);
+    // The dot metric's distance is `-dotProduct`, so a "similarity ≥ s" range
+    // query is expressed as a negative threshold (maxDistance = -s). Every other
+    // metric is non-negative. Make the lower bound metric-aware accordingly.
+    const min = context?.metric === 'dot' ? -max : 0;
+
+    if (distance < min) {
+      throw new Error(
+        context?.metric === 'dot'
+          ? `Distance ${distance} is below the minimum ${min} for the dot metric`
+          : 'Distance must be non-negative',
+      );
     }
 
-    if (distance > 1000) {
-      throw new Error('Distance cannot exceed 1000');
+    if (distance > max) {
+      throw new Error(
+        `Distance ${distance} exceeds the maximum ${max} for the ` +
+          `${context?.metric ?? 'default'} metric at ${context?.dimensions ?? 'unknown'} dimensions`,
+      );
     }
 
     return distance;
+  }
+
+  /**
+   * Compute the maximum sensible range-search threshold for a metric/dimension.
+   *
+   * Bounds reflect each metric's theoretical maximum given components in a
+   * normalized range, with generous headroom so legitimate queries are never
+   * rejected:
+   * - `cosine`/`jaccard`: bounded ranges ([0, 2] and [0, 1]) → small constant.
+   * - `hamming`: at most `dimensions` differing positions.
+   * - `euclidean`: scales with √dimensions; allow generous component spread.
+   * - `manhattan`/`dot`: scale linearly with `dimensions`.
+   *
+   * Falls back to a conservative fixed cap when metric/dimensions are unknown.
+   */
+  private static maxDistanceForMetric(
+    metric?: DistanceMetric,
+    dimensions?: number,
+  ): number {
+    if (metric === undefined || dimensions === undefined || dimensions <= 0) {
+      return 1000;
+    }
+    // Allow each component to differ by up to this much when deriving bounds;
+    // covers un-normalized inputs without admitting absurd thresholds.
+    const componentSpread = 100;
+    switch (metric) {
+      case 'cosine':
+        return 4; // range [0, 2]; headroom for clamped/scored variants
+      case 'jaccard':
+        return 2; // range [0, 1]; headroom
+      case 'hamming':
+        return dimensions; // count of differing positions
+      case 'euclidean':
+        return Math.sqrt(dimensions) * componentSpread;
+      case 'manhattan':
+      case 'dot':
+        return dimensions * componentSpread;
+      default:
+        return 1000;
+    }
   }
 
   /**
@@ -369,7 +441,32 @@ export class InputValidator {
   }
 
   /**
-   * Validate search options
+   * The exhaustive set of keys that `SearchOptions` accepts.
+   * Any key absent from this set is rejected at runtime.
+   */
+  private static readonly KNOWN_SEARCH_OPTION_KEYS: ReadonlySet<string> = new Set([
+    'filter',
+    'includeMetadata',
+    'includeVector',
+    'timeout',
+    'signal',
+    'maxResults',
+    'batchSize',
+  ]);
+
+  /**
+   * Upper bound on result/batch counts; rejects values that would invite memory
+   * exhaustion. Also used as the bounded default for streaming search when no
+   * `maxResults` is supplied, so the default path never materializes an
+   * unbounded candidate set.
+   */
+  static readonly MAX_SEARCH_RESULT_LIMIT = 50_000;
+
+  /**
+   * Validate search options against the closed `SearchOptions` contract.
+   *
+   * Unknown keys are rejected so callers cannot silently pass unvalidated
+   * options that change behavior in unpredictable ways.
    */
   static validateSearchOptions(options: unknown): Record<string, unknown> {
     if (options === null || options === undefined) {
@@ -383,8 +480,13 @@ export class InputValidator {
     const opts = options as Record<string, unknown>;
     const validated: Record<string, unknown> = {};
 
-    // Validate each known option
     for (const [key, value] of Object.entries(opts)) {
+      if (!this.KNOWN_SEARCH_OPTION_KEYS.has(key)) {
+        throw new Error(
+          `Unknown search option: "${key}". Accepted keys are: ${[...this.KNOWN_SEARCH_OPTION_KEYS].join(', ')}`,
+        );
+      }
+
       switch (key) {
         case 'filter':
           validated[key] = this.validateMetadata(value);
@@ -396,19 +498,34 @@ export class InputValidator {
           }
           validated[key] = value;
           break;
+        case 'timeout':
+          if (typeof value !== 'number' || !isFinite(value) || value <= 0) {
+            throw new Error('timeout must be a positive finite number');
+          }
+          validated[key] = value;
+          break;
+        case 'signal':
+          if (
+            value === null ||
+            typeof value !== 'object' ||
+            typeof (value as Record<string, unknown>)['aborted'] !== 'boolean'
+          ) {
+            throw new Error('signal must be an object with an aborted boolean property');
+          }
+          validated[key] = value;
+          break;
         case 'maxResults':
         case 'batchSize':
           if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
             throw new Error(`${key} must be a positive integer`);
           }
-          if (value > 50000) {
-            throw new Error(`${key} cannot exceed 50,000`);
+          if (value > this.MAX_SEARCH_RESULT_LIMIT) {
+            throw new Error(
+              `${key} cannot exceed ${this.MAX_SEARCH_RESULT_LIMIT.toLocaleString('en-US')}`,
+            );
           }
           validated[key] = value;
           break;
-        default:
-          // Allow unknown options but don't validate them
-          validated[key] = value;
       }
     }
 

@@ -1,10 +1,155 @@
 /**
- * Base error class for all vector database errors
+ * Stable error codes for all public failure modes.
+ *
+ * These codes are part of the public API surface and must not be renamed
+ * without a major version bump. Add new codes freely; never reuse a retired
+ * code for a different meaning.
+ */
+export const ErrorCode = {
+  // ── Vector errors ────────────────────────────────────────────────────────
+  DIMENSION_MISMATCH: 'DIMENSION_MISMATCH',
+  VECTOR_NOT_FOUND: 'VECTOR_NOT_FOUND',
+  INVALID_FORMAT: 'INVALID_FORMAT',
+  // ── Storage / quota errors ───────────────────────────────────────────────
+  QUOTA_EXCEEDED: 'QUOTA_EXCEEDED',
+  QUOTA_SAFETY_MARGIN: 'QUOTA_SAFETY_MARGIN',
+  DATABASE_INIT_FAILED: 'DATABASE_INIT_FAILED',
+  TRANSACTION_FAILED: 'TRANSACTION_FAILED',
+  STORAGE_CORRUPTION: 'STORAGE_CORRUPTION',
+  STORAGE_FORMAT_ERROR: 'STORAGE_FORMAT_ERROR',
+  // ── Namespace errors ─────────────────────────────────────────────────────
+  NAMESPACE_EXISTS: 'NAMESPACE_EXISTS',
+  NAMESPACE_NOT_FOUND: 'NAMESPACE_NOT_FOUND',
+  NAMESPACE_DELETION_BLOCKED: 'NAMESPACE_DELETION_BLOCKED',
+  // ── Batch / index errors ─────────────────────────────────────────────────
+  BATCH_OPERATION_FAILED: 'BATCH_OPERATION_FAILED',
+  INDEX_ERROR: 'INDEX_ERROR',
+  // ── Search errors ────────────────────────────────────────────────────────
+  SEARCH_ABORTED: 'SEARCH_ABORTED',
+  SEARCH_TIMEOUT: 'SEARCH_TIMEOUT',
+  // ── Environment errors ───────────────────────────────────────────────────
+  BROWSER_NOT_SUPPORTED: 'BROWSER_NOT_SUPPORTED',
+  // ── Catch-all ────────────────────────────────────────────────────────────
+  UNKNOWN_ERROR: 'UNKNOWN_ERROR',
+} as const;
+
+/** Union type of all stable error codes. */
+export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+/**
+ * Recovery guidance for common production failures.
+ *
+ * Consumers can use `error.recovery` to surface actionable next steps
+ * without parsing the error message string.
+ */
+const RECOVERY_GUIDANCE: Partial<Record<ErrorCodeValue, string>> = {
+  DIMENSION_MISMATCH:
+    'Ensure all vectors added to this store have the same dimension as the one ' +
+    'specified during initialization. Re-embed your data if the model changed.',
+  VECTOR_NOT_FOUND:
+    'Verify the vector ID exists before fetching. Use `listVectors()` to enumerate ' +
+    'stored IDs, or catch this error and handle the missing-vector case explicitly.',
+  INVALID_FORMAT:
+    'Pass a Float32Array, Float64Array, Int8Array, Uint8Array, or plain number[] as ' +
+    'the vector value.',
+  QUOTA_EXCEEDED:
+    'Free storage space by deleting unused vectors or namespaces, increase the quota ' +
+    'if your environment allows it, or enable an eviction policy (LRU / LFU / TTL) ' +
+    'to automatically remove stale entries.',
+  DATABASE_INIT_FAILED:
+    'Check that IndexedDB is available and not blocked by a private-browsing ' +
+    'restriction. Verify the database name contains only safe characters and retry ' +
+    'initialization after a short delay.',
+  TRANSACTION_FAILED:
+    'The IndexedDB transaction was aborted. This is usually transient — retry the ' +
+    'operation. If the error persists, check available disk space and browser ' +
+    'storage permissions.',
+  NAMESPACE_EXISTS:
+    'Use `getNamespace()` to retrieve the existing namespace, or choose a different ' +
+    'name. Call `deleteNamespace()` first if you need to recreate it.',
+  NAMESPACE_NOT_FOUND:
+    'Call `createNamespace()` before operating on a namespace, or list available ' +
+    'namespaces with `listNamespaces()` to verify the name.',
+  BATCH_OPERATION_FAILED:
+    'Inspect `error.errors` for per-item failure details. Items that succeeded were ' +
+    'committed; only the failed items need to be retried.',
+  INDEX_ERROR:
+    'The HNSW index encountered an internal inconsistency. Try rebuilding the index ' +
+    'with `rebuildIndex()`. If the error recurs, file a bug with the operation name ' +
+    'and index type from `error.context`.',
+  BROWSER_NOT_SUPPORTED:
+    'This feature requires a modern browser. Check the MDN compatibility table for ' +
+    'the feature named in `error.feature` and upgrade or use a polyfill.',
+};
+
+/**
+ * Keys that are always redacted regardless of context position.
+ *
+ * Policy: sensitive authentication material and raw vector data are never
+ * included in serialized error output. Safe operational values (vector IDs,
+ * namespace names, dimension counts) are intentionally preserved to aid
+ * debugging without leaking secrets.
+ */
+const REDACTED_KEYS: ReadonlySet<string> = new Set([
+  // Authentication & credentials
+  'password',
+  'token',
+  'secret',
+  'key',
+  'auth',
+  'credential',
+  'privatekey',
+  'accesstoken',
+  'refreshtoken',
+  'sessionid',
+  'cookie',
+  'authorization',
+  'x-api-key',
+  'apikey',
+  // Storage connection strings and paths
+  'url',
+  'connectionstring',
+  'connectionurl',
+  'redisurl',
+  'databaseurl',
+  'dburl',
+  's3key',
+  's3url',
+  'endpoint',
+  'filepath',
+  'filename',
+  'path',
+  'dbname',
+  'databasename',
+  // Raw vector data and metadata values that could reconstruct embeddings
+  'vector',
+  'vectordata',
+  'embedding',
+  'metadata',
+  'metadatavalue',
+  'metadatavalues',
+  // Regex patterns that could expose filter logic
+  'pattern',
+  'regex',
+  'regexpattern',
+  // Nested error details that may carry their own sensitive context
+  'originalerror',
+]);
+
+/**
+ * Base error class for all vector database errors.
+ *
+ * Subclasses carry a stable `code` (see {@link ErrorCode}) and optional
+ * `recovery` guidance. The `toJSON()` serialization automatically sanitizes
+ * context values according to the redaction policy documented on
+ * {@link REDACTED_KEYS}.
  */
 export abstract class VectorDatabaseError extends Error {
   public readonly code: string;
   public readonly timestamp: Date;
   public readonly context?: Record<string, unknown> | undefined;
+  /** Actionable recovery guidance for this error code, if available. */
+  public readonly recovery?: string | undefined;
 
   constructor(message: string, code: string, context?: Record<string, unknown>) {
     super(message);
@@ -12,6 +157,7 @@ export abstract class VectorDatabaseError extends Error {
     this.code = code;
     this.timestamp = new Date();
     this.context = context;
+    this.recovery = RECOVERY_GUIDANCE[code as ErrorCodeValue];
 
     // Maintains proper stack trace for where our error was thrown
     if (Error.captureStackTrace) {
@@ -25,67 +171,82 @@ export abstract class VectorDatabaseError extends Error {
       message: this.message,
       code: this.code,
       timestamp: this.timestamp,
-      context: this.sanitizeContext(this.context),
+      context: sanitizeContext(this.context),
+      ...(this.recovery !== undefined && { recovery: this.recovery }),
       // Stack trace removed for security - only include in development
       ...(typeof process !== 'undefined' &&
         process.env?.NODE_ENV === 'development' && { stack: this.stack }),
     };
   }
+}
 
-  /**
-   * Sanitize context to remove sensitive information
-   */
-  private sanitizeContext(
-    context?: Record<string, unknown>,
-  ): Record<string, unknown> | undefined {
-    if (!context) return undefined;
+/**
+ * Sanitize an error context object, redacting values whose keys match the
+ * documented policy ({@link REDACTED_KEYS}).
+ *
+ * Rules:
+ * - Keys in {@link REDACTED_KEYS} (case-insensitive, stripped of separators) → `'[REDACTED]'`
+ * - Keys whose lower-case form contains `'password'`, `'secret'`, `'token'`,
+ *   `'credential'`, or `'accesskey'` → `'[REDACTED]'`
+ * - Strings longer than 1000 characters → truncated to 100 chars + `'... [TRUNCATED]'`
+ * - Nested plain objects → recursed
+ * - Everything else → passed through unchanged
+ *
+ * This function is exported so that other modules (adapters, workers) can
+ * apply the same policy when constructing their own error contexts.
+ */
+export function sanitizeContext(
+  context?: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  if (!context) return undefined;
 
-    const sanitized: Record<string, unknown> = {};
-    const sensitiveKeys = new Set([
-      'password',
-      'token',
-      'secret',
-      'key',
-      'auth',
-      'credential',
-      'privateKey',
-      'accessToken',
-      'refreshToken',
-      'sessionId',
-      'cookie',
-      'authorization',
-      'x-api-key',
-      'apiKey',
-      'originalError', // Remove nested error details that might contain sensitive info
-    ]);
+  const sanitized: Record<string, unknown> = {};
 
-    for (const [key, value] of Object.entries(context)) {
-      const lowerKey = key.toLowerCase();
-
-      // Skip sensitive keys
-      if (
-        sensitiveKeys.has(lowerKey) ||
-        lowerKey.includes('password') ||
-        lowerKey.includes('secret')
-      ) {
-        sanitized[key] = '[REDACTED]';
-        continue;
-      }
-
-      // Handle nested objects recursively
-      if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        sanitized[key] = this.sanitizeContext(value as Record<string, unknown>);
-      } else if (typeof value === 'string') {
-        // Truncate very long strings that might contain sensitive data
-        sanitized[key] =
-          value.length > 1000 ? `${value.substring(0, 100)}... [TRUNCATED]` : value;
-      } else {
-        sanitized[key] = value;
-      }
+  for (const [key, value] of Object.entries(context)) {
+    if (isSensitiveKey(key)) {
+      sanitized[key] = '[REDACTED]';
+      continue;
     }
 
-    return sanitized;
+    // Handle nested objects recursively
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+      sanitized[key] = sanitizeContext(value as Record<string, unknown>);
+    } else if (typeof value === 'string') {
+      // Truncate very long strings that might contain sensitive data
+      sanitized[key] =
+        value.length > 1000 ? `${value.substring(0, 100)}... [TRUNCATED]` : value;
+    } else {
+      sanitized[key] = value;
+    }
   }
+
+  return sanitized;
+}
+
+/**
+ * Returns `true` when the context key should be redacted.
+ *
+ * The normalised key (lower-case, hyphens/underscores stripped) is checked
+ * against the exact-match set first, then against substring patterns.
+ */
+function isSensitiveKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  // Normalised form strips separators so 'access_key_id' → 'accesskeyid'
+  const normalised = lower.replace(/[-_]/g, '');
+
+  if (REDACTED_KEYS.has(lower) || REDACTED_KEYS.has(normalised)) return true;
+
+  // Substring patterns that indicate credentials or connection info
+  return (
+    lower.includes('password') ||
+    lower.includes('secret') ||
+    lower.includes('token') ||
+    lower.includes('credential') ||
+    lower.includes('apikey') ||
+    normalised.includes('apikey') ||
+    lower.includes('accesskey') ||
+    normalised.includes('accesskey')
+  );
 }
 
 /**
@@ -259,6 +420,80 @@ export class IndexError extends VectorDatabaseError {
 }
 
 /**
+ * Thrown when IndexedDB namespace deletion is blocked by an open connection
+ */
+export class NamespaceDeletionBlockedError extends VectorDatabaseError {
+  public readonly namespace: string;
+
+  constructor(namespace: string) {
+    super(
+      `Deletion of namespace '${namespace}' was blocked by an open connection`,
+      'NAMESPACE_DELETION_BLOCKED',
+      { namespace },
+    );
+    this.namespace = namespace;
+  }
+}
+
+/**
+ * Thrown when a serialized record fails integrity or format validation.
+ * Indicates the on-disk payload is unreadable and a documented recovery
+ * path (repair, rebuild, or fail-closed) should be applied.
+ */
+export class StorageCorruptionError extends VectorDatabaseError {
+  public readonly vectorId?: string | undefined;
+  public readonly reason: string;
+
+  constructor(reason: string, vectorId?: string) {
+    super(
+      `Storage record corruption detected${vectorId ? ` for vector '${vectorId}'` : ''}: ${reason}`,
+      'STORAGE_CORRUPTION',
+      { reason, ...(vectorId !== undefined && { vectorId }) },
+    );
+    this.reason = reason;
+    this.vectorId = vectorId;
+  }
+}
+
+/**
+ * Thrown when a serialized record uses an unsupported or unrecognized format
+ * version.  The caller must either migrate the record or reject it.
+ */
+export class StorageFormatError extends VectorDatabaseError {
+  public readonly formatVersion: number;
+  public readonly supportedVersions: readonly number[];
+
+  constructor(formatVersion: number, supportedVersions: readonly number[]) {
+    super(
+      `Unsupported storage format version ${formatVersion}. Supported: [${supportedVersions.join(', ')}]`,
+      'STORAGE_FORMAT_ERROR',
+      { formatVersion, supportedVersions },
+    );
+    this.formatVersion = formatVersion;
+    this.supportedVersions = supportedVersions;
+  }
+}
+
+/**
+ * Thrown when a write is rejected because available storage space is below
+ * the required safety margin.  Auto-eviction either failed or is disabled.
+ */
+export class QuotaSafetyMarginError extends VectorDatabaseError {
+  public readonly required: number;
+  public readonly available: number;
+
+  constructor(required: number, available: number) {
+    super(
+      `Write rejected: required ${required} bytes but only ${available} bytes available within safety margin`,
+      'QUOTA_SAFETY_MARGIN',
+      { required, available },
+    );
+    this.required = required;
+    this.available = available;
+  }
+}
+
+/**
  * Thrown when browser features are not supported
  */
 export class BrowserSupportError extends VectorDatabaseError {
@@ -273,6 +508,30 @@ export class BrowserSupportError extends VectorDatabaseError {
     );
     this.feature = feature;
     this.browser = browser;
+  }
+}
+
+/**
+ * Thrown when a search operation is aborted via an AbortSignal
+ */
+export class SearchAbortedError extends VectorDatabaseError {
+  constructor(context?: Record<string, unknown>) {
+    super('Search was aborted', 'SEARCH_ABORTED', context);
+  }
+}
+
+/**
+ * Thrown when a search operation exceeds its configured timeout
+ */
+export class SearchTimeoutError extends VectorDatabaseError {
+  public readonly timeoutMs: number;
+
+  constructor(timeoutMs: number, context?: Record<string, unknown>) {
+    super(`Search timed out after ${timeoutMs}ms`, 'SEARCH_TIMEOUT', {
+      timeoutMs,
+      ...context,
+    });
+    this.timeoutMs = timeoutMs;
   }
 }
 

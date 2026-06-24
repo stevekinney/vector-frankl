@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { getImportMetaEnvironmentVariables } from './import-meta-environment.js';
+
 const environmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z
@@ -58,14 +60,8 @@ function validateEnvironment(env?: Record<string, string | undefined>): Environm
 
 // Safely get environment variables, handling browser context
 function getEnvironmentVariables(): Record<string, string | undefined> {
-  try {
-    // Try import.meta.env first (Vite/modern bundlers)
-    if (typeof import.meta !== 'undefined' && import.meta.env) {
-      return import.meta.env;
-    }
-  } catch {
-    // Ignore errors
-  }
+  const fromImportMeta = getImportMetaEnvironmentVariables();
+  if (fromImportMeta) return fromImportMeta;
 
   try {
     // Try process.env (Node.js/some bundlers)

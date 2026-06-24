@@ -4,9 +4,15 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import {
+  SQLITE_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
 import { calculateMagnitude } from './serialization.js';
 
 // ---------------------------------------------------------------------------
@@ -104,6 +110,9 @@ interface BunSQLiteDatabase {
 }
 
 export class SQLiteStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = SQLITE_ADAPTER_CAPABILITIES;
+
   private readonly filename: string;
   private database: BunSQLiteDatabase | null = null;
 
@@ -281,6 +290,43 @@ export class SQLiteStorageAdapter implements StorageAdapter {
       total: number;
     } | null;
     return row?.total ?? 0;
+  }
+
+  /**
+   * Stream all vectors using SQL `LIMIT`/`OFFSET` paging.
+   *
+   * Each page is a separate synchronous query so only `pageSize` rows are
+   * held in memory at once. The default page size is 500 records.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const pageSize = options?.pageSize ?? 500;
+    let offset = 0;
+
+    while (true) {
+      if (options?.signal?.aborted) return;
+
+      const database = this.requireDatabase();
+      const rows = database
+        .query(
+          'SELECT id, vector, metadata, magnitude, format, normalized, timestamp, last_accessed, access_count, compression FROM vectors ORDER BY id LIMIT ? OFFSET ?',
+        )
+        .all(pageSize, offset) as VectorRow[];
+
+      if (rows.length === 0) return;
+
+      for (const row of rows) {
+        if (options?.signal?.aborted) return;
+        yield rowToVectorData(row);
+      }
+
+      if (rows.length < pageSize) return;
+      offset += rows.length;
+    }
+  }
+
+  /** SQLite supports `LIMIT`/`OFFSET` paging, so scanning is memory-bounded. */
+  getScanCapabilities(): ScanCapabilities {
+    return { nativeStreaming: true };
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────

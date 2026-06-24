@@ -24,7 +24,38 @@ interface HNSWConfig {
 }
 
 /**
- * Basic HNSW Index Implementation
+ * HNSW (Hierarchical Navigable Small World) approximate nearest-neighbor index.
+ *
+ * **Status: Experimental**
+ *
+ * This implementation is not yet production-supported. The following guarantees
+ * have not been validated and may not hold in all cases:
+ *
+ * - **Recall**: No benchmarks against brute-force search have been run. Recall
+ *   quality at various dataset sizes, dimensions, and parameter settings is
+ *   unknown.
+ *
+ * - **Deletion**: `removeVector` removes connections from the deleted node's
+ *   neighbors but does not reconnect the graph. Removing a high-degree or
+ *   high-level node may create unreachable regions in the graph, silently
+ *   degrading recall without error.
+ *
+ * - **Update**: Updates are implemented as remove-then-re-insert. If the
+ *   remove step leaves isolated graph regions (see Deletion above), search
+ *   quality after repeated updates is undefined.
+ *
+ * - **Persistence**: Index snapshots are saved to IndexedDB, but eviction of
+ *   dirty entries from `IndexCache` is not durably guaranteed. An evicted dirty
+ *   index may be silently lost.
+ *
+ * - **Rebuild**: `rebuildIndex` re-inserts all vectors from storage in
+ *   iteration order, which does not reproduce the original graph structure.
+ *   Rebuild quality has not been benchmarked.
+ *
+ * Use brute-force search (`useIndex: false`, the default) for production
+ * workloads until these limitations are resolved.
+ *
+ * @experimental
  */
 export class HNSWIndex {
   private nodes = new Map<string, HNSWNode>();
@@ -52,7 +83,9 @@ export class HNSWIndex {
   }
 
   /**
-   * Add a vector to the index
+   * Add a vector to the index.
+   *
+   * @experimental See class-level docs for known limitations.
    */
   async addVector(vectorData: VectorData): Promise<void> {
     const level = this.getRandomLevel();
@@ -139,7 +172,11 @@ export class HNSWIndex {
   }
 
   /**
-   * Search for k nearest neighbors
+   * Search for k nearest neighbors.
+   *
+   * Returns approximate results. Recall is not benchmarked or guaranteed.
+   *
+   * @experimental See class-level docs for known limitations.
    */
   async search(
     queryVector: Float32Array,
@@ -176,25 +213,33 @@ export class HNSWIndex {
   }
 
   /**
-   * Remove a vector from the index
+   * Remove a vector from the index.
+   *
+   * **Known limitation (experimental):** This method removes the node and
+   * clears its connections from neighboring nodes, but does not reconnect the
+   * graph. Removing high-degree or high-level nodes may leave unreachable
+   * regions in the index, silently degrading recall without error.
+   *
+   * @experimental See class-level docs for known limitations.
    */
   async removeVector(id: string): Promise<void> {
     const node = this.nodes.get(id);
     if (!node) return;
 
-    // Remove all connections to this node
+    // Remove all connections to this node from its neighbours
     for (const [level, connections] of node.connections) {
       for (const connectedId of connections) {
         this.removeConnection(connectedId, id, level);
       }
     }
 
-    // Find new entry point if needed
+    // Delete the node first so findNewEntryPoint cannot re-select it
+    this.nodes.delete(id);
+
+    // Update entry point after the node is gone
     if (this.entryPoint === id) {
       this.entryPoint = this.findNewEntryPoint();
     }
-
-    this.nodes.delete(id);
   }
 
   /**
@@ -237,10 +282,13 @@ export class HNSWIndex {
     const candidates = new Set<string>();
     const w = new Map<string, number>(); // nodeId -> distance
 
-    // Initialize with entry point
+    // Guard: entry point may no longer exist (deleted after being set as currentClosest)
+    const entryNode = this.nodes.get(entryPoint);
+    if (!entryNode) return [];
+
     const entryDistance = this.distanceCalculator.calculate(
       queryVector,
-      this.nodes.get(entryPoint)!.vector,
+      entryNode.vector,
     );
 
     candidates.add(entryPoint);
@@ -270,17 +318,21 @@ export class HNSWIndex {
         }
       }
 
-      // Explore neighbors
-      const node = this.nodes.get(closest)!;
-      const connections = node.connections.get(level) || new Set<string>();
+      // Explore neighbors — guard against stale connections pointing to deleted nodes
+      const node = this.nodes.get(closest);
+      if (!node) continue;
+      const connections = node.connections.get(level) ?? new Set<string>();
 
       for (const neighborId of connections) {
         if (!visited.has(neighborId)) {
           visited.add(neighborId);
 
+          const neighborNode = this.nodes.get(neighborId);
+          if (!neighborNode) continue; // skip stale/deleted neighbour
+
           const neighborDistance = this.distanceCalculator.calculate(
             queryVector,
-            this.nodes.get(neighborId)!.vector,
+            neighborNode.vector,
           );
 
           candidates.add(neighborId);

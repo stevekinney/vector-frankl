@@ -1,5 +1,5 @@
 import { VectorDatabase } from '@/core/database.js';
-import { TransactionError } from '@/core/errors.js';
+import { IndexError, TransactionError } from '@/core/errors.js';
 import type { DistanceMetric } from '@/core/types.js';
 import { log } from '@/utilities/logger.js';
 import type { HNSWIndex } from './hnsw-index.js';
@@ -31,11 +31,59 @@ interface SerializableHNSWIndex {
 }
 
 /**
+ * Health states an index entry can be in, queryable without performing a search.
+ *
+ * - `healthy`       — loaded, clean, and ready for search.
+ * - `dirty`         — in-memory mutations exist that have not yet been persisted.
+ * - `stale`         — the entry was loaded from storage but the in-memory copy has
+ *                     not been refreshed since the last known storage write.
+ * - `missing`       — no entry exists in cache or storage for the given index ID.
+ * - `incompatible`  — a persisted entry was found but its serialization version is
+ *                     not supported; a rebuild is required.
+ * - `rebuilding`    — the index is currently being rebuilt from raw storage.
+ * - `disabled`      — indexing is turned off for this search engine instance.
+ * - `error`         — a prior persistence or load attempt failed; the entry may be
+ *                     partially valid and should be treated with caution.
+ */
+export type IndexHealthState =
+  | 'healthy'
+  | 'dirty'
+  | 'stale'
+  | 'missing'
+  | 'incompatible'
+  | 'rebuilding'
+  | 'disabled'
+  | 'error';
+
+/** Full health report for a single cached index entry. */
+export type IndexHealthReport = {
+  /** The index ID this report describes. */
+  indexId: string;
+  /** Current health state. */
+  state: IndexHealthState;
+  /** True when the in-memory copy has unsaved mutations. */
+  isDirty: boolean;
+  /** Last successful access timestamp (ms since epoch), or undefined if never accessed. */
+  lastAccess: number | undefined;
+  /** Human-readable description of what the state means and how to recover. */
+  message: string;
+  /** The error that caused the `error` state, if applicable. */
+  persistenceError?: Error | undefined;
+};
+
+/**
  * Index persistence manager for HNSW indices
  */
 export class IndexPersistence {
   private static readonly STORE_NAME = VectorDatabase.STORES.HNSW_INDICES;
   private static readonly VERSION = '1.0.0';
+
+  /**
+   * Supported serialization versions that this implementation can load.
+   * Versions outside this set will produce an explicit rebuild error rather
+   * than silently returning bad data.
+   */
+  private static readonly SUPPORTED_VERSIONS = new Set(['1.0.0']);
 
   constructor(private database: VectorDatabase) {}
 
@@ -116,6 +164,21 @@ export class IndexPersistence {
     }
 
     const serializedIndex = result.data as SerializableHNSWIndex;
+
+    // Reject indexes whose serialization format is not supported by this version.
+    if (
+      serializedIndex.version &&
+      !IndexPersistence.SUPPORTED_VERSIONS.has(serializedIndex.version)
+    ) {
+      throw new IndexError(
+        'HNSW',
+        'load',
+        `Index '${indexId}' was serialized with version '${serializedIndex.version}' which is not supported ` +
+          `(supported: ${[...IndexPersistence.SUPPORTED_VERSIONS].join(', ')}). ` +
+          `Delete the stored index and rebuild it from scratch to recover.`,
+      );
+    }
+
     const index = await this.deserializeIndex(serializedIndex);
 
     return {
@@ -199,22 +262,60 @@ export class IndexPersistence {
   }
 
   /**
-   * Get storage usage for indices
+   * Get storage usage for indices.
+   *
+   * Bytes are measured from the actual JSON-serialized representation of each
+   * stored record, not from a fixed per-node estimate.
    */
   async getStorageUsage(): Promise<{
     indexCount: number;
-    estimatedBytes: number;
+    /** Measured byte count of all serialized index records. */
+    measuredBytes: number;
   }> {
-    const indices = await this.listIndices();
+    const result = await this.database.executeTransaction(
+      IndexPersistence.STORE_NAME,
+      'readonly',
+      async (transaction) => {
+        const store = transaction.objectStore(IndexPersistence.STORE_NAME);
 
-    // Rough estimation: each node ~200 bytes + vector data + connections
-    const estimatedBytes = indices.reduce((total, index) => {
-      return total + index.nodeCount * 500; // Conservative estimate
-    }, 0);
+        return new Promise<
+          Array<{ id: string; data: SerializableHNSWIndex; timestamp: number }>
+        >((resolve, reject) => {
+          const request = store.getAll<{
+            id: string;
+            data: SerializableHNSWIndex;
+            timestamp: number;
+          }>();
+
+          request.onsuccess = () => resolve(request.result || []);
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'get storage usage',
+                'Failed to read index records',
+                request.error || undefined,
+              ),
+            );
+        });
+      },
+    );
+
+    // Measure bytes from the serialized representation of each record.
+    let measuredBytes = 0;
+    for (const record of result) {
+      try {
+        const serialized = JSON.stringify(record);
+        // TextEncoder gives the actual UTF-8 byte count, which matches what
+        // IndexedDB stores for structured-clone / JSON payloads.
+        measuredBytes += new TextEncoder().encode(serialized).byteLength;
+      } catch {
+        // If a record cannot be serialized, skip it — don't accumulate bad data.
+      }
+    }
 
     return {
-      indexCount: indices.length,
-      estimatedBytes,
+      indexCount: result.length,
+      measuredBytes,
     };
   }
 
@@ -294,19 +395,27 @@ export class IndexPersistence {
   }
 }
 
+/** Internal shape of a single cache slot. */
+type CacheEntry = {
+  index: HNSWIndex;
+  distanceMetric: string;
+  lastAccess: number;
+  isDirty: boolean;
+  /** Set when a persistence attempt failed; the entry stays in cache. */
+  persistenceError: Error | undefined;
+};
+
 /**
- * Index cache manager
+ * Index cache manager.
+ *
+ * Wraps `IndexPersistence` with an in-memory LRU cache.  When the cache
+ * exceeds its size limit, the least-recently-used entry is evicted.  If that
+ * entry has unsaved mutations (`isDirty`), eviction **awaits** the save; on
+ * failure the entry is **kept in cache** with a retryable `persistenceError`
+ * flag rather than dropping the mutations silently.
  */
 export class IndexCache {
-  private cache = new Map<
-    string,
-    {
-      index: HNSWIndex;
-      distanceMetric: string;
-      lastAccess: number;
-      isDirty: boolean;
-    }
-  >();
+  private cache = new Map<string, CacheEntry>();
 
   private maxCacheSize = 5; // Maximum number of cached indices
   private persistenceManager: IndexPersistence;
@@ -336,24 +445,29 @@ export class IndexCache {
     const loaded = await this.persistenceManager.loadIndex(indexId);
 
     if (loaded) {
-      this.putInCache(indexId, loaded.index, loaded.distanceMetric);
+      await this.putInCache(indexId, loaded.index, loaded.distanceMetric);
     }
 
     return loaded;
   }
 
   /**
-   * Put index in cache
+   * Put index in cache.
+   *
+   * Returns a Promise that resolves once any necessary eviction has been
+   * durably persisted (or the eviction was skipped because no dirty entry
+   * needed flushing).  Callers that do not need to sequence on eviction may
+   * ignore the returned Promise.
    */
-  putInCache(
+  async putInCache(
     indexId: string,
     index: HNSWIndex,
     distanceMetric: string,
     isDirty = false,
-  ): void {
+  ): Promise<void> {
     // Evict old entries if cache is full
     if (this.cache.size >= this.maxCacheSize) {
-      this.evictLeastRecentlyUsed();
+      await this.evictLeastRecentlyUsed();
     }
 
     this.cache.set(indexId, {
@@ -361,6 +475,7 @@ export class IndexCache {
       distanceMetric,
       lastAccess: Date.now(),
       isDirty,
+      persistenceError: undefined,
     });
   }
 
@@ -375,24 +490,40 @@ export class IndexCache {
   }
 
   /**
-   * Save dirty indices to storage
+   * Save all dirty indices to storage.
+   *
+   * On success each entry's `isDirty` flag is cleared.  Errors are propagated
+   * via `Promise.allSettled` — a single failure does not abort the others, but
+   * the returned Promise rejects after all saves complete if any of them failed.
    */
   async flushDirty(): Promise<void> {
-    const promises: Promise<void>[] = [];
-
-    for (const [indexId, cached] of this.cache) {
-      if (cached.isDirty) {
-        promises.push(
+    const results = await Promise.allSettled(
+      Array.from(this.cache.entries())
+        .filter(([, cached]) => cached.isDirty)
+        .map(([indexId, cached]) =>
           this.persistenceManager
             .saveIndex(indexId, cached.index, cached.distanceMetric)
             .then(() => {
               cached.isDirty = false;
+              cached.persistenceError = undefined;
+            })
+            .catch((error) => {
+              cached.persistenceError =
+                error instanceof Error ? error : new Error(String(error));
+              throw error;
             }),
-        );
-      }
-    }
+        ),
+    );
 
-    await Promise.all(promises);
+    const failures = results.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected',
+    );
+    if (failures.length > 0) {
+      const messages = failures.map((f) => String(f.reason)).join('; ');
+      throw new Error(
+        `flushDirty: ${failures.length} index(es) failed to persist: ${messages}`,
+      );
+    }
   }
 
   /**
@@ -414,9 +545,13 @@ export class IndexCache {
   }
 
   /**
-   * Evict least recently used index
+   * Evict the least-recently-used cache entry.
+   *
+   * If the candidate entry is dirty, the eviction **awaits** persistence.
+   * On failure the entry is **left in cache** with `persistenceError` set so
+   * callers can detect and retry the save without the mutations being dropped.
    */
-  private evictLeastRecentlyUsed(): void {
+  private async evictLeastRecentlyUsed(): Promise<void> {
     let oldestId = '';
     let oldestAccess = Date.now();
 
@@ -427,20 +562,33 @@ export class IndexCache {
       }
     }
 
-    if (oldestId) {
-      const cached = this.cache.get(oldestId);
+    if (!oldestId) return;
 
-      // Save if dirty before evicting
-      if (cached?.isDirty) {
-        void this.persistenceManager
-          .saveIndex(oldestId, cached.index, cached.distanceMetric)
-          .catch((error) => {
-            log.warn(`Failed to save index ${oldestId} during eviction`, {
-              error: error instanceof Error ? error.message : String(error),
-            });
-          });
+    const cached = this.cache.get(oldestId);
+    if (!cached) return;
+
+    if (cached.isDirty) {
+      try {
+        await this.persistenceManager.saveIndex(
+          oldestId,
+          cached.index,
+          cached.distanceMetric,
+        );
+        cached.isDirty = false;
+        cached.persistenceError = undefined;
+        // Persistence succeeded — safe to remove from cache.
+        this.cache.delete(oldestId);
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        log.warn(`Failed to save index ${oldestId} during eviction — keeping in cache`, {
+          error: err.message,
+        });
+        // Mark the entry with the error but do NOT evict it.  Unsaved
+        // mutations must not be dropped silently.
+        cached.persistenceError = err;
       }
-
+    } else {
+      // Clean entry: evict immediately.
       this.cache.delete(oldestId);
     }
   }
@@ -452,16 +600,112 @@ export class IndexCache {
     cacheSize: number;
     maxCacheSize: number;
     dirtyCount: number;
+    errorCount: number;
   } {
     let dirtyCount = 0;
+    let errorCount = 0;
     for (const cached of this.cache.values()) {
       if (cached.isDirty) dirtyCount++;
+      if (cached.persistenceError) errorCount++;
     }
 
     return {
       cacheSize: this.cache.size,
       maxCacheSize: this.maxCacheSize,
       dirtyCount,
+      errorCount,
+    };
+  }
+
+  /**
+   * Signal that the named index is currently being rebuilt.
+   *
+   * The `SearchEngine` calls this before starting and after finishing a rebuild
+   * so that health checks can surface the `rebuilding` state accurately.
+   */
+  setRebuilding(indexId: string, rebuilding: boolean): void {
+    if (rebuilding) {
+      this.rebuildingIds.add(indexId);
+    } else {
+      this.rebuildingIds.delete(indexId);
+    }
+  }
+
+  /** Set of index IDs that are currently being rebuilt. */
+  private rebuildingIds = new Set<string>();
+
+  /**
+   * Return a health report for the named index without performing a search.
+   *
+   * The report includes the current `IndexHealthState` and a human-readable
+   * message explaining what it means and how to recover.
+   */
+  getHealthReport(indexId: string, indexingEnabled: boolean): IndexHealthReport {
+    if (!indexingEnabled) {
+      return {
+        indexId,
+        state: 'disabled',
+        isDirty: false,
+        lastAccess: undefined,
+        message: 'Indexing is disabled for this search engine instance.',
+      };
+    }
+
+    if (this.rebuildingIds.has(indexId)) {
+      const cached = this.cache.get(indexId);
+      return {
+        indexId,
+        state: 'rebuilding',
+        isDirty: cached?.isDirty ?? false,
+        lastAccess: cached?.lastAccess,
+        message: 'The index is currently being rebuilt from storage.',
+      };
+    }
+
+    const cached = this.cache.get(indexId);
+
+    if (!cached) {
+      return {
+        indexId,
+        state: 'missing',
+        isDirty: false,
+        lastAccess: undefined,
+        message:
+          'No index entry exists in the cache. Call rebuildIndex() to populate it, or ' +
+          'perform a search to trigger an automatic load.',
+      };
+    }
+
+    if (cached.persistenceError) {
+      return {
+        indexId,
+        state: 'error',
+        isDirty: cached.isDirty,
+        lastAccess: cached.lastAccess,
+        message:
+          `A previous persistence attempt failed: ${cached.persistenceError.message}. ` +
+          'Call flushDirty() to retry.',
+        persistenceError: cached.persistenceError,
+      };
+    }
+
+    if (cached.isDirty) {
+      return {
+        indexId,
+        state: 'dirty',
+        isDirty: true,
+        lastAccess: cached.lastAccess,
+        message:
+          'The index has unsaved mutations. Call saveIndex() or flushDirty() to persist them.',
+      };
+    }
+
+    return {
+      indexId,
+      state: 'healthy',
+      isDirty: false,
+      lastAccess: cached.lastAccess,
+      message: 'The index is loaded and up to date.',
     };
   }
 }

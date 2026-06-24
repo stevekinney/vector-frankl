@@ -165,14 +165,18 @@ test.describe('Cross-Browser Compatibility Tests', () => {
           `${browser}: Retrieval: ${retrievalTime.toFixed(2)}ms, Search: ${searchTime.toFixed(2)}ms`,
         );
 
-        // Browser-specific performance expectations
+        // Browser-specific performance expectations: exceeding the threshold is a failure.
         const expectedSearchTime = browser.includes('webkit') ? 200 : 100; // Safari might be slower
-        const performanceOk = searchTime < expectedSearchTime;
+        if (searchTime >= expectedSearchTime) {
+          throw new Error(
+            `Search too slow for ${browser}: ${searchTime.toFixed(2)}ms exceeds ${expectedSearchTime}ms threshold`,
+          );
+        }
 
         window.addTestResult(
           `${browser} Storage Limits`,
           'success',
-          `Stored ${vectors.length} vectors, search: ${searchTime.toFixed(2)}ms ${performanceOk ? '✓' : '⚠'}`,
+          `Stored ${vectors.length} vectors, search: ${searchTime.toFixed(2)}ms`,
         );
       } catch (error) {
         window.addTestResult(

@@ -1,10 +1,14 @@
 import { log } from '@/utilities/logger.js';
+import { BATCH_MEMORY_LIMIT_BYTES } from '@/performance/execution-thresholds.js';
+import { splitByMemoryBudget } from '@/performance/memory-guard.js';
 import { VectorDatabase } from './database.js';
 import { BatchOperationError, TransactionError, VectorNotFoundError } from './errors.js';
 import type {
   BatchOptions,
   BatchProgress,
   IndexedDatabaseObjectStore,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from './types.js';
@@ -262,7 +266,16 @@ export class VectorStorage implements StorageAdapter {
   }
 
   /**
-   * Delete multiple vectors by IDs
+   * Delete multiple vectors by IDs.
+   *
+   * **Atomicity model — single-transaction, best-effort:**
+   * All deletions run inside a single IndexedDB `readwrite` transaction. IDs
+   * that do not exist in storage are silently skipped (not counted). If a
+   * deletion fails for a known vector the error is recorded but the transaction
+   * is not aborted — other deletions in the same transaction still proceed.
+   * The returned count is the number of vectors actually removed. If _all_
+   * deletions fail a {@link BatchOperationError} is thrown. The caller is
+   * responsible for index consistency — see {@link VectorDB.deleteMany}.
    */
   async deleteMany(ids: string[]): Promise<number> {
     const result = await this.database.executeTransaction(
@@ -394,6 +407,79 @@ export class VectorStorage implements StorageAdapter {
   }
 
   /**
+   * Stream all vectors from IndexedDB using a key-ranged page approach.
+   *
+   * IndexedDB transactions auto-commit when the event loop is yielded between
+   * IDB requests, so we cannot hold a cursor open across `await` boundaries.
+   * Instead we open a fresh readonly transaction per page, using an
+   * `IDBKeyRange.lowerBound(lastKey, true)` to pick up after the previous
+   * page's last key. Each transaction fetches at most `pageSize` records.
+   *
+   * Memory at any point is bounded to at most `pageSize` records (default 500).
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const pageSize = options?.pageSize ?? 500;
+    let lastKey: string | undefined;
+
+    while (true) {
+      if (options?.signal?.aborted) return;
+      const page = await this.scanPage(lastKey, pageSize);
+      if (page.length === 0) return;
+
+      for (const record of page) {
+        if (options?.signal?.aborted) return;
+        yield record;
+      }
+
+      if (page.length < pageSize) return;
+      lastKey = page[page.length - 1]!.id;
+    }
+  }
+
+  /**
+   * Fetch one page of vectors starting after `afterKey` (exclusive).
+   * Opens a fresh readonly transaction so the cursor does not span `await`.
+   */
+  private async scanPage(
+    afterKey: string | undefined,
+    count: number,
+  ): Promise<VectorData[]> {
+    return this.database.executeTransaction(
+      VectorDatabase.STORES.VECTORS,
+      'readonly',
+      async (transaction) => {
+        const store = transaction.objectStore(VectorDatabase.STORES.VECTORS);
+        const range =
+          afterKey !== undefined
+            ? (IDBKeyRange.lowerBound(afterKey, true) as unknown)
+            : undefined;
+
+        return new Promise<VectorData[]>((resolve, reject) => {
+          const request = store.getAll<VectorData>(range, count);
+
+          request.onsuccess = () => resolve(request.result ?? []);
+          request.onerror = () =>
+            reject(
+              new TransactionError(
+                'scan page',
+                `Failed to fetch scan page after key "${afterKey}"`,
+                request.error ?? undefined,
+              ),
+            );
+        });
+      },
+    );
+  }
+
+  /**
+   * IndexedDB supports key-ranged paged scanning, so each page keeps at most
+   * `pageSize` records in memory at a time.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return { nativeStreaming: true };
+  }
+
+  /**
    * Clear all vectors
    */
   async clear(): Promise<void> {
@@ -421,23 +507,55 @@ export class VectorStorage implements StorageAdapter {
   }
 
   /**
-   * Batch put vectors with progress reporting
+   * Batch put vectors with progress reporting.
+   *
+   * **Atomicity model — partial success:**
+   * Vectors are processed in sub-batches of `batchSize` (default 1000). Each
+   * sub-batch runs inside its own IndexedDB `readwrite` transaction, so
+   * individual write failures within a sub-batch do not roll back writes that
+   * already succeeded in earlier sub-batches. If any vector fails to write, a
+   * {@link BatchOperationError} is thrown after all sub-batches complete; the
+   * error carries `succeeded` and `failed` counts so callers can determine
+   * partial storage state. The caller is responsible for handling index
+   * consistency — see {@link VectorDB.addBatch} for the documented policy.
    */
   async putBatch(vectors: VectorData[], options: BatchOptions = {}): Promise<void> {
-    const { batchSize = 1000, onProgress, abortSignal } = options;
+    const { onProgress, abortSignal } = options;
+    // Caller-supplied batchSize takes precedence; otherwise we size sub-batches
+    // by memory budget so that a single large write cannot exhaust the heap.
+    const memoryLimitBytes = options.memoryLimitBytes ?? BATCH_MEMORY_LIMIT_BYTES;
 
     const total = vectors.length;
     let completed = 0;
     let failed = 0;
     const errors: Array<{ id: string; error: Error }> = [];
 
-    // Process in batches
-    for (let i = 0; i < total; i += batchSize) {
+    // Infer vector dimension from the first element; fall back to 1 so the
+    // budget calculation degrades gracefully for empty/degenerate inputs.
+    const dimension =
+      total > 0 && vectors[0]?.vector?.length ? vectors[0].vector.length : 1;
+
+    // Build an iterator of sub-batches sized by memory budget.
+    // If the caller supplied an explicit batchSize we honour it directly;
+    // otherwise we let splitByMemoryBudget determine the sub-batch size.
+    const subBatches: VectorData[][] = options.batchSize
+      ? (() => {
+          const batches: VectorData[][] = [];
+          for (let i = 0; i < total; i += options.batchSize!) {
+            batches.push(vectors.slice(i, i + options.batchSize!));
+          }
+          return batches;
+        })()
+      : Array.from(splitByMemoryBudget(vectors, dimension, memoryLimitBytes));
+
+    const totalBatches = subBatches.length;
+    let batchIndex = 0;
+
+    for (const batch of subBatches) {
       if (abortSignal?.aborted) {
         throw new Error('Batch operation aborted');
       }
 
-      const batch = vectors.slice(i, i + batchSize);
       const batchResult = await this.processBatch(batch);
 
       completed += batchResult.succeeded;
@@ -450,11 +568,13 @@ export class VectorStorage implements StorageAdapter {
           completed,
           failed,
           percentage: Math.round((completed / total) * 100),
-          currentBatch: Math.floor(i / batchSize) + 1,
-          totalBatches: Math.ceil(total / batchSize),
+          currentBatch: batchIndex + 1,
+          totalBatches,
         };
         onProgress(progress);
       }
+
+      batchIndex++;
     }
 
     if (failed > 0) {
@@ -604,7 +724,17 @@ export class VectorStorage implements StorageAdapter {
   }
 
   /**
-   * Update multiple vectors in a batch
+   * Update multiple vectors in a batch.
+   *
+   * **Atomicity model — partial success per chunk:**
+   * Updates are processed in sub-batches of `batchSize` (default 1000). Each
+   * sub-batch runs inside its own IndexedDB `readwrite` transaction. Individual
+   * update failures within a chunk are collected and returned in the error list
+   * but do not abort the chunk's transaction — other updates in the same chunk
+   * may still succeed. The returned object always carries `succeeded` and
+   * `failed` counts so callers can determine the final storage state. The
+   * caller is responsible for index consistency — see
+   * {@link VectorDB.updateBatch} for the documented policy.
    */
   async updateBatch(
     updates: Array<{

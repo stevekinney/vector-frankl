@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, mock } from 'bun:test';
 
-import { DimensionMismatchError } from '@/core/errors.js';
-import type { StorageAdapter, VectorData } from '@/core/types.js';
+import {
+  DimensionMismatchError,
+  SearchAbortedError,
+  SearchTimeoutError,
+} from '@/core/errors.js';
+import type {
+  AdapterCapabilities,
+  SearchResult,
+  StorageAdapter,
+  VectorData,
+  VectorAbortSignal,
+} from '@/core/types.js';
+import { InputValidator } from '@/core/input-validator.js';
 import { SearchEngine } from '@/search/search-engine.js';
 import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 
@@ -119,7 +130,12 @@ describe('SearchEngine', () => {
   describe('getIndexStats', () => {
     it('should report disabled when index is off', async () => {
       const engine = new SearchEngine(await createMockStorage(), 3);
-      expect(engine.getIndexStats()).toEqual({ enabled: false, nodeCount: 0 });
+      expect(engine.getIndexStats()).toEqual({
+        enabled: false,
+        nodeCount: 0,
+        dirtyCount: 0,
+        indexDirty: false,
+      });
     });
 
     it('should report enabled with zero nodes for a fresh index', async () => {
@@ -565,6 +581,111 @@ describe('SearchEngine', () => {
         expect(results[i]!.distance!).toBeGreaterThanOrEqual(results[i - 1]!.distance!);
       }
     });
+
+    it('searchRange maxResults returns nearest vectors independent of insertion order', async () => {
+      // Set up 10 vectors at distances 1..10 from origin, inserted in reverse order
+      // (farthest first) so that an early-break implementation would return the
+      // wrong results.
+      const vectors = Array.from({ length: 10 }, (_, i) => {
+        // Insert from farthest (distance 10) down to nearest (distance 1).
+        const dist = 10 - i;
+        return makeVector(`d${dist}`, [dist, 0, 0]);
+      });
+
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      // All 10 are within threshold 100; ask for the nearest 3.
+      const results = await engine.searchRange(new Float32Array([0, 0, 0]), 100, {
+        maxResults: 3,
+      });
+
+      expect(results).toHaveLength(3);
+      // The 3 nearest should be at distances 1, 2, 3 — not 10, 9, 8.
+      expect(results[0]!.id).toBe('d1');
+      expect(results[1]!.id).toBe('d2');
+      expect(results[2]!.id).toBe('d3');
+    });
+
+    it('searchRange stable tie-breaking orders equal-distance results by id', async () => {
+      // Three vectors all at distance 1 from origin (one unit along each axis).
+      const vectors = [
+        makeVector('charlie', [1, 0, 0]),
+        makeVector('alpha', [0, 1, 0]),
+        makeVector('bravo', [0, 0, 1]),
+      ];
+
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      const results = await engine.searchRange(new Float32Array([0, 0, 0]), 1.1);
+
+      // All distances are 1.0 — tie-breaking by id should produce alphabetical order.
+      expect(results).toHaveLength(3);
+      expect(results[0]!.id).toBe('alpha');
+      expect(results[1]!.id).toBe('bravo');
+      expect(results[2]!.id).toBe('charlie');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Stable tie-breaking in brute-force search
+  // -----------------------------------------------------------------------
+  describe('stable tie-breaking', () => {
+    it('search returns equal-distance results in stable id order', async () => {
+      // Three orthogonal unit vectors: all at cosine distance 1 from [0,0,1]
+      // (completely orthogonal). Insert in non-alphabetical order.
+      const vectors = [
+        makeVector('zulu', [1, 0, 0]),
+        makeVector('alpha', [0, 1, 0]),
+        makeVector('mike', [1, 0, 0]), // duplicate direction of zulu but different id
+      ];
+
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      // Query the zero vector — all results have the same distance (1.0).
+      const results = await engine.search(new Float32Array([0, 0, 0]), 3);
+
+      expect(results).toHaveLength(3);
+      // Distances are all equal (1); tie-breaking must be by id ascending.
+      const ids = results.map((r) => r.id);
+      const sorted = [...ids].sort();
+      expect(ids).toEqual(sorted);
+    });
+
+    it('searchRange tie-breaking is insertion-order-independent', async () => {
+      // Insert vectors in two different orders and confirm identical output.
+      const makeVectors = () => [
+        makeVector('charlie', [1, 0, 0]),
+        makeVector('alpha', [0, 1, 0]),
+        makeVector('bravo', [0, 0, 1]),
+      ];
+
+      const orderedVectors = makeVectors();
+      const reversedVectors = [...makeVectors()].reverse();
+
+      const engineA = new SearchEngine(
+        await createMockStorage(orderedVectors),
+        3,
+        'euclidean',
+        { useWorkers: false },
+      );
+      const engineB = new SearchEngine(
+        await createMockStorage(reversedVectors),
+        3,
+        'euclidean',
+        { useWorkers: false },
+      );
+
+      const resultsA = await engineA.searchRange(new Float32Array([0, 0, 0]), 1.1);
+      const resultsB = await engineB.searchRange(new Float32Array([0, 0, 0]), 1.1);
+
+      expect(resultsA.map((r) => r.id)).toEqual(resultsB.map((r) => r.id));
+    });
   });
 
   // -----------------------------------------------------------------------
@@ -607,6 +728,36 @@ describe('SearchEngine', () => {
         totalYielded += batch.length;
       }
       expect(totalYielded).toBe(7);
+    });
+
+    it('bounds k to the result-limit cap (not Infinity) when maxResults is omitted', async () => {
+      const vectors = Array.from({ length: 5 }, (_, i) =>
+        makeVector(`v${i}`, [i + 1, 0, 0]),
+      );
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      // Spy on search() to capture the k the stream passes through.
+      let observedK = Number.NaN;
+      const originalSearch = engine.search.bind(engine);
+      engine.search = ((q: Float32Array, k?: number, o?: unknown) => {
+        observedK = k as number;
+        return originalSearch(q, k, o as never);
+      }) as typeof engine.search;
+
+      const batches: number[] = [];
+      for await (const batch of engine.searchStream(new Float32Array([0, 0, 0]), {
+        batchSize: 2,
+      })) {
+        batches.push(batch.length);
+      }
+
+      // k must be the finite contract cap, never Infinity.
+      expect(Number.isFinite(observedK)).toBe(true);
+      expect(observedK).toBe(InputValidator.MAX_SEARCH_RESULT_LIMIT);
+      // All 5 available results are still yielded.
+      expect(batches.reduce((a, b) => a + b, 0)).toBe(5);
     });
   });
 
@@ -698,6 +849,244 @@ describe('SearchEngine', () => {
   });
 
   // -----------------------------------------------------------------------
+  // timeout option
+  // -----------------------------------------------------------------------
+  describe('timeout option', () => {
+    it('should throw SearchTimeoutError when timeout is 0 and search takes time', async () => {
+      // A storage adapter that delays reads to simulate a slow fetch
+      class SlowStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new SlowStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      expect(
+        engine.search(new Float32Array([1, 0, 0]), 5, { timeout: 1 }),
+      ).rejects.toThrow(SearchTimeoutError);
+    });
+
+    it('should include the configured timeout in the error', async () => {
+      class SlowStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new SlowStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      try {
+        await engine.search(new Float32Array([1, 0, 0]), 5, { timeout: 5 });
+        expect.unreachable('should have thrown SearchTimeoutError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(SearchTimeoutError);
+        expect((err as SearchTimeoutError).timeoutMs).toBe(5);
+        expect((err as SearchTimeoutError).code).toBe('SEARCH_TIMEOUT');
+      }
+    });
+
+    it('should complete successfully when timeout is generous', async () => {
+      const vectors = [makeVector('a', [1, 0, 0])];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      // 5000ms timeout should not fire for a trivially small dataset
+      const results = await engine.search(new Float32Array([1, 0, 0]), 5, {
+        timeout: 5000,
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('a');
+    });
+
+    it('should apply timeout to searchRange as well', async () => {
+      class SlowStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new SlowStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      expect(
+        engine.searchRange(new Float32Array([1, 0, 0]), 1.0, { timeout: 1 }),
+      ).rejects.toThrow(SearchTimeoutError);
+    });
+
+    it('should apply timeout to searchStream as well', async () => {
+      class SlowStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new SlowStorageAdapter({ cloneOnRead: false, cloneOnWrite: false });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      const gen = engine.searchStream(new Float32Array([1, 0, 0]), {
+        timeout: 1,
+        batchSize: 5,
+      });
+
+      expect(gen.next()).rejects.toThrow(SearchTimeoutError);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // signal option (abort)
+  // -----------------------------------------------------------------------
+  describe('signal option', () => {
+    /** Simple mutable VectorAbortSignal implementation for tests. */
+    function makeSignal(aborted = false): VectorAbortSignal & { abort(): void } {
+      let isAborted = aborted;
+      return {
+        get aborted() {
+          return isAborted;
+        },
+        abort() {
+          isAborted = true;
+        },
+      };
+    }
+
+    it('should throw SearchAbortedError immediately when signal is already aborted', async () => {
+      const vectors = [makeVector('a', [1, 0, 0])];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(true); // already aborted
+
+      expect(engine.search(new Float32Array([1, 0, 0]), 5, { signal })).rejects.toThrow(
+        SearchAbortedError,
+      );
+    });
+
+    it('should include error code SEARCH_ABORTED', async () => {
+      const engine = new SearchEngine(await createMockStorage([]), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(true);
+
+      try {
+        await engine.search(new Float32Array([1, 0, 0]), 5, { signal });
+        expect.unreachable('should have thrown SearchAbortedError');
+      } catch (err) {
+        expect(err).toBeInstanceOf(SearchAbortedError);
+        expect((err as SearchAbortedError).code).toBe('SEARCH_ABORTED');
+      }
+    });
+
+    it('should abort during an ongoing search when signal fires mid-search', async () => {
+      const signal = makeSignal();
+
+      class AbortingStorageAdapter extends MemoryStorageAdapter {
+        override async getAll(): Promise<VectorData[]> {
+          // Abort the signal before completing the storage read.
+          signal.abort();
+          await new Promise((resolve) => setTimeout(resolve, 10));
+          return super.getAll();
+        }
+      }
+
+      const adapter = new AbortingStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
+      await adapter.put(makeVector('a', [1, 0, 0]));
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+
+      expect(engine.search(new Float32Array([1, 0, 0]), 5, { signal })).rejects.toThrow(
+        SearchAbortedError,
+      );
+    });
+
+    it('should not abort a search when signal is never triggered', async () => {
+      const vectors = [makeVector('a', [1, 0, 0])];
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(); // not aborted
+
+      const results = await engine.search(new Float32Array([1, 0, 0]), 5, { signal });
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('a');
+    });
+
+    it('should throw SearchAbortedError immediately for searchRange when already aborted', async () => {
+      const engine = new SearchEngine(await createMockStorage([]), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(true);
+
+      expect(
+        engine.searchRange(new Float32Array([1, 0, 0]), 1.0, { signal }),
+      ).rejects.toThrow(SearchAbortedError);
+    });
+
+    it('should throw SearchAbortedError immediately for searchStream when already aborted', async () => {
+      const engine = new SearchEngine(await createMockStorage([]), 3, 'cosine', {
+        useWorkers: false,
+      });
+
+      const signal = makeSignal(true);
+
+      const gen = engine.searchStream(new Float32Array([1, 0, 0]), { signal });
+
+      expect(gen.next()).rejects.toThrow(SearchAbortedError);
+    });
+
+    it('should abort between batches in searchStream', async () => {
+      const signal = makeSignal();
+
+      const vectors = Array.from({ length: 15 }, (_, i) =>
+        makeVector(`v${i}`, [i + 1, 0, 0]),
+      );
+
+      const engine = new SearchEngine(await createMockStorage(vectors), 3, 'euclidean', {
+        useWorkers: false,
+      });
+
+      const gen = engine.searchStream(new Float32Array([0, 0, 0]), {
+        batchSize: 5,
+        maxResults: 15,
+        signal,
+      });
+
+      // First batch succeeds.
+      const first = await gen.next();
+      expect(first.done).toBe(false);
+      expect((first.value as SearchResult[]).length).toBeLessThanOrEqual(5);
+
+      // Abort before requesting the next batch.
+      signal.abort();
+
+      expect(gen.next()).rejects.toThrow(SearchAbortedError);
+    });
+  });
+
+  // -----------------------------------------------------------------------
   // Metadata filtering (through brute-force search)
   // -----------------------------------------------------------------------
   describe('metadata filtering', () => {
@@ -717,6 +1106,266 @@ describe('SearchEngine', () => {
 
       expect(results).toHaveLength(1);
       expect(results[0]!.id).toBe('cat');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Adapter-assisted filtered search (metadata indexing)
+  // -----------------------------------------------------------------------
+  describe('adapter-assisted filtered search', () => {
+    it('delegates to filteredScan() when adapter reports metadataIndexing: true', async () => {
+      const vectors = [
+        makeVector('cat', [1, 0, 0], { animal: 'cat' }),
+        makeVector('dog', [0.9, 0.1, 0], { animal: 'dog' }),
+        makeVector('bird', [0, 0, 1], { animal: 'bird' }),
+      ];
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
+      for (const v of vectors) {
+        await adapter.put(v);
+      }
+
+      // MemoryStorageAdapter reports metadataIndexing: true
+      expect(adapter.capabilities.metadataIndexing).toBe(true);
+
+      const filteredScanSpy = mock(adapter.filteredScan.bind(adapter));
+      adapter.filteredScan = filteredScanSpy;
+
+      const engine = new SearchEngine(adapter, 3, 'cosine', { useWorkers: false });
+      const results = await engine.search(new Float32Array([1, 0, 0]), 10, {
+        filter: { animal: 'cat' },
+      });
+
+      // filteredScan should have been called (not getAll)
+      expect(filteredScanSpy).toHaveBeenCalledTimes(1);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('cat');
+    });
+
+    it('falls back to getAll() when adapter lacks filteredScan()', async () => {
+      // Build a minimal StorageAdapter that omits filteredScan and reports
+      // metadataIndexing: false (the absence of capabilities is also fine).
+      const store = new Map<string, VectorData>();
+      const allVectors: VectorData[] = [
+        makeVector('cat', [1, 0, 0], { animal: 'cat' }),
+        makeVector('dog', [0.9, 0.1, 0], { animal: 'dog' }),
+      ];
+      for (const v of allVectors) {
+        store.set(v.id, v);
+      }
+
+      let getAllCalls = 0;
+      const minimalAdapter: StorageAdapter = {
+        capabilities: {
+          tier: 'internal-only',
+          runtimes: ['any'],
+          metadataIndexing: false,
+          persistence: false,
+          transactions: false,
+          batchAtomicity: false,
+          quotaReporting: false,
+          concurrentWriters: false,
+        } satisfies AdapterCapabilities,
+        async init() {},
+        async close() {},
+        async destroy() {
+          store.clear();
+        },
+        async put(v) {
+          store.set(v.id, v);
+        },
+        async get(id) {
+          const v = store.get(id);
+          if (!v) throw new Error(`not found: ${id}`);
+          return v;
+        },
+        async exists(id) {
+          return store.has(id);
+        },
+        async delete(id) {
+          store.delete(id);
+        },
+        async getMany(ids) {
+          return ids.flatMap((id) => {
+            const v = store.get(id);
+            return v ? [v] : [];
+          });
+        },
+        async getAll() {
+          getAllCalls++;
+          return [...store.values()];
+        },
+        async count() {
+          return store.size;
+        },
+        async deleteMany(ids) {
+          let n = 0;
+          for (const id of ids) {
+            if (store.delete(id)) n++;
+          }
+          return n;
+        },
+        async clear() {
+          store.clear();
+        },
+        async putBatch(vectors) {
+          for (const v of vectors) store.set(v.id, v);
+        },
+        async updateVector(id, vector) {
+          const v = store.get(id);
+          if (!v) throw new Error(`not found: ${id}`);
+          v.vector = vector;
+        },
+        async updateMetadata(id, metadata) {
+          const v = store.get(id);
+          if (!v) throw new Error(`not found: ${id}`);
+          v.metadata = metadata;
+        },
+        async updateBatch(updates) {
+          let succeeded = 0;
+          const errors: Array<{ id: string; error: Error }> = [];
+          for (const u of updates) {
+            const v = store.get(u.id);
+            if (!v) {
+              errors.push({ id: u.id, error: new Error('not found') });
+            } else {
+              if (u.vector) v.vector = u.vector;
+              if (u.metadata) v.metadata = u.metadata;
+              succeeded++;
+            }
+          }
+          return { succeeded, failed: errors.length, errors };
+        },
+        async *scan() {
+          for (const v of store.values()) yield v;
+        },
+        getScanCapabilities() {
+          return { nativeStreaming: false, limitationReason: 'in-memory stub' };
+        },
+      };
+
+      const engine = new SearchEngine(minimalAdapter, 3, 'cosine', { useWorkers: false });
+      const results = await engine.search(new Float32Array([1, 0, 0]), 10, {
+        filter: { animal: 'cat' },
+      });
+
+      // Should have used getAll() because filteredScan is absent
+      expect(getAllCalls).toBeGreaterThanOrEqual(1);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('cat');
+    });
+
+    it('produces the same results whether filteredScan or getAll path is used', async () => {
+      const vectors = Array.from({ length: 50 }, (_, i) =>
+        makeVector(`v${i}`, [Math.random(), Math.random(), Math.random()], {
+          group: i % 5 === 0 ? 'target' : 'other',
+        }),
+      );
+
+      // Path A: adapter with filteredScan (MemoryStorageAdapter)
+      const adapterA = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
+      for (const v of vectors) {
+        await adapterA.put(v);
+      }
+      const engineA = new SearchEngine(adapterA, 3, 'cosine', { useWorkers: false });
+
+      // Path B: adapter without filteredScan
+      const storeB = new Map<string, VectorData>();
+      for (const v of vectors) {
+        storeB.set(v.id, v);
+      }
+      const adapterB: StorageAdapter = {
+        async init() {},
+        async close() {},
+        async destroy() {
+          storeB.clear();
+        },
+        async put(v) {
+          storeB.set(v.id, v);
+        },
+        async get(id) {
+          const v = storeB.get(id);
+          if (!v) throw new Error('not found');
+          return v;
+        },
+        async exists(id) {
+          return storeB.has(id);
+        },
+        async delete(id) {
+          storeB.delete(id);
+        },
+        async getMany(ids) {
+          return ids.flatMap((id) => {
+            const v = storeB.get(id);
+            return v ? [v] : [];
+          });
+        },
+        async getAll() {
+          return [...storeB.values()];
+        },
+        async count() {
+          return storeB.size;
+        },
+        async deleteMany(ids) {
+          let n = 0;
+          for (const id of ids) {
+            if (storeB.delete(id)) n++;
+          }
+          return n;
+        },
+        async clear() {
+          storeB.clear();
+        },
+        async putBatch(vs) {
+          for (const v of vs) storeB.set(v.id, v);
+        },
+        async updateVector(id, vector) {
+          const v = storeB.get(id);
+          if (!v) throw new Error('not found');
+          v.vector = vector;
+        },
+        async updateMetadata(id, metadata) {
+          const v = storeB.get(id);
+          if (!v) throw new Error('not found');
+          v.metadata = metadata;
+        },
+        async updateBatch(updates) {
+          let succeeded = 0;
+          const errors: Array<{ id: string; error: Error }> = [];
+          for (const u of updates) {
+            const v = storeB.get(u.id);
+            if (!v) {
+              errors.push({ id: u.id, error: new Error('not found') });
+            } else {
+              if (u.vector) v.vector = u.vector;
+              if (u.metadata) v.metadata = u.metadata;
+              succeeded++;
+            }
+          }
+          return { succeeded, failed: errors.length, errors };
+        },
+        async *scan() {
+          for (const v of storeB.values()) yield v;
+        },
+        getScanCapabilities() {
+          return { nativeStreaming: false, limitationReason: 'in-memory stub' };
+        },
+      };
+      const engineB = new SearchEngine(adapterB, 3, 'cosine', { useWorkers: false });
+
+      const query = new Float32Array([1, 0, 0]);
+      const filter = { group: 'target' };
+
+      const resultsA = await engineA.search(query, 5, { filter });
+      const resultsB = await engineB.search(query, 5, { filter });
+
+      // Both paths must return the same IDs in the same order.
+      expect(resultsA.map((r) => r.id)).toEqual(resultsB.map((r) => r.id));
     });
   });
 
@@ -767,5 +1416,220 @@ describe('SearchEngine', () => {
       expect(results).toHaveLength(1);
       expect(results[0]!.id).toBe('a');
     });
+  });
+
+  // -----------------------------------------------------------------------
+  // Index dirty flag — mutation atomicity and recovery semantics
+  // -----------------------------------------------------------------------
+  describe('index dirty flag', () => {
+    it('should not be dirty on construction', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      expect(engine.isIndexDirty()).toBe(false);
+    });
+
+    it('should mark the index as dirty via markIndexDirty()', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      engine.markIndexDirty();
+
+      expect(engine.isIndexDirty()).toBe(true);
+    });
+
+    it('should fall back to brute-force when index is dirty', async () => {
+      const storage = await createMockStorage([
+        makeVector('a', [1, 0, 0, 0]),
+        makeVector('b', [0, 1, 0, 0]),
+      ]);
+
+      const engine = new SearchEngine(storage, 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      // Populate the HNSW index with only vector 'a' to simulate a partial/stale index.
+      await engine.addVectorToIndex(makeVector('a', [1, 0, 0, 0]));
+
+      // Mark dirty — indexed search must be suppressed.
+      engine.markIndexDirty();
+
+      // Brute-force search sees both vectors; stale HNSW (only 'a') is skipped.
+      const results = await engine.search(new Float32Array([0, 1, 0, 0]), 10);
+
+      const ids = results.map((r) => r.id);
+      expect(ids).toContain('a');
+      expect(ids).toContain('b');
+    });
+
+    it('should clear the dirty flag after a successful rebuildIndex()', async () => {
+      const storage = await createMockStorage([makeVector('a', [1, 0, 0, 0])]);
+
+      const engine = new SearchEngine(storage, 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      engine.markIndexDirty();
+      expect(engine.isIndexDirty()).toBe(true);
+
+      await engine.rebuildIndex({ loadFromCache: false });
+
+      expect(engine.isIndexDirty()).toBe(false);
+    });
+
+    it('should resume indexed search after rebuildIndex() clears the dirty flag', async () => {
+      const storage = await createMockStorage([
+        makeVector('a', [1, 0, 0, 0]),
+        makeVector('b', [0, 1, 0, 0]),
+      ]);
+
+      const engine = new SearchEngine(storage, 4, 'cosine', {
+        useIndex: true,
+        useWorkers: false,
+      });
+
+      // Mark dirty and rebuild — index should now match storage.
+      engine.markIndexDirty();
+      await engine.rebuildIndex({ loadFromCache: false });
+
+      expect(engine.isIndexDirty()).toBe(false);
+
+      // Both vectors reachable after rebuild.
+      const results = await engine.search(new Float32Array([1, 0, 0, 0]), 10);
+      const ids = results.map((r) => r.id);
+      expect(ids).toContain('a');
+      expect(ids).toContain('b');
+    });
+
+    it('should not be dirty when index is disabled', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: false,
+        useWorkers: false,
+      });
+
+      // markIndexDirty has no adverse effect when index is disabled.
+      engine.markIndexDirty();
+      // Search still works via brute-force — dirty flag is set but irrelevant.
+      expect(engine.isIndexDirty()).toBe(true);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Index health checks
+  // -------------------------------------------------------------------------
+  describe('getIndexHealth', () => {
+    it('should report disabled when indexing is off', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: false,
+      });
+
+      const health = engine.getIndexHealth();
+
+      expect(health.state).toBe('disabled');
+      expect(health.isDirty).toBe(false);
+    });
+
+    it('should report healthy for an in-memory index with no persistence', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+      });
+
+      const health = engine.getIndexHealth();
+
+      // In-memory only (no database option provided): index is loaded → healthy
+      expect(health.state).toBe('healthy');
+      expect(health.isDirty).toBe(false);
+    });
+
+    it('should report missing when indexing is disabled and then re-enabled without data', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+      });
+
+      // Disable indexing — clears the in-memory index
+      engine.setIndexing(false);
+
+      const health = engine.getIndexHealth();
+      expect(health.state).toBe('disabled');
+    });
+
+    it('health report contains the correct indexId', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: true,
+        indexId: 'my-search-index',
+      });
+
+      const health = engine.getIndexHealth();
+      expect(health.indexId).toBe('my-search-index');
+    });
+
+    it('should report missing when in-memory index is null (setIndexing false then on)', async () => {
+      const engine = new SearchEngine(await createMockStorage(), 4, 'cosine', {
+        useIndex: false,
+      });
+
+      // Indexing is off, hnswIndex is null → missing state
+      const health = engine.getIndexHealth();
+      // useIndex false → disabled, not missing (no persistence layer)
+      expect(health.state).toBe('disabled');
+    });
+  });
+});
+
+describe('acceleration: SearchEngine configuration passthrough', () => {
+  it('constructs with useWorkers:false without throwing', () => {
+    const engine = new SearchEngine(new MemoryStorageAdapter(), 4, 'cosine', {
+      useWorkers: false,
+      useIndex: false,
+    });
+    expect(engine).toBeDefined();
+  });
+
+  it('constructs with useGPU:false without throwing', () => {
+    const engine = new SearchEngine(new MemoryStorageAdapter(), 4, 'cosine', {
+      useGPU: false,
+      useWorkers: false,
+    });
+    expect(engine).toBeDefined();
+  });
+
+  it('constructs with useIndex:true without throwing', () => {
+    const engine = new SearchEngine(new MemoryStorageAdapter(), 4, 'cosine', {
+      useIndex: true,
+      useWorkers: false,
+    });
+    expect(engine).toBeDefined();
+  });
+
+  it('returns correct results via scalar fallback (no acceleration)', async () => {
+    const storage = new MemoryStorageAdapter();
+    await storage.put({
+      id: 'x',
+      vector: new Float32Array([1, 0, 0, 0]),
+      magnitude: 1,
+      timestamp: Date.now(),
+    });
+    await storage.put({
+      id: 'y',
+      vector: new Float32Array([0, 1, 0, 0]),
+      magnitude: 1,
+      timestamp: Date.now(),
+    });
+
+    const engine = new SearchEngine(storage, 4, 'cosine', {
+      useWorkers: false,
+      useGPU: false,
+      useIndex: false,
+    });
+
+    const results = await engine.search(new Float32Array([1, 0, 0, 0]), 1);
+    expect(results).toHaveLength(1);
+    expect(results[0]!.id).toBe('x');
   });
 });

@@ -3,7 +3,11 @@
  */
 
 import { VectorDB } from '@/api/database.js';
+import { CompressionManager } from '@/compression/compression-manager.js';
+import { ProductQuantizer } from '@/compression/product-quantizer.js';
 import type { DistanceMetric, VectorFormat } from '@/core/types.js';
+import { SearchEngine } from '@/search/search-engine.js';
+import { MemoryStorageAdapter } from '@/storage/adapters/memory-adapter.js';
 import { debugMethod } from '@/debug/hooks.js';
 import { VectorFormatHandler } from '@/vectors/formats.js';
 
@@ -109,6 +113,9 @@ export class BenchmarkSuite {
 
       // Search performance
       await this.benchmarkSearchPerformance();
+
+      // Production-size filtered search (adapter-assisted vs full scan)
+      await this.benchmarkFilteredSearch();
 
       // Indexing performance
       if (this.config.testIndexing) {
@@ -285,6 +292,158 @@ export class BenchmarkSuite {
   }
 
   /**
+   * Benchmark production-size filtered search using the adapter-assisted scan
+   * path (`filteredScan()`) versus the full-materialization fallback path.
+   *
+   * This demonstrates that adapters implementing `filteredScan()` avoid loading
+   * the entire dataset into memory when a metadata filter is active.
+   */
+  private async benchmarkFilteredSearch(): Promise<void> {
+    console.log('🔎 Benchmarking production-size filtered search...');
+
+    const dimension = 128;
+    // Use production-representative dataset sizes.
+    const sizes = [1000, 5000, 10000];
+    // Fraction of vectors that match the filter (selectivity = 10%).
+    const selectivity = 0.1;
+
+    for (const size of sizes) {
+      const adapter = new MemoryStorageAdapter({
+        cloneOnRead: false,
+        cloneOnWrite: false,
+      });
+      await adapter.init();
+
+      // Populate the store.  10% of records have category = 'target'.
+      for (let i = 0; i < size; i++) {
+        const vectorValues = this.generateRandomVector(dimension);
+        const vector = new Float32Array(vectorValues);
+        const category = i < size * selectivity ? 'target' : 'other';
+        await adapter.put({
+          id: `pf-${i}`,
+          vector,
+          metadata: { category },
+          magnitude: Math.sqrt(vectorValues.reduce((s, v) => s + v * v, 0)),
+          timestamp: Date.now(),
+        });
+      }
+
+      const query = this.generateRandomVector(dimension);
+      const filter = { category: 'target' };
+
+      // --- Adapter-assisted path (filteredScan) ---
+      const engineAssisted = new SearchEngine(adapter, dimension, 'cosine', {
+        useWorkers: false,
+      });
+
+      await this.runBenchmark(
+        `Filtered Search — adapter-assisted (${size} docs, ${dimension}D, ${Math.round(selectivity * 100)}% match)`,
+        'search',
+        async () => {
+          await engineAssisted.search(new Float32Array(query), 10, { filter });
+        },
+        {
+          dimension,
+          datasetSize: size,
+          selectivity,
+          path: 'adapter-filteredScan',
+          filtered: true,
+        },
+      );
+
+      // --- Fallback path: wrap adapter so filteredScan is not exposed ---
+      // We construct a plain object that delegates everything to `adapter`
+      // but does not expose `filteredScan` or `capabilities`, so the search
+      // engine takes the full-materialization path.
+      const fallbackAdapter = {
+        async init() {},
+        async close() {},
+        async destroy() {
+          await adapter.destroy();
+        },
+        async put(v: Parameters<typeof adapter.put>[0]) {
+          return adapter.put(v);
+        },
+        async get(id: string) {
+          return adapter.get(id);
+        },
+        async exists(id: string) {
+          return adapter.exists(id);
+        },
+        async delete(id: string) {
+          return adapter.delete(id);
+        },
+        async getMany(ids: string[]) {
+          return adapter.getMany(ids);
+        },
+        async getAll() {
+          return adapter.getAll();
+        },
+        async count() {
+          return adapter.count();
+        },
+        async deleteMany(ids: string[]) {
+          return adapter.deleteMany(ids);
+        },
+        async clear() {
+          return adapter.clear();
+        },
+        async putBatch(
+          vectors: Parameters<typeof adapter.putBatch>[0],
+          options?: Parameters<typeof adapter.putBatch>[1],
+        ) {
+          return adapter.putBatch(vectors, options);
+        },
+        async updateVector(
+          id: string,
+          vector: Float32Array,
+          options?: Parameters<typeof adapter.updateVector>[2],
+        ) {
+          return adapter.updateVector(id, vector, options);
+        },
+        async updateMetadata(
+          id: string,
+          metadata: Record<string, unknown>,
+          options?: Parameters<typeof adapter.updateMetadata>[2],
+        ) {
+          return adapter.updateMetadata(id, metadata, options);
+        },
+        async updateBatch(
+          updates: Parameters<typeof adapter.updateBatch>[0],
+          options?: Parameters<typeof adapter.updateBatch>[1],
+        ) {
+          return adapter.updateBatch(updates, options);
+        },
+        async *scan(options?: Parameters<typeof adapter.scan>[0]) {
+          yield* adapter.scan(options);
+        },
+        getScanCapabilities() {
+          return adapter.getScanCapabilities();
+        },
+      };
+
+      const engineFallback = new SearchEngine(fallbackAdapter, dimension, 'cosine', {
+        useWorkers: false,
+      });
+
+      await this.runBenchmark(
+        `Filtered Search — full-scan fallback (${size} docs, ${dimension}D, ${Math.round(selectivity * 100)}% match)`,
+        'search',
+        async () => {
+          await engineFallback.search(new Float32Array(query), 10, { filter });
+        },
+        {
+          dimension,
+          datasetSize: size,
+          selectivity,
+          path: 'getAll-fallback',
+          filtered: true,
+        },
+      );
+    }
+  }
+
+  /**
    * Benchmark indexing performance
    */
   private async benchmarkIndexing(): Promise<void> {
@@ -418,36 +577,105 @@ export class BenchmarkSuite {
   }
 
   /**
-   * Benchmark compression performance
+   * Benchmark compression performance using real compression strategies
    */
   private async benchmarkCompression(): Promise<void> {
     console.log('🗜️ Benchmarking compression...');
 
-    // This would test the compression system once it's available
-    // For now, we'll simulate compression benchmarks
-    for (const dimension of [256, 512, 1024]) {
-      this.generateRandomVectors(1000, dimension);
+    const scalarManager = new CompressionManager({
+      defaultStrategy: 'scalar',
+      autoSelect: false,
+      minSizeForCompression: 64,
+      validateQuality: false,
+    });
 
+    for (const dimension of [256, 512, 1024]) {
+      const vectors = this.generateRandomVectors(100, dimension);
+
+      // Scalar quantization — compress one vector at a time
       await this.runBenchmark(
-        `Scalar Quantization (${dimension}D, 1000 vectors)`,
+        `Scalar Quantization (${dimension}D, 100 vectors)`,
         'compression',
-        () => {
-          // Simulate compression time
-          const simulationTime = dimension * 0.01;
-          return new Promise((resolve) => setTimeout(resolve, simulationTime));
+        async () => {
+          const vector = new Float32Array(
+            vectors[Math.floor(Math.random() * vectors.length)]!,
+          );
+          await scalarManager.compress(vector, 'scalar');
         },
-        { dimension, compressionType: 'scalar', vectorCount: 1000 },
+        { dimension, compressionType: 'scalar', vectorCount: 100 },
       );
 
+      // Scalar decompression round-trip
+      const sampleVector = new Float32Array(vectors[0]!);
+      const sampleCompressed = await scalarManager.compress(sampleVector, 'scalar');
+
       await this.runBenchmark(
-        `Product Quantization (${dimension}D, 1000 vectors)`,
+        `Scalar Decompression (${dimension}D)`,
         'compression',
-        () => {
-          // Simulate compression time
-          const simulationTime = dimension * 0.05;
-          return new Promise((resolve) => setTimeout(resolve, simulationTime));
+        async () => {
+          await scalarManager.decompress(sampleCompressed);
         },
-        { dimension, compressionType: 'product', vectorCount: 1000 },
+        { dimension, compressionType: 'scalar-decompress' },
+      );
+    }
+
+    // Product quantization requires a trained codebook — train once per dimension.
+    // Use ProductQuantizer directly so maxIterations can be capped for benchmarks.
+    // 256 centroids per subspace requires ≥256 training vectors.
+    for (const dimension of [256, 512]) {
+      const trainingVectors = this.generateRandomVectors(300, dimension);
+
+      const pq = new ProductQuantizer({
+        subspaces: 8,
+        centroidsPerSubspace: 256,
+        validateQuality: false,
+        maxIterations: 5,
+      });
+
+      // Train the codebook once before timing begins
+      const float32TrainingVectors = trainingVectors.map((v) => new Float32Array(v));
+      await pq.trainCodebook(float32TrainingVectors);
+
+      await this.runBenchmark(
+        `Product Quantization (${dimension}D, trained codebook)`,
+        'compression',
+        async () => {
+          const vector = new Float32Array(
+            trainingVectors[Math.floor(Math.random() * trainingVectors.length)]!,
+          );
+          await pq.compress(vector);
+        },
+        { dimension, compressionType: 'product', vectorCount: 300 },
+      );
+
+      // PQ decompression
+      const sampleVec = new Float32Array(trainingVectors[0]!);
+      const sampleCompressedPQ = await pq.compress(sampleVec);
+
+      await this.runBenchmark(
+        `Product Decompression (${dimension}D)`,
+        'compression',
+        async () => {
+          await pq.decompress(sampleCompressedPQ);
+        },
+        { dimension, compressionType: 'product-decompress' },
+      );
+    }
+
+    // Batch scalar compression
+    for (const dimension of [256, 512]) {
+      const batchVectors = this.generateRandomVectors(50, dimension);
+
+      await this.runBenchmark(
+        `Scalar Batch Compression (${dimension}D, 50 vectors)`,
+        'compression',
+        async () => {
+          await scalarManager.compressBatch(
+            batchVectors.map((v) => new Float32Array(v)),
+            'scalar',
+          );
+        },
+        { dimension, compressionType: 'scalar-batch', vectorCount: 50 },
       );
     }
   }

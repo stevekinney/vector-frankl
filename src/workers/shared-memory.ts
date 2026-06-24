@@ -91,12 +91,24 @@ export class SharedMemoryManager {
     const dataSize = vectorCount * dimension * bytesPerElement;
     const totalSize = headerSize + dataSize;
 
-    // Try to find existing block from pool
+    // Try to reuse an existing free block first. Reuse allocates no new memory,
+    // so it must not be gated by the pool limit — only a genuinely new block
+    // counts against maxPoolSize.
     let block = this.findAvailableBlock(totalSize);
 
     if (!block) {
-      // Create new block
+      // A new block is required. Reject only if the *additional* memory it needs
+      // would push total pool memory past the configured limit. Released blocks
+      // still count toward currentAllocated because they remain allocated and
+      // reusable; the guard exists to bound total SharedArrayBuffer memory, not
+      // to reject reuse of already-allocated space.
       const bufferSize = Math.max(totalSize, this.config.initialBufferSize);
+      const currentAllocated = this.memoryPool.reduce((sum, b) => sum + b.size, 0);
+      if (currentAllocated + bufferSize > this.config.maxPoolSize) {
+        throw new Error(
+          `Allocation of ${bufferSize} bytes would exceed the pool memory limit of ${this.config.maxPoolSize} bytes`,
+        );
+      }
       block = this.createBlock(bufferSize);
       this.stats.poolMisses++;
     } else {
@@ -354,7 +366,7 @@ export class SharedMemoryManager {
         },
       );
 
-      // This would be processed by workers in parallel
+      // Process this chunk via brute-force search over shared memory
       const chunkResults = await this.processChunkInWorkers(
         buffer,
         layout.batches[0]!, // Use the first batch layout
@@ -392,7 +404,7 @@ export class SharedMemoryManager {
       }
 
       const age = now - block.lastUsed;
-      return age <= maxAge; // Keep recent blocks
+      return age < maxAge; // Keep blocks younger than maxAge; cleanup(0) drops all unused
     });
 
     const removedCount = initialLength - this.memoryPool.length;

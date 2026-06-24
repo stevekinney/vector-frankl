@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IndexedDB Durability E2E Tests</title>
+</head>
+<body>
+    <h1>IndexedDB Durability E2E Tests</h1>
+    <pre id="output"></pre>
+
+    <script type="module">
+        const mainModule = await import('/dist/index.js');
+        const { IndexedDatabaseStorageAdapter } = mainModule;
+
+        // ── Helpers ──────────────────────────────────────────────────────────
+
+        function makeVector(id, values, metadata) {
+            const vec = new Float32Array(values);
+            const magnitude = Math.sqrt(values.reduce((s, v) => s + v * v, 0));
+            const result = { id, vector: vec, magnitude, timestamp: Date.now() };
+            if (metadata !== undefined) result.metadata = metadata;
+            return result;
+        }
+
+        function assert(condition, message) {
+            if (!condition) throw new Error(message);
+        }
+
+        // Open a raw IndexedDB at a given version and return its info, then close.
+        function openRawDb(name, version) {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(name, version);
+                req.onupgradeneeded = () => {
+                    // No custom stores — just let the browser create the DB.
+                };
+                req.onsuccess = () => {
+                    const db = req.result;
+                    const info = { version: db.version, stores: Array.from(db.objectStoreNames) };
+                    db.close();
+                    resolve(info);
+                };
+                req.onerror = () => reject(req.error);
+                req.onblocked = () => reject(new Error('Database upgrade blocked by other connections'));
+            });
+        }
+
+        function deleteRawDb(name) {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.deleteDatabase(name);
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+        }
+
+        // ── Persistence: write, close, reopen ────────────────────────────────
+
+        window.setupPersistence = async function (dbName) {
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+            await adapter.put(makeVector('persist-vec', [0.1, 0.2, 0.3], { label: 'durable' }));
+            await adapter.close();
+            return { dbName };
+        };
+
+        window.verifyPersistence = async function (dbName) {
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+            const vec = await adapter.get('persist-vec');
+            const count = await adapter.count();
+            await adapter.destroy();
+            return {
+                id: vec.id,
+                metadata: vec.metadata,
+                count,
+            };
+        };
+
+        // ── Multiple instances: two adapters on the same DB ──────────────────
+
+        window.testMultipleInstances = async function () {
+            const dbName = `e2e-idb-multi-${Date.now()}`;
+            const a = new IndexedDatabaseStorageAdapter({ name: dbName });
+            const b = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await a.init();
+            await b.init();
+
+            await a.put(makeVector('from-a', [1, 2], { source: 'a' }));
+            await b.put(makeVector('from-b', [3, 4], { source: 'b' }));
+
+            const countA = await a.count();
+            const countB = await b.count();
+            const vecFromA = await b.get('from-a');
+            const vecFromB = await a.get('from-b');
+
+            // Close both connections before destroying
+            await a.close();
+            await b.close();
+
+            // Destroy via a new temporary instance (no open connection)
+            const cleanup = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await cleanup.destroy();
+
+            return {
+                countA,
+                countB,
+                crossReadA: vecFromA.id,
+                crossReadB: vecFromB.id,
+            };
+        };
+
+        // ── Version-change: open with higher version causes upgrade ──────────
+        // Uses IndexedDatabaseStorageAdapter with version option to verify the
+        // adapter plumbs the version through to IDB correctly.
+
+        window.testVersionUpgrade = async function () {
+            const dbName = `e2e-idb-upgrade-${Date.now()}`;
+
+            // Open at version 1 via adapter — creates schema
+            const adapterV1 = new IndexedDatabaseStorageAdapter({ name: dbName, version: 1 });
+            await adapterV1.init();
+            await adapterV1.close();
+
+            // Confirm the version via raw IDB (re-open at same version)
+            const info1 = await openRawDb(dbName, 1);
+
+            // Open at version 2 via adapter — triggers onupgradeneeded
+            const adapterV2 = new IndexedDatabaseStorageAdapter({ name: dbName, version: 2 });
+            await adapterV2.init();
+            await adapterV2.close();
+
+            // Confirm the version has advanced
+            const info2 = await openRawDb(dbName, 2);
+            await deleteRawDb(dbName);
+
+            return {
+                version1: info1.version,
+                version2: info2.version,
+                storesV1: info1.stores,
+                storesV2: info2.stores,
+            };
+        };
+
+        // ── Version-change with custom migration using native IndexedDB ──────
+
+        window.testCustomMigration = async function () {
+            const dbName = `e2e-idb-migrate-${Date.now()}`;
+            const log = [];
+
+            // Version 1: open with IndexedDatabaseStorageAdapter — establishes schema
+            const adapter1 = new IndexedDatabaseStorageAdapter({ name: dbName, version: 1 });
+            await adapter1.init();
+            log.push('v1-opened');
+            await adapter1.close();
+
+            // Version 2: use raw IndexedDB with a custom upgrade handler.
+            // VectorDatabase.onUpgrade is an internal API not exposed in the
+            // public bundle, so we exercise the migration path directly via
+            // the native IDB API.
+            let version = 0;
+            let stores = [];
+
+            await new Promise((resolve, reject) => {
+                const req = indexedDB.open(dbName, 2);
+                req.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    log.push(`migrated-from-${event.oldVersion}`);
+                    if (!db.objectStoreNames.contains('migration-log')) {
+                        db.createObjectStore('migration-log', { keyPath: 'id' });
+                    }
+                };
+                req.onsuccess = () => {
+                    log.push('v2-opened');
+                    const db = req.result;
+                    version = db.version;
+                    stores = Array.from(db.objectStoreNames);
+                    db.close();
+                    resolve();
+                };
+                req.onerror = () => reject(req.error);
+                req.onblocked = () => reject(new Error('Database blocked'));
+            });
+
+            await deleteRawDb(dbName);
+
+            return { log, version, stores };
+        };
+
+        // ── Blocked upgrade: existing connection blocks version bump ─────────
+
+        window.testBlockedUpgrade = async function () {
+            const dbName = `e2e-idb-blocked-${Date.now()}`;
+
+            // Open v1 via raw IDB and KEEP the connection open
+            const holdDb = await new Promise((resolve, reject) => {
+                const req = indexedDB.open(dbName, 1);
+                req.onupgradeneeded = () => { /* default schema */ };
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+
+            // Try to open v2 — will get blocked because holdDb is open
+            let blockedError = null;
+            try {
+                await new Promise((resolve, reject) => {
+                    const req = indexedDB.open(dbName, 2);
+                    req.onupgradeneeded = () => { /* would run after unblocking */ };
+                    req.onsuccess = () => { req.result.close(); resolve(); };
+                    req.onerror = () => reject(req.error);
+                    req.onblocked = () => reject(new Error('Database upgrade blocked by other connections'));
+                });
+            } catch (error) {
+                blockedError = error.message;
+            }
+
+            // Release the blocking connection
+            holdDb.close();
+            await deleteRawDb(dbName);
+
+            return {
+                wasBlocked: blockedError !== null,
+                errorMessage: blockedError,
+            };
+        };
+
+        // ── Transaction abort: write fails and data is rolled back ───────────
+
+        window.testTransactionAbort = async function () {
+            const dbName = `e2e-idb-abort-${Date.now()}`;
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+
+            // Put a baseline record
+            await adapter.put(makeVector('baseline', [1, 0], { value: 'original' }));
+
+            // updateBatch with one valid and one nonexistent ID
+            const batchResult = await adapter.updateBatch([
+                { id: 'baseline', metadata: { value: 'updated' } },
+                { id: 'nonexistent-id', metadata: { value: 'x' } },
+            ]);
+
+            const baseline = await adapter.get('baseline');
+            const count = await adapter.count();
+            await adapter.destroy();
+
+            return {
+                succeeded: batchResult.succeeded,
+                failed: batchResult.failed,
+                baselineValue: baseline.metadata?.value,
+                count,
+            };
+        };
+
+        // ── Quota simulation: graceful handling when storage fills ───────────
+
+        window.testQuotaAwareness = async function () {
+            const dbName = `e2e-idb-quota-${Date.now()}`;
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+
+            // The Storage estimate API is unavailable in some browsers (notably
+            // WebKit/Safari), so gate only the estimate calls behind the
+            // feature check. The 20 inserts must happen unconditionally — the
+            // test asserts the store holds 20 records regardless of whether the
+            // browser exposes a quota estimate.
+            const hasStorageEstimate =
+                'storage' in navigator && 'estimate' in navigator.storage;
+
+            const before = hasStorageEstimate
+                ? await navigator.storage.estimate()
+                : null;
+
+            const vectors = [];
+            for (let i = 0; i < 20; i++) {
+                vectors.push(makeVector(
+                    `quota-vec-${i}`,
+                    Array.from({ length: 64 }, (_, j) => (i * j) / 1000),
+                ));
+            }
+            await adapter.putBatch(vectors);
+
+            let quotaInfo;
+            if (hasStorageEstimate) {
+                const after = await navigator.storage.estimate();
+                quotaInfo = {
+                    available: true,
+                    beforeUsage: before.usage ?? 0,
+                    afterUsage: after.usage ?? 0,
+                };
+            } else {
+                quotaInfo = { available: false };
+            }
+
+            const count = await adapter.count();
+            await adapter.destroy();
+
+            return { quotaInfo, count };
+        };
+
+        // ── Clear/Update/Delete index consistency ────────────────────────────
+
+        window.testIndexConsistency = async function () {
+            const dbName = `e2e-idb-consistency-${Date.now()}`;
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+
+            // Populate
+            for (let i = 0; i < 5; i++) {
+                await adapter.put(makeVector(`vec-${i}`, [i, i + 1], { group: i % 2 === 0 ? 'even' : 'odd' }));
+            }
+            assert((await adapter.count()) === 5, 'Expected 5 after insert');
+
+            // Update metadata on one
+            await adapter.updateMetadata('vec-2', { group: 'updated' });
+            const updated = await adapter.get('vec-2');
+            assert(updated.metadata?.group === 'updated', 'Metadata update failed');
+
+            // Delete two entries
+            await adapter.delete('vec-0');
+            await adapter.delete('vec-4');
+            assert((await adapter.count()) === 3, 'Expected 3 after deletes');
+
+            // Verify the deleted entries are gone
+            const existsVec0 = await adapter.exists('vec-0');
+            const existsVec4 = await adapter.exists('vec-4');
+
+            // Clear all
+            await adapter.clear();
+            const afterClear = await adapter.count();
+
+            await adapter.destroy();
+
+            return {
+                updatedMetadata: updated.metadata?.group,
+                existsVec0,
+                existsVec4,
+                countAfterDeletes: 3,
+                countAfterClear: afterClear,
+            };
+        };
+
+        // ── deleteMany index consistency ─────────────────────────────────────
+
+        window.testDeleteManyConsistency = async function () {
+            const dbName = `e2e-idb-deletemany-${Date.now()}`;
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+
+            for (let i = 0; i < 6; i++) {
+                await adapter.put(makeVector(`dm-${i}`, [i], { index: i }));
+            }
+            assert((await adapter.count()) === 6, 'Expected 6 after insert');
+
+            // Delete 3 real + 1 phantom
+            const deleted = await adapter.deleteMany(['dm-0', 'dm-2', 'dm-4', 'ghost']);
+            const remaining = await adapter.count();
+            const all = await adapter.getAll();
+            const remainingIds = all.map((v) => v.id).sort();
+
+            await adapter.destroy();
+
+            return {
+                deleted,
+                remaining,
+                remainingIds,
+            };
+        };
+
+        // ── updateVector + updateMetadata persist across reload ───────────────
+
+        window.setupUpdateVectorReload = async function (dbName) {
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+            await adapter.put(makeVector('reload-vec', [1, 0, 0], { version: 1 }));
+            await adapter.updateVector('reload-vec', new Float32Array([0, 1, 0]));
+            await adapter.updateMetadata('reload-vec', { version: 2 });
+            await adapter.close();
+            return { dbName };
+        };
+
+        window.verifyUpdateVectorReload = async function (dbName) {
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+            const vec = await adapter.get('reload-vec');
+            await adapter.destroy();
+            return {
+                vector: Array.from(vec.vector),
+                metadata: vec.metadata,
+            };
+        };
+
+        // ── putBatch abort: aborted batch stops early ────────────────────────
+
+        window.testPutBatchAbort = async function () {
+            const dbName = `e2e-idb-batch-abort-${Date.now()}`;
+            const adapter = new IndexedDatabaseStorageAdapter({ name: dbName });
+            await adapter.init();
+
+            const vectors = Array.from({ length: 30 }, (_, i) =>
+                makeVector(`batch-abort-${i}`, [i, i + 1]),
+            );
+
+            const controller = new AbortController();
+            let batchesSeen = 0;
+
+            let didThrow = false;
+            try {
+                await adapter.putBatch(vectors, {
+                    batchSize: 10,
+                    abortSignal: controller.signal,
+                    onProgress() {
+                        batchesSeen++;
+                        if (batchesSeen === 1) controller.abort();
+                    },
+                });
+            } catch {
+                didThrow = true;
+            }
+
+            const count = await adapter.count();
+            await adapter.destroy();
+
+            return {
+                didThrow,
+                count,
+                abortedEarly: count < 30,
+            };
+        };
+
+        // Signal ready
+        window.__INDEXEDDB_DURABILITY_READY__ = true;
+    </script>
+</body>
+</html>

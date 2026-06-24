@@ -48,7 +48,7 @@ describe('Public API exports', () => {
     expect(typeof VectorFormatHandler).toBe('function');
   });
 
-  it('exports VERSION matching package.json', () => {
+  it('exports VERSION and it matches the package.json version', () => {
     expect(VERSION).toBe(packageJson.version);
   });
 });

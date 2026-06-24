@@ -213,20 +213,6 @@ export class VectorNamespace {
   }
 
   /**
-   * Get the index strategy for this namespace
-   */
-  getIndexStrategy(): string {
-    return this.config.indexStrategy || 'auto';
-  }
-
-  /**
-   * Get the compression strategy for this namespace
-   */
-  getCompressionStrategy(): string {
-    return this.config.compression || 'none';
-  }
-
-  /**
    * Get the full database name for this namespace
    */
   getDatabaseName(): string {

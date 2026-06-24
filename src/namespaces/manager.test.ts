@@ -8,7 +8,11 @@ import {
   it,
 } from 'bun:test';
 
-import { NamespaceExistsError, NamespaceNotFoundError } from '@/core/errors.js';
+import {
+  NamespaceDeletionBlockedError,
+  NamespaceExistsError,
+  NamespaceNotFoundError,
+} from '@/core/errors.js';
 import { VectorOperations } from '@/vectors/operations.js';
 import {
   cleanupIndexedDBMocks,
@@ -201,6 +205,54 @@ describe('NamespaceManager', () => {
       expect(manager.deleteNamespace('does-not-exist')).rejects.toThrow(
         NamespaceNotFoundError,
       );
+    });
+
+    it('should reject and preserve registry state when IndexedDB deletion is blocked', async () => {
+      await manager.createNamespace('blocked-ns', { dimension: 64 });
+
+      // Evict from cache so the manager takes the raw indexedDB.deleteDatabase path.
+      manager.evictFromCache('blocked-ns');
+
+      // Replace indexedDB.deleteDatabase with a version that fires onblocked.
+      const original = (globalThis as Record<string, unknown>)['indexedDB'] as {
+        deleteDatabase: (name: string) => {
+          onsuccess: (() => void) | null;
+          onerror: (() => void) | null;
+          onblocked: (() => void) | null;
+        };
+      };
+
+      (globalThis as Record<string, unknown>)['indexedDB'] = {
+        ...original,
+        deleteDatabase: (_name: string) => {
+          const request = {
+            onsuccess: null as (() => void) | null,
+            onerror: null as (() => void) | null,
+            onblocked: null as (() => void) | null,
+          };
+          queueMicrotask(() => {
+            request.onblocked?.();
+          });
+          return request;
+        },
+      };
+
+      try {
+        let caughtError: unknown;
+        try {
+          await manager.deleteNamespace('blocked-ns');
+        } catch (error) {
+          caughtError = error;
+        }
+
+        expect(caughtError).toBeInstanceOf(NamespaceDeletionBlockedError);
+
+        // Registry state must be unchanged — namespace still exists.
+        const stillExists = await manager.namespaceExists('blocked-ns');
+        expect(stillExists).toBe(true);
+      } finally {
+        (globalThis as Record<string, unknown>)['indexedDB'] = original;
+      }
     });
   });
 

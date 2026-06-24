@@ -2,9 +2,15 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import {
+  REDIS_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
 import {
   calculateMagnitude,
   jsonToVectorData,
@@ -47,6 +53,9 @@ interface RedisStorageAdapterOptions {
 // ---------------------------------------------------------------------------
 
 export class RedisStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = REDIS_ADAPTER_CAPABILITIES;
+
   private readonly url: string | undefined;
   private readonly prefix: string;
   private client: BunRedisClient | null = null;
@@ -201,6 +210,39 @@ export class RedisStorageAdapter implements StorageAdapter {
   async count(): Promise<number> {
     const client = this.getClient();
     return client.scard(this.idSetKey());
+  }
+
+  /**
+   * Stream all vectors by fetching them one at a time from Redis.
+   *
+   * Redis does not support cursor-based range scans over hash keys, so we
+   * must first load the full ID set with SMEMBERS, then fetch each vector
+   * individually. All IDs are loaded upfront but vector data is fetched
+   * lazily one record at a time.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const client = this.getClient();
+    const ids = await client.smembers(this.idSetKey());
+
+    for (const id of ids) {
+      if (options?.signal?.aborted) return;
+      const json = await client.get(this.vectorKey(id));
+      if (json !== null && json !== undefined) {
+        yield jsonToVectorData(json);
+      }
+    }
+  }
+
+  /**
+   * Redis requires loading all IDs with SMEMBERS before individual fetches.
+   * The ID set is always fully materialized; only vector payloads are lazy.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return {
+      nativeStreaming: false,
+      limitationReason:
+        'RedisStorageAdapter requires SMEMBERS to enumerate all keys upfront. Vector payloads are fetched one at a time but the ID set is fully materialized.',
+    };
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────

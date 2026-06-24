@@ -3,6 +3,7 @@
  */
 
 import type { DistanceMetric } from '../core/types.js';
+import { QuotaExceededError } from '../core/errors.js';
 import { log } from '../utilities/logger.js';
 
 export interface WebGPUConfig {
@@ -347,6 +348,60 @@ export class WebGPUManager {
   }
 
   /**
+   * Validate that planned buffer allocations fit within adapter limits.
+   * Throws `QuotaExceededError` with actionable details if any allocation
+   * would exceed the device's `maxStorageBufferBindingSize`.
+   */
+  private validateBufferLimits(
+    vectorsBufferSize: number,
+    queryBufferSize: number,
+    resultsBufferSize: number,
+  ): void {
+    if (!this.capabilities) {
+      // Not yet initialized — skip (init will fail if device is unavailable).
+      return;
+    }
+
+    const limit = this.capabilities.limits.maxStorageBufferBindingSize;
+
+    if (vectorsBufferSize > limit) {
+      log.error('Vectors buffer exceeds adapter limit', {
+        vectorsBufferSize,
+        limit,
+        suggestion: 'Reduce the number of vectors or their dimension.',
+      });
+      throw new QuotaExceededError(vectorsBufferSize, limit);
+    }
+
+    if (queryBufferSize > limit) {
+      log.error('Query buffer exceeds adapter limit', {
+        queryBufferSize,
+        limit,
+        suggestion: 'Reduce the query vector dimension.',
+      });
+      throw new QuotaExceededError(queryBufferSize, limit);
+    }
+
+    if (resultsBufferSize > limit) {
+      log.error('Results buffer exceeds adapter limit', {
+        resultsBufferSize,
+        limit,
+        suggestion: 'Reduce the number of vectors.',
+      });
+      throw new QuotaExceededError(resultsBufferSize, limit);
+    }
+
+    const totalSize = vectorsBufferSize + queryBufferSize + resultsBufferSize;
+    log.debug('GPU buffer allocation validated', {
+      vectorsBufferSize,
+      queryBufferSize,
+      resultsBufferSize,
+      totalSize,
+      limit,
+    });
+  }
+
+  /**
    * Execute the actual compute pass
    */
   private async executeComputePass(
@@ -361,6 +416,14 @@ export class WebGPUManager {
     }
 
     const vectorCount = vectors.length;
+    const dimension = queryVector.length;
+
+    // Compute buffer sizes and validate against adapter limits before allocation.
+    const vectorsBufferSize = vectorCount * dimension * 4; // 4 bytes per float32
+    const queryBufferSize = queryVector.byteLength;
+    const resultsBufferSize = vectorCount * 4; // 4 bytes per float32 score
+
+    this.validateBufferLimits(vectorsBufferSize, queryBufferSize, resultsBufferSize);
 
     // Create input buffers
     const vectorsBuffer = this.createVectorsBuffer(vectors);
@@ -419,6 +482,14 @@ export class WebGPUManager {
     }
 
     const totalSize = vectors.length * vectors[0]!.length * 4; // 4 bytes per float
+
+    // Reject before GPU allocation to prevent memory exhaustion
+    if (totalSize > this.config.maxBufferSize) {
+      throw new Error(
+        `GPU buffer request of ${totalSize} bytes exceeds the configured limit of ${this.config.maxBufferSize} bytes`,
+      );
+    }
+
     const buffer = this.device.createBuffer({
       size: totalSize,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,

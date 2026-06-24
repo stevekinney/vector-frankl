@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { VectorDB, VectorFrankl, SearchEngine } from '@/index.js';
 import { VectorDatabase } from '@/core/database.js';
 import type { SearchOptions, StorageAdapter } from '@/core/types.js';
+import {
+  assertInvariants,
+  type VectorDBInternals,
+} from '@/test/helpers/storage-index-invariants.js';
 import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
 
 describe('Vector Database Integration Tests', () => {
@@ -320,6 +324,132 @@ describe('Vector Database Integration Tests', () => {
       expect(indexStats.enabled).toBe(true);
       // Note: Node count might differ due to implementation details
     });
+
+    it('should restore node count matching stored vector count after close and reopen', async () => {
+      const vectorCount = 20;
+      const vectors = Array.from({ length: vectorCount }, (_, i) => ({
+        id: `lifecycle-${i}`,
+        vector: new Float32Array(dimension).fill((i + 1) / vectorCount),
+        metadata: { index: i },
+      }));
+
+      await db.addBatch(vectors);
+      await db.setIndexing(true);
+      await db.rebuildIndex();
+
+      const statsBefore = db.getIndexStats();
+      expect(statsBefore.nodeCount).toBe(vectorCount);
+
+      // Close and reopen
+      await db.close();
+
+      db = new VectorDB(testDBName, dimension, { useIndex: true });
+      await db.init();
+
+      const statsAfter = db.getIndexStats();
+      expect(statsAfter.enabled).toBe(true);
+      expect(statsAfter.nodeCount).toBe(vectorCount);
+    });
+
+    it('should return the same deterministic top result before and after close', async () => {
+      const vectorCount = 10;
+      const vectors = Array.from({ length: vectorCount }, (_, i) => ({
+        id: `deterministic-${i}`,
+        vector: new Float32Array(dimension).fill((i + 1) / vectorCount),
+        metadata: { index: i },
+      }));
+
+      await db.addBatch(vectors);
+      await db.setIndexing(true);
+      await db.rebuildIndex();
+
+      // Use the first stored vector as the query so the exact top result is known
+      const queryVector = vectors[0]!.vector;
+      const resultsBefore = await db.search(queryVector, 1);
+      expect(resultsBefore).toHaveLength(1);
+      const topIdBefore = resultsBefore[0]!.id;
+
+      // Close and reopen
+      await db.close();
+
+      db = new VectorDB(testDBName, dimension, { useIndex: true });
+      await db.init();
+
+      const resultsAfter = await db.search(queryVector, 1);
+      expect(resultsAfter).toHaveLength(1);
+      expect(resultsAfter[0]!.id).toBe(topIdBefore);
+    });
+
+    it('should rebuild a stale persisted index whose node count does not match storage', async () => {
+      const vectorCount = 5;
+      const vectors = Array.from({ length: vectorCount }, (_, i) => ({
+        id: `stale-${i}`,
+        vector: new Float32Array(dimension).fill((i + 1) / vectorCount),
+        metadata: { index: i },
+      }));
+
+      await db.addBatch(vectors);
+      await db.setIndexing(true);
+      await db.rebuildIndex();
+
+      // Simulate a stale persisted index by building an index with fewer vectors,
+      // saving it, then adding more vectors to storage without updating the index.
+      // We achieve this by disabling the index and adding more vectors, then
+      // re-enabling: the persisted snapshot will be for the old vector count.
+      await db.setIndexing(false);
+      await db.addVector('stale-extra', new Float32Array(dimension).fill(0.5));
+      await db.close();
+
+      // Reopen with indexing enabled; the persisted index has 5 nodes but storage
+      // now has 6 vectors, so init() must detect the mismatch and rebuild.
+      db = new VectorDB(testDBName, dimension, { useIndex: true });
+      await db.init();
+
+      const stats = db.getIndexStats();
+      expect(stats.enabled).toBe(true);
+      expect(stats.nodeCount).toBe(vectorCount + 1); // All 6 vectors indexed
+    });
+
+    it('rebuilds a persisted index when the distance metric changes on reopen', async () => {
+      const vectorCount = 6;
+      const vectors = Array.from({ length: vectorCount }, (_, i) => ({
+        id: `metric-${i}`,
+        vector: new Float32Array(dimension).fill((i + 1) / vectorCount),
+        metadata: { index: i },
+      }));
+
+      // Build and persist a cosine-metric index.
+      const cosineDB = new VectorDB(testDBName, dimension, {
+        useIndex: true,
+        distanceMetric: 'cosine',
+      });
+      await cosineDB.init();
+      await cosineDB.addBatch(vectors);
+      await cosineDB.rebuildIndex();
+      expect(cosineDB.getIndexStats().nodeCount).toBe(vectorCount);
+      await cosineDB.close();
+
+      // Reopen the SAME database/dimension under euclidean. The persisted index
+      // has a matching node count but was built for cosine, so reusing it would
+      // traverse a cosine graph while reporting euclidean scores. It must rebuild.
+      db = new VectorDB(testDBName, dimension, {
+        useIndex: true,
+        distanceMetric: 'euclidean',
+      });
+      await db.init();
+      await db.rebuildIndex();
+
+      const stats = db.getIndexStats();
+      expect(stats.enabled).toBe(true);
+      expect(stats.nodeCount).toBe(vectorCount);
+
+      // Indexed euclidean search agrees with the brute-force euclidean answer:
+      // the query equals the first stored vector, so it must be the top result.
+      const query = vectors[0]!.vector;
+      const results = await db.search(query, 1);
+      expect(results).toHaveLength(1);
+      expect(results[0]!.id).toBe('metric-0');
+    });
   });
 
   describe('Indexed Mutation Consistency', () => {
@@ -381,6 +511,9 @@ describe('Vector Database Integration Tests', () => {
       expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
         [],
       );
+
+      // Invariant: after clear(), index and storage must both be empty.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
 
     it('should delete persisted indexes when clearing while indexing is disabled', async () => {
@@ -396,6 +529,9 @@ describe('Vector Database Integration Tests', () => {
       expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
         [],
       );
+
+      // Invariant: after clear() + re-enable indexing, index and storage must agree.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
 
     it('should delete persisted indexes when clearing from a non-indexed instance', async () => {
@@ -423,6 +559,9 @@ describe('Vector Database Integration Tests', () => {
       expect(await searchPersistedIndex([1, 0], 5, { includeMetadata: true })).toEqual(
         [],
       );
+
+      // Invariant: after clear() from non-indexed instance + rebuild, storage and index agree.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
 
     it('should force-rebuild cached indexes after metadata updates', async () => {
@@ -440,6 +579,9 @@ describe('Vector Database Integration Tests', () => {
       });
       expect(persistedResults).toHaveLength(1);
       expect(persistedResults[0]!.metadata).toEqual({ label: 'new' });
+
+      // Invariant: after updateMetadata, index and storage must agree on membership.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
 
     it('should force-rebuild cached indexes after batch vector updates', async () => {
@@ -478,6 +620,9 @@ describe('Vector Database Integration Tests', () => {
       );
       expect(persistedUpdatedResult?.metadata).toEqual({ label: 'updated' });
       expect(Array.from(persistedUpdatedResult!.vector!)).toEqual([0, 1]);
+
+      // Invariant: after updateBatch, index and storage must agree on membership.
+      await assertInvariants(db as unknown as VectorDBInternals);
     });
   });
 
@@ -709,6 +854,384 @@ describe('Vector Database Integration Tests', () => {
       // Original data should still be accessible
       const retrieved = await db.getVector('valid');
       expect(retrieved).toBeTruthy();
+    });
+  });
+
+  describe('Input Validation — Public Entry Points', () => {
+    describe('VectorDB constructor', () => {
+      it('rejects an invalid database name', () => {
+        expect(() => new VectorDB('1bad-name', dimension)).toThrow();
+        expect(() => new VectorDB('', dimension)).toThrow();
+        expect(() => new VectorDB('a'.repeat(65), dimension)).toThrow();
+      });
+
+      it('rejects an invalid dimension', () => {
+        expect(() => new VectorDB(testDBName, 0)).toThrow();
+        expect(() => new VectorDB(testDBName, -1)).toThrow();
+        expect(() => new VectorDB(testDBName, 100001)).toThrow();
+        expect(() => new VectorDB(testDBName, 1.5)).toThrow();
+      });
+    });
+
+    describe('VectorDB.addVector', () => {
+      it('rejects an empty vector ID', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.addVector('', vector)).rejects.toThrow('Vector ID cannot be empty');
+      });
+
+      it('rejects a vector ID that is not a string', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.addVector(123 as unknown as string, vector)).rejects.toThrow(
+          'Vector ID must be a string',
+        );
+      });
+
+      it('rejects a vector ID exceeding 255 characters', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.addVector('a'.repeat(256), vector)).rejects.toThrow(
+          'Vector ID cannot exceed 255 characters',
+        );
+      });
+
+      it('rejects a vector with the wrong dimension', () => {
+        const wrongDim = new Float32Array(64).fill(0.5);
+        expect(db.addVector('dim-mismatch', wrongDim)).rejects.toThrow();
+      });
+
+      it('rejects invalid metadata (array instead of object)', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(
+          db.addVector('bad-meta', vector, [1, 2, 3] as unknown as Record<
+            string,
+            unknown
+          >),
+        ).rejects.toThrow('Metadata must be an object');
+      });
+
+      it('rejects metadata with deeply nested structure exceeding depth limit', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        let deep: Record<string, unknown> = { value: 'leaf' };
+        for (let i = 0; i < 11; i++) deep = { nested: deep };
+        expect(db.addVector('deep-meta', vector, deep)).rejects.toThrow(
+          'Metadata object depth cannot exceed',
+        );
+      });
+    });
+
+    describe('VectorDB.getVector', () => {
+      it('rejects an empty ID', () => {
+        expect(db.getVector('')).rejects.toThrow('Vector ID cannot be empty');
+      });
+
+      it('rejects a non-string ID', () => {
+        expect(db.getVector(null as unknown as string)).rejects.toThrow(
+          'Vector ID must be a string',
+        );
+      });
+    });
+
+    describe('VectorDB.deleteVector', () => {
+      it('rejects an empty ID', () => {
+        expect(db.deleteVector('')).rejects.toThrow('Vector ID cannot be empty');
+      });
+    });
+
+    describe('VectorDB.exists', () => {
+      it('rejects an empty ID', () => {
+        expect(db.exists('')).rejects.toThrow('Vector ID cannot be empty');
+      });
+
+      it('rejects a non-string ID', () => {
+        expect(db.exists(null as unknown as string)).rejects.toThrow(
+          'Vector ID must be a string',
+        );
+      });
+
+      it('rejects an ID with invalid characters', () => {
+        expect(db.exists('id<script>')).rejects.toThrow(
+          'Vector ID contains invalid characters',
+        );
+      });
+    });
+
+    describe('VectorDB.search', () => {
+      it('rejects a non-positive k value', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.search(vector, 0)).rejects.toThrow(
+          'Search parameter k must be positive',
+        );
+        expect(db.search(vector, -1)).rejects.toThrow(
+          'Search parameter k must be positive',
+        );
+      });
+
+      it('rejects a non-integer k value', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.search(vector, 1.5)).rejects.toThrow(
+          'Search parameter k must be an integer',
+        );
+      });
+
+      it('rejects a k value exceeding 10,000', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.search(vector, 10001)).rejects.toThrow(
+          'Search parameter k cannot exceed 10,000',
+        );
+      });
+
+      it('rejects a query vector with the wrong dimension', () => {
+        const wrongDim = new Float32Array(64).fill(0.5);
+        expect(db.search(wrongDim, 5)).rejects.toThrow();
+      });
+
+      it('rejects search options with invalid includeMetadata type', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(
+          db.search(vector, 5, { includeMetadata: 'yes' as unknown as boolean }),
+        ).rejects.toThrow('includeMetadata must be a boolean');
+      });
+    });
+
+    describe('VectorDB.searchRange', () => {
+      it('rejects a negative maxDistance', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.searchRange(vector, -0.1)).rejects.toThrow(
+          'Distance must be non-negative',
+        );
+      });
+
+      it('rejects a non-finite maxDistance', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.searchRange(vector, Infinity)).rejects.toThrow(
+          'Distance must be finite',
+        );
+        expect(db.searchRange(vector, NaN)).rejects.toThrow('Distance must be finite');
+      });
+
+      it('rejects a maxDistance beyond the metric-aware bound (cosine ≤ 4)', () => {
+        // This db uses the default cosine metric, whose distance range is [0, 2];
+        // the validator allows a small headroom (≤ 4) and rejects beyond it.
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.searchRange(vector, 5)).rejects.toThrow('exceeds the maximum 4');
+      });
+
+      it('allows a large manhattan threshold proportional to the dimension', async () => {
+        // A manhattan db legitimately needs thresholds that scale with dimension,
+        // so a value that would exceed the old fixed 1000 cap must be accepted.
+        const manhattanDB = new VectorDB(`${testDBName}-manhattan`, dimension, {
+          distanceMetric: 'manhattan',
+          autoEviction: false,
+          useIndex: false,
+        });
+        await manhattanDB.init();
+        const vector = new Float32Array(dimension).fill(0.5);
+        // Should not throw on validation (no matching vectors is fine).
+        const results = await manhattanDB.searchRange(vector, 5000);
+        expect(Array.isArray(results)).toBe(true);
+        await manhattanDB.delete();
+      });
+
+      it('rejects a query vector with the wrong dimension', () => {
+        const wrongDim = new Float32Array(64).fill(0.5);
+        expect(db.searchRange(wrongDim, 0.5)).rejects.toThrow();
+      });
+    });
+
+    describe('VectorDB.updateVector', () => {
+      it('rejects an empty ID', () => {
+        const vector = new Float32Array(dimension).fill(0.5);
+        expect(db.updateVector('', vector)).rejects.toThrow('Vector ID cannot be empty');
+      });
+
+      it('rejects a vector with the wrong dimension', async () => {
+        await db.addVector('update-dim-test', new Float32Array(dimension).fill(0.5));
+        const wrongDim = new Float32Array(64).fill(0.5);
+        expect(db.updateVector('update-dim-test', wrongDim)).rejects.toThrow();
+      });
+    });
+
+    describe('VectorDB.updateMetadata', () => {
+      it('rejects an empty ID', () => {
+        expect(db.updateMetadata('', { key: 'value' })).rejects.toThrow(
+          'Vector ID cannot be empty',
+        );
+      });
+
+      it('rejects invalid metadata (array)', async () => {
+        await db.addVector('update-meta-test', new Float32Array(dimension).fill(0.5));
+        expect(
+          db.updateMetadata('update-meta-test', ['invalid'] as unknown as Record<
+            string,
+            unknown
+          >),
+        ).rejects.toThrow('Metadata must be an object');
+      });
+
+      it('rejects metadata with too many properties', async () => {
+        await db.addVector('update-meta-overflow', new Float32Array(dimension).fill(0.5));
+        const bigMeta: Record<string, string> = {};
+        for (let i = 0; i <= 1000; i++) bigMeta[`key${i}`] = 'value';
+        expect(db.updateMetadata('update-meta-overflow', bigMeta)).rejects.toThrow(
+          'Metadata cannot have more than 1000 properties',
+        );
+      });
+    });
+
+    describe('VectorDB.getMany', () => {
+      it('rejects when the IDs array is empty', () => {
+        expect(db.getMany([])).rejects.toThrow('Vector IDs array cannot be empty');
+      });
+
+      it('rejects when IDs array contains duplicates', () => {
+        expect(db.getMany(['id1', 'id1'])).rejects.toThrow(
+          'Duplicate vector ID found: id1',
+        );
+      });
+
+      it('rejects when IDs array contains an invalid ID', () => {
+        expect(db.getMany(['valid', ''])).rejects.toThrow('Vector ID cannot be empty');
+      });
+    });
+
+    describe('VectorDB.deleteMany', () => {
+      it('rejects when the IDs array is empty', () => {
+        expect(db.deleteMany([])).rejects.toThrow('Vector IDs array cannot be empty');
+      });
+
+      it('rejects when IDs contain invalid characters', () => {
+        expect(db.deleteMany(['valid', 'bad<id>'])).rejects.toThrow(
+          'Vector ID contains invalid characters',
+        );
+      });
+    });
+
+    describe('VectorDB.updateBatch', () => {
+      it('rejects a batch item with an empty ID', () => {
+        expect(db.updateBatch([{ id: '', metadata: { key: 'val' } }])).rejects.toThrow(
+          'Vector ID cannot be empty',
+        );
+      });
+
+      it('rejects a batch item with a non-string ID', () => {
+        expect(
+          db.updateBatch([{ id: 42 as unknown as string, metadata: {} }]),
+        ).rejects.toThrow('Vector ID must be a string');
+      });
+
+      it('rejects a batch item with invalid metadata', () => {
+        expect(
+          db.updateBatch([
+            {
+              id: 'valid-id',
+              metadata: 'not-an-object' as unknown as Record<string, unknown>,
+            },
+          ]),
+        ).rejects.toThrow('Metadata must be an object');
+      });
+
+      it('rejects a batch item vector with the wrong dimension', () => {
+        expect(
+          db.updateBatch([{ id: 'valid-id', vector: new Float32Array(64).fill(0.5) }]),
+        ).rejects.toThrow();
+      });
+    });
+
+    describe('VectorDB.addBatch', () => {
+      it('rejects a batch item with an empty ID', () => {
+        const vectors = [{ id: '', vector: new Float32Array(dimension).fill(0.5) }];
+        expect(db.addBatch(vectors)).rejects.toThrow('Vector ID cannot be empty');
+      });
+
+      it('rejects a batch item with a wrong-dimension vector', () => {
+        const vectors = [{ id: 'bad-dim', vector: new Float32Array(64).fill(0.5) }];
+        expect(db.addBatch(vectors)).rejects.toThrow();
+      });
+    });
+
+    describe('VectorFrankl namespace validation', () => {
+      it('rejects creating a namespace with a reserved name', () => {
+        expect(
+          vectorFrankl.createNamespace('root', { dimension: 128 }),
+        ).rejects.toThrow();
+      });
+
+      it('rejects creating a namespace whose name contains internal separator', () => {
+        expect(
+          vectorFrankl.createNamespace('bad-ns-name', { dimension: 128 }),
+        ).rejects.toThrow();
+      });
+
+      it('rejects creating a namespace with a name shorter than 3 characters', () => {
+        expect(vectorFrankl.createNamespace('ab', { dimension: 128 })).rejects.toThrow();
+      });
+
+      it('rejects creating a namespace with a name longer than 64 characters', () => {
+        expect(
+          vectorFrankl.createNamespace('n'.repeat(65), { dimension: 128 }),
+        ).rejects.toThrow();
+      });
+
+      it('rejects creating a namespace with a name containing spaces', () => {
+        expect(
+          vectorFrankl.createNamespace('has space', { dimension: 128 }),
+        ).rejects.toThrow();
+      });
+    });
+
+    describe('VectorNamespace — delegates validation to lower layer', () => {
+      let namespace: import('@/namespaces/namespace.js').VectorNamespace;
+
+      beforeEach(async () => {
+        namespace = await vectorFrankl.createNamespace('validation-ns', {
+          dimension: 64,
+          distanceMetric: 'cosine',
+        });
+      });
+
+      afterEach(async () => {
+        try {
+          await vectorFrankl.deleteNamespace('validation-ns');
+        } catch {
+          // ignore cleanup errors
+        }
+      });
+
+      it('rejects addVector with empty ID (delegates to VectorDB)', () => {
+        const vector = new Float32Array(64).fill(0.5);
+        expect(namespace.addVector('', vector)).rejects.toThrow(
+          'Vector ID cannot be empty',
+        );
+      });
+
+      it('rejects search with wrong-dimension vector (delegates to VectorDB)', () => {
+        const wrongDim = new Float32Array(32).fill(0.5);
+        expect(namespace.search(wrongDim, 5)).rejects.toThrow();
+      });
+
+      it('rejects getMany with empty array (delegates to VectorDB)', () => {
+        expect(namespace.getMany([])).rejects.toThrow('Vector IDs array cannot be empty');
+      });
+
+      it('rejects searchRange with negative distance (delegates to VectorDB)', () => {
+        const vector = new Float32Array(64).fill(0.5);
+        expect(namespace.searchRange(vector, -1)).rejects.toThrow(
+          'Distance must be non-negative',
+        );
+      });
+
+      it('rejects updateMetadata with array metadata (delegates to VectorDB)', async () => {
+        await namespace.addVector('valid-id', new Float32Array(64).fill(0.5));
+        expect(
+          namespace.updateMetadata('valid-id', ['not-an-object'] as unknown as Record<
+            string,
+            unknown
+          >),
+        ).rejects.toThrow('Metadata must be an object');
+      });
+
+      it('rejects exists with invalid ID (delegates to VectorDB)', () => {
+        expect(namespace.exists('')).rejects.toThrow('Vector ID cannot be empty');
+      });
     });
   });
 

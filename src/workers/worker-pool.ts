@@ -1,9 +1,32 @@
 /**
  * Web Worker pool management for parallel vector operations
+ *
+ * ## Package-safe worker script resolution
+ *
+ * By default, `WorkerPool` resolves its worker script relative to its own
+ * module location using `import.meta.url`.  This works correctly in:
+ *
+ * - **ESM browser bundles** – `dist/workers/vector-worker.js` is resolved
+ *   relative to `dist/workers.js` at runtime.
+ * - **Bundler environments (Webpack, Vite, Rollup, esbuild)** – bundlers
+ *   understand the `new URL('./vector-worker.js', import.meta.url)` pattern
+ *   and emit the worker file alongside the bundle.
+ *
+ * If you need explicit control, pass `workerScript` to the constructor:
+ *
+ * ```ts
+ * new WorkerPool({ workerScript: new URL('./worker.js', import.meta.url).href })
+ * ```
+ *
+ * CommonJS environments and non-module contexts cannot use `import.meta.url`.
+ * In those cases **you must supply `workerScript`** pointing to a hosted copy
+ * of `vector-worker.js`.  The file is shipped in the package at
+ * `dist/workers/vector-worker.js`.
  */
 
 import type { DistanceMetric, VectorData } from '../core/types.js';
 import { log } from '../utilities/logger.js';
+import { getDefaultWorkerScript } from './default-worker-script.js';
 import { SharedMemoryManager } from './shared-memory.js';
 
 export interface WorkerTask {
@@ -59,8 +82,10 @@ export class WorkerPool {
 
   constructor(config: PoolConfig = {}) {
     this.maxWorkers = config.maxWorkers || navigator.hardwareConcurrency || 4;
-    this.workerScript =
-      config.workerScript || new URL('./vector-worker.ts', import.meta.url).href;
+    // Resolve the worker script relative to this module so it works in any
+    // package consumer.  The `.js` extension targets the compiled output that
+    // is shipped in `dist/workers/vector-worker.js`.
+    this.workerScript = config.workerScript || getDefaultWorkerScript();
     this.defaultTimeout = config.timeout || 30000; // 30 seconds
     // Initialize shared memory manager if enabled
     if (
@@ -585,7 +610,12 @@ export class WorkerPool {
   }
 
   /**
-   * Terminate all workers and clean up
+   * Terminate all workers and clean up resources.
+   *
+   * Any in-flight tasks are rejected with `"Worker pool terminated"`.
+   * Any queued tasks that have not yet started are also rejected.
+   * After calling `terminate()` the pool is no longer initialized; calling
+   * `init()` again will start fresh workers.
    */
   async terminate(): Promise<void> {
     // Clear all timeouts
@@ -620,6 +650,14 @@ export class WorkerPool {
     if (this.sharedMemoryManager) {
       this.sharedMemoryManager.forceCleanup();
     }
+  }
+
+  /**
+   * Alias for {@link terminate}.  Provided as a convenience for callers that
+   * use `close()` as the lifecycle teardown name.
+   */
+  async close(): Promise<void> {
+    return this.terminate();
   }
 
   /**

@@ -93,10 +93,12 @@ watch = [".ts", ".tsx", ".js", ".jsx", ".json"]
 parallel = true
 # Set timeout for tests (in milliseconds)
 timeout = 30000
-# Enable coverage by default
-coverage = false
-# Coverage thresholds
-coverageThreshold = { lines = 80, functions = 80, branches = 80 }
+# Coverage reporters: emit a text summary and an lcov report for CI/tooling.
+# NOTE: do NOT add `coverage = false` here — that key overrides the --coverage
+#       CLI flag and silently disables coverage collection.
+coverageReporter = ["text", "lcov"]
+# lcov.info and text summary land in coverage/
+coverageDir = "coverage"
 
 # Macro configuration for compile-time optimizations
 [macro]

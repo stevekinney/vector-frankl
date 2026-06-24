@@ -149,5 +149,43 @@ test.describe('Storage Adapters E2E', () => {
 
       expect(result.directoryExists).toBe(false);
     });
+
+    test('OPFS data survives delete/recreate cycles', async ({ page }) => {
+      const result = await page.evaluate(() => {
+        return (window as any).testOPFSDeleteRecreateCycle();
+      });
+
+      expect(result.firstCount).toBe(2);
+      expect(result.secondCount).toBe(1);
+      expect(result.secondId).toBe('after-recreate');
+    });
+
+    test('corrupt OPFS file is skipped by getAll() and throws on get()', async ({
+      page,
+    }) => {
+      const result = await page.evaluate(() => {
+        return (window as any).testOPFSCorruptFileRecovery();
+      });
+
+      // getAll() should skip the corrupt file and return only valid entries.
+      expect(result.getAllCount).toBe(1);
+      expect(result.validId).toBe('valid-vec');
+
+      // get() on the corrupt-file ID must throw.
+      expect(result.corruptGetThrew).toBe(true);
+    });
+
+    test('two adapter instances on the same directory see each others writes', async ({
+      page,
+    }) => {
+      const result = await page.evaluate(() => {
+        return (window as any).testOPFSTwoInstances();
+      });
+
+      // Both instances share the same OPFS directory, so instance B must see
+      // the vector written by instance A.
+      expect(result.instanceBSawInstanceAWrite).toBe(true);
+      expect(result.count).toBe(2);
+    });
   });
 });

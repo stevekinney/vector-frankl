@@ -2,9 +2,15 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import {
+  S3_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
 import {
   calculateMagnitude,
   jsonToVectorData,
@@ -42,7 +48,16 @@ interface BunS3Client {
 // Configuration
 // ---------------------------------------------------------------------------
 
-interface S3StorageAdapterOptions {
+/**
+ * Options for {@link S3StorageAdapter}.
+ *
+ * @remarks
+ * `S3StorageAdapter` is a **single-writer** adapter. Only one adapter instance
+ * may write to a given `bucket` + `prefix` combination at a time. Multiple
+ * instances writing concurrently will race on the manifest file and **will lose
+ * IDs**. See {@link S3StorageAdapter} for a full explanation of this constraint.
+ */
+export interface S3StorageAdapterOptions {
   bucket: string;
   prefix?: string;
   region?: string;
@@ -55,13 +70,56 @@ interface S3StorageAdapterOptions {
 // S3StorageAdapter
 // ---------------------------------------------------------------------------
 
+/**
+ * Storage adapter backed by Bun's built-in `Bun.s3` S3 client.
+ *
+ * ## Single-writer contract
+ *
+ * `S3StorageAdapter` maintains an in-process manifest (`__index__.json`) that
+ * tracks all stored vector IDs. A promise-based mutex serialises all manifest
+ * mutations **within a single adapter instance**, so concurrent calls on the
+ * *same* instance are safe.
+ *
+ * However, the mutex is **in-process only**. If two separate adapter instances
+ * (i.e. two processes, two workers, or two `new S3StorageAdapter(…)` calls in
+ * the same process) write to the same `bucket` + `prefix` simultaneously, each
+ * instance maintains its own in-memory manifest and the two will diverge. The
+ * last writer wins and **IDs written by the other instance will be lost from
+ * the manifest**, even though the underlying S3 objects still exist.
+ *
+ * **Use this adapter only when a single process owns the `bucket` + `prefix`
+ * at any given time.** For multi-writer workloads, S3 conditional writes
+ * (ETag-based compare-and-swap) or an external coordination service are
+ * required — neither is currently supported.
+ *
+ * The discriminant property `singleWriter: true` is present on every instance
+ * so callers can detect this adapter's concurrency model at runtime:
+ *
+ * ```ts
+ * if (adapter instanceof S3StorageAdapter) {
+ *   console.warn('S3 adapter is single-writer only');
+ * }
+ * ```
+ */
 export class S3StorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = S3_ADAPTER_CAPABILITIES;
+
+  /**
+   * Discriminant flag marking this adapter as single-writer only.
+   *
+   * Concurrent writes from **multiple adapter instances** against the same
+   * `bucket` + `prefix` will cause manifest corruption and ID loss. Only one
+   * process/instance should own a given prefix at a time.
+   */
+  readonly singleWriter = true as const;
+
   private readonly prefix: string;
   private readonly s3Options: BunS3Options;
   private s3: BunS3Client | null = null;
   private index: Set<string> = new Set();
 
-  /** Promise-based mutex to serialize index mutations across concurrent writes. */
+  /** Promise-based mutex to serialise index mutations within this instance. */
   private mutexQueue: Promise<void> = Promise.resolve();
 
   constructor(options: S3StorageAdapterOptions) {
@@ -273,6 +331,36 @@ export class S3StorageAdapter implements StorageAdapter {
 
   async count(): Promise<number> {
     return this.index.size;
+  }
+
+  /**
+   * Stream all vectors by fetching each object from S3 individually.
+   *
+   * S3 does not support cursor-based range reads; the in-memory index
+   * enumerates IDs and each object is fetched one at a time.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    const ids = Array.from(this.index);
+
+    for (const id of ids) {
+      if (options?.signal?.aborted) return;
+      const body = await this.getObject(this.vectorKey(id));
+      if (body !== null) {
+        yield jsonToVectorData(body);
+      }
+    }
+  }
+
+  /**
+   * S3 maintains an in-memory ID index; object payloads are fetched one at
+   * a time, but the ID set is always fully materialized.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return {
+      nativeStreaming: false,
+      limitationReason:
+        'S3StorageAdapter maintains a full in-memory ID index. Object payloads are fetched one at a time, but the ID set is always fully materialized.',
+    };
   }
 
   // ── Multi-item writes ───────────────────────────────────────────────────

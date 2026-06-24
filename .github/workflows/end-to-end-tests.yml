@@ -50,7 +50,7 @@ jobs:
 
   mobile-end-to-end-tests:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -79,6 +79,49 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-results-mobile
+          path: |
+            test-results/
+            playwright-report/
+          retention-days: 7
+
+  package-consumer-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: '1.3.2'
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Create .env file
+        run: cp .env.example .env
+
+      - name: Build project
+        run: bun run build
+
+      - name: Install Playwright browsers
+        run: bunx playwright install chromium --with-deps
+
+      # package-consumer.e2e.ts is excluded from the default Playwright config
+      # (it needs the packed-tarball consumer server on port 8202), so it runs
+      # under its own config here. The dedicated server command packs, installs,
+      # and serves the published package exactly as an end-user would consume it.
+      - name: Run package-consumer end-to-end tests
+        run: bunx playwright test --config=playwright.config.package-consumer.ts
+        env:
+          CI: true
+
+      - name: Upload package-consumer test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-results-package-consumer
           path: |
             test-results/
             playwright-report/

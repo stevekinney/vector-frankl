@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 
+import packageJson from '../../package.json';
 import { debugManager } from '@/debug/debug-manager.js';
+import { VERSION } from '@/version.js';
 import type { DebugConfig } from '@/debug/types.js';
 
 describe('DebugManager', () => {
@@ -286,6 +288,14 @@ describe('DebugManager', () => {
       expect(data.traceEvents).toBeDefined();
       expect(Array.isArray(data.traceEvents)).toBe(true);
       expect(data.displayTimeUnit).toBe('ms');
+    });
+
+    it('devtools export metadata version matches package.json version', async () => {
+      const exported = await debugManager.exportData('devtools');
+      const data = JSON.parse(exported);
+
+      expect(data.metadata['vector-frankl-version']).toBe(VERSION);
+      expect(data.metadata['vector-frankl-version']).toBe(packageJson.version);
     });
 
     it('should export as HTML', async () => {

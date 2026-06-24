@@ -1,5 +1,13 @@
 /**
- * Mock implementation of IndexedDB for testing purposes
+ * Mock implementation of IndexedDB for unit testing purposes.
+ *
+ * CLASSIFICATION: mock-only. This shim enables unit tests to exercise
+ * IndexedDB-backed code paths in the Bun test runner (which has no native
+ * IndexedDB). It does NOT constitute production-readiness evidence for real-
+ * browser IndexedDB semantics — durability, quota enforcement, versioning, and
+ * transaction isolation behavior are verified in the real browser by
+ * tests/end-to-end/indexeddb-storage.e2e.ts and
+ * tests/end-to-end/storage-adapters.e2e.ts.
  */
 
 // Type definitions for IndexedDB mock
@@ -35,7 +43,64 @@ interface IDBIndexOptions {
 }
 
 type IDBValidKey = string | number | Date | ArrayBufferView | ArrayBuffer | IDBValidKey[];
-// Simple IDBKeyRange mock interface
+
+/**
+ * Minimal mock of the IDBKeyRange API.
+ *
+ * Only string keys are supported since the vector store uses string IDs.
+ */
+export class MockIDBKeyRange {
+  lower?: string;
+  upper?: string;
+  lowerOpen: boolean;
+  upperOpen: boolean;
+
+  constructor(
+    lower: string | undefined,
+    upper: string | undefined,
+    lowerOpen: boolean,
+    upperOpen: boolean,
+  ) {
+    if (lower !== undefined) this.lower = lower;
+    if (upper !== undefined) this.upper = upper;
+    this.lowerOpen = lowerOpen;
+    this.upperOpen = upperOpen;
+  }
+
+  /** Returns true if the given string key falls within this range. */
+  includes(key: string): boolean {
+    if (this.lower !== undefined) {
+      if (this.lowerOpen ? key <= this.lower : key < this.lower) return false;
+    }
+    if (this.upper !== undefined) {
+      if (this.upperOpen ? key >= this.upper : key > this.upper) return false;
+    }
+    return true;
+  }
+
+  static lowerBound(lower: string, open = false): MockIDBKeyRange {
+    return new MockIDBKeyRange(lower, undefined, open, false);
+  }
+
+  static upperBound(upper: string, open = false): MockIDBKeyRange {
+    return new MockIDBKeyRange(undefined, upper, false, open);
+  }
+
+  static bound(
+    lower: string,
+    upper: string,
+    lowerOpen = false,
+    upperOpen = false,
+  ): MockIDBKeyRange {
+    return new MockIDBKeyRange(lower, upper, lowerOpen, upperOpen);
+  }
+
+  static only(key: string): MockIDBKeyRange {
+    return new MockIDBKeyRange(key, key, false, false);
+  }
+}
+
+// Simple IDBKeyRange mock interface (kept for typing purposes)
 interface IDBKeyRange {
   lower?: IDBValidKey;
   upper?: IDBValidKey;
@@ -138,9 +203,22 @@ export class MockIDBObjectStore {
     return new MockIDBRequest(value === undefined ? null : value);
   }
 
-  getAll(): MockIDBRequest<unknown[]> {
-    const values = Array.from(this.data.values());
-    return new MockIDBRequest(values);
+  getAll(
+    query?: IDBValidKey | IDBKeyRange | null,
+    count?: number,
+  ): MockIDBRequest<unknown[]> {
+    let entries = Array.from(this.data.entries());
+
+    // Filter by key range if a MockIDBKeyRange is provided
+    if (query instanceof MockIDBKeyRange) {
+      entries = entries.filter(([key]) => query.includes(key));
+    }
+
+    // Sort entries by key (ascending) so paging is stable
+    entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+
+    const values = entries.map(([, v]) => v);
+    return new MockIDBRequest(count !== undefined ? values.slice(0, count) : values);
   }
 
   put<T = unknown>(value: T, key?: IDBValidKey): MockIDBRequest<IDBValidKey> {
@@ -469,25 +547,37 @@ export class MockIDBOpenDBRequest {
 
   constructor(name: string, version?: number) {
     setTimeout(() => {
-      // Simulate database opening
-      const db = new MockIDBDatabase(name, version || 1);
+      const requestedVersion = version || 1;
+      const existing = mockDatabases.get(name);
 
-      // Store the database in the global registry
-      mockDatabases.set(name, db);
+      let db: MockIDBDatabase;
+      let isNew: boolean;
+
+      if (existing) {
+        // Reuse existing database so close/reopen tests see persisted data
+        db = existing;
+        isNew = false;
+      } else {
+        db = new MockIDBDatabase(name, requestedVersion);
+        mockDatabases.set(name, db);
+        isNew = true;
+      }
 
       // Set result before callbacks
       this.result = db;
 
-      // Always trigger upgrade for new databases (simulate schema creation)
-      const upgradeEvent = {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        target: this as any,
-        oldVersion: 0,
-        newVersion: version || 1,
-      };
+      if (isNew) {
+        // Trigger upgrade only for new databases (simulate schema creation)
+        const upgradeEvent = {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          target: this as any,
+          oldVersion: 0,
+          newVersion: requestedVersion,
+        };
 
-      if (this.onupgradeneeded) {
-        this.onupgradeneeded(upgradeEvent);
+        if (this.onupgradeneeded) {
+          this.onupgradeneeded(upgradeEvent);
+        }
       }
 
       // Wait a tick to ensure upgrade is processed, then trigger success
@@ -564,6 +654,8 @@ export function setupIndexedDBMocks(): void {
   global.IDBIndex = MockIDBIndex;
   // @ts-expect-error - Monkey patching for tests
   global.IDBCursor = MockIDBCursor;
+  // @ts-expect-error - Monkey patching for tests
+  global.IDBKeyRange = MockIDBKeyRange;
   global.navigator = mockNavigator as Navigator;
 }
 

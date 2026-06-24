@@ -264,13 +264,53 @@ describe('InputValidator', () => {
       );
     });
 
-    test('throws when the value exceeds 1000', () => {
+    test('allows negative thresholds for the dot metric (distance = -dotProduct)', () => {
+      // "dot product ≥ 0.8" is expressed as maxDistance = -0.8 because the
+      // library's dot distance is the negated dot product.
+      expect(
+        InputValidator.validateDistance(-0.8, { metric: 'dot', dimensions: 256 }),
+      ).toBe(-0.8);
+      // Still bounded below by -max so absurd values are rejected.
+      expect(() =>
+        InputValidator.validateDistance(-1e9, { metric: 'dot', dimensions: 256 }),
+      ).toThrow('below the minimum');
+      // Non-dot metrics still reject negatives.
+      expect(() =>
+        InputValidator.validateDistance(-0.8, { metric: 'cosine', dimensions: 256 }),
+      ).toThrow('Distance must be non-negative');
+    });
+
+    test('applies the conservative fixed cap (1000) when no metric context is given', () => {
       expect(() => InputValidator.validateDistance(1000.001)).toThrow(
-        'Distance cannot exceed 1000',
+        'exceeds the maximum 1000',
       );
       expect(() => InputValidator.validateDistance(1001)).toThrow(
-        'Distance cannot exceed 1000',
+        'exceeds the maximum 1000',
       );
+      expect(InputValidator.validateDistance(1000)).toBe(1000);
+    });
+
+    test('allows large metric/dimension-aware thresholds for range search', () => {
+      // A 2,000-dimension manhattan search can legitimately need a threshold
+      // near 2,000 (or far higher with component spread); the fixed 1000 cap
+      // would wrongly reject it.
+      expect(
+        InputValidator.validateDistance(2000, {
+          metric: 'manhattan',
+          dimensions: 2000,
+        }),
+      ).toBe(2000);
+      // hamming is bounded by the dimension count.
+      expect(
+        InputValidator.validateDistance(256, { metric: 'hamming', dimensions: 256 }),
+      ).toBe(256);
+      expect(() =>
+        InputValidator.validateDistance(257, { metric: 'hamming', dimensions: 256 }),
+      ).toThrow('exceeds the maximum 256');
+      // cosine stays tightly bounded.
+      expect(() =>
+        InputValidator.validateDistance(5, { metric: 'cosine', dimensions: 384 }),
+      ).toThrow('exceeds the maximum 4');
     });
   });
 
@@ -830,55 +870,113 @@ describe('InputValidator', () => {
       );
     });
 
-    test('validates maxResults as a positive integer', () => {
+    test('accepts maxResults within bounds (documented bounded key)', () => {
       expect(InputValidator.validateSearchOptions({ maxResults: 100 })).toEqual({
         maxResults: 100,
       });
     });
 
-    test('throws when maxResults is not a positive integer', () => {
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 0 })).toThrow(
-        'maxResults must be a positive integer',
-      );
-      expect(() => InputValidator.validateSearchOptions({ maxResults: -5 })).toThrow(
-        'maxResults must be a positive integer',
-      );
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 3.14 })).toThrow(
-        'maxResults must be a positive integer',
-      );
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 'ten' })).toThrow(
-        'maxResults must be a positive integer',
-      );
-    });
-
-    test('throws when maxResults exceeds 50,000', () => {
-      expect(() => InputValidator.validateSearchOptions({ maxResults: 50001 })).toThrow(
-        'maxResults cannot exceed 50,000',
-      );
-    });
-
-    test('validates batchSize as a positive integer', () => {
+    test('accepts batchSize within bounds (documented bounded key)', () => {
       expect(InputValidator.validateSearchOptions({ batchSize: 500 })).toEqual({
         batchSize: 500,
       });
     });
 
-    test('throws when batchSize is not a positive integer', () => {
-      expect(() => InputValidator.validateSearchOptions({ batchSize: 0 })).toThrow(
-        'batchSize must be a positive integer',
+    test('rejects non-numeric maxResults', () => {
+      expect(() => InputValidator.validateSearchOptions({ maxResults: 'lots' })).toThrow(
+        'maxResults must be a positive integer',
       );
     });
 
-    test('throws when batchSize exceeds 50,000', () => {
-      expect(() => InputValidator.validateSearchOptions({ batchSize: 50001 })).toThrow(
-        'batchSize cannot exceed 50,000',
+    test('rejects degenerate numeric maxResults/batchSize before bounding', () => {
+      for (const bad of [NaN, Infinity, -Infinity, -1, 0, 1.5, 99.99]) {
+        expect(() => InputValidator.validateSearchOptions({ maxResults: bad })).toThrow(
+          'maxResults must be a positive integer',
+        );
+        expect(() => InputValidator.validateSearchOptions({ batchSize: bad })).toThrow(
+          'batchSize must be a positive integer',
+        );
+      }
+    });
+
+    test('rejects maxResults/batchSize above the 50,000 limit', () => {
+      expect(() => InputValidator.validateSearchOptions({ maxResults: 50001 })).toThrow(
+        'maxResults cannot exceed 50,000',
+      );
+      expect(() =>
+        InputValidator.validateSearchOptions({ batchSize: 1_000_000 }),
+      ).toThrow('batchSize cannot exceed 50,000');
+    });
+
+    test('accepts valid integer maxResults/batchSize at the boundary', () => {
+      expect(
+        InputValidator.validateSearchOptions({ maxResults: 1, batchSize: 50000 }),
+      ).toEqual({
+        maxResults: 1,
+        batchSize: 50000,
+      });
+    });
+
+    test('rejects unknown option keys', () => {
+      expect(() =>
+        InputValidator.validateSearchOptions({ customOption: 'anything' }),
+      ).toThrow('Unknown search option: "customOption"');
+    });
+
+    test('error message for unknown key lists accepted keys', () => {
+      expect(() => InputValidator.validateSearchOptions({ foo: 'bar' })).toThrow(
+        /Accepted keys are:/,
       );
     });
 
-    test('passes through unknown options without validation', () => {
-      const options = { customOption: 'anything', includeMetadata: true };
-      const result = InputValidator.validateSearchOptions(options);
-      expect(result).toEqual({ customOption: 'anything', includeMetadata: true });
+    test('validates timeout as a positive finite number', () => {
+      expect(InputValidator.validateSearchOptions({ timeout: 5000 })).toEqual({
+        timeout: 5000,
+      });
+      expect(InputValidator.validateSearchOptions({ timeout: 0.5 })).toEqual({
+        timeout: 0.5,
+      });
+    });
+
+    test('throws when timeout is not a positive finite number', () => {
+      expect(() => InputValidator.validateSearchOptions({ timeout: 0 })).toThrow(
+        'timeout must be a positive finite number',
+      );
+      expect(() => InputValidator.validateSearchOptions({ timeout: -1 })).toThrow(
+        'timeout must be a positive finite number',
+      );
+      expect(() => InputValidator.validateSearchOptions({ timeout: Infinity })).toThrow(
+        'timeout must be a positive finite number',
+      );
+      expect(() => InputValidator.validateSearchOptions({ timeout: 'fast' })).toThrow(
+        'timeout must be a positive finite number',
+      );
+    });
+
+    test('validates signal as an object with an aborted boolean', () => {
+      const signal = { aborted: false };
+      expect(InputValidator.validateSearchOptions({ signal })).toEqual({ signal });
+    });
+
+    test('throws when signal lacks the aborted property', () => {
+      expect(() => InputValidator.validateSearchOptions({ signal: {} })).toThrow(
+        'signal must be an object with an aborted boolean property',
+      );
+    });
+
+    test('throws when signal is not an object', () => {
+      expect(() => InputValidator.validateSearchOptions({ signal: null })).toThrow(
+        'signal must be an object with an aborted boolean property',
+      );
+      expect(() => InputValidator.validateSearchOptions({ signal: 'abort' })).toThrow(
+        'signal must be an object with an aborted boolean property',
+      );
+    });
+
+    test('throws when signal.aborted is not a boolean', () => {
+      expect(() =>
+        InputValidator.validateSearchOptions({ signal: { aborted: 1 } }),
+      ).toThrow('signal must be an object with an aborted boolean property');
     });
 
     test('validates multiple options together', () => {
@@ -886,11 +984,114 @@ describe('InputValidator', () => {
         filter: { category: 'AI' },
         includeMetadata: true,
         includeVector: false,
-        maxResults: 50,
-        batchSize: 100,
+        timeout: 3000,
       };
       const result = InputValidator.validateSearchOptions(options);
       expect(result).toEqual(options);
+    });
+  });
+
+  describe('Memory exhaustion regression tests', () => {
+    describe('vector dimension limit', () => {
+      test('rejects dimension exceeding 100,000 to prevent memory exhaustion', () => {
+        // A 100,001-dimension Float32Array would consume > 400 KB; reject before allocation
+        expect(() => InputValidator.validateDimension(100_001)).toThrow(
+          'Dimension cannot exceed 100,000',
+        );
+      });
+
+      test('rejects extreme dimension values that would exhaust memory', () => {
+        expect(() => InputValidator.validateDimension(Number.MAX_SAFE_INTEGER)).toThrow();
+        expect(() => InputValidator.validateDimension(1_000_000)).toThrow(
+          'Dimension cannot exceed 100,000',
+        );
+      });
+
+      test('accepts the maximum safe dimension of 100,000', () => {
+        expect(InputValidator.validateDimension(100_000)).toBe(100_000);
+      });
+    });
+
+    describe('batch size limit', () => {
+      test('rejects batch exceeding 1000 items to prevent memory exhaustion', () => {
+        const oversizedBatch = new Array(1001).fill(1);
+        expect(() =>
+          InputValidator.validateBatchData(oversizedBatch, (item) => item),
+        ).toThrow('Batch operation cannot exceed 1000 items');
+      });
+
+      test('rejects batch of 10,000 items with default limit', () => {
+        const hugeBatch = new Array(10_000).fill(1);
+        expect(() => InputValidator.validateBatchData(hugeBatch, (item) => item)).toThrow(
+          'Batch operation cannot exceed 1000 items',
+        );
+      });
+
+      test('rejects batch exceeding a custom limit', () => {
+        const batch = new Array(101).fill(1);
+        expect(() =>
+          InputValidator.validateBatchData(batch, (item) => item, 100),
+        ).toThrow('Batch operation cannot exceed 100 items');
+      });
+    });
+
+    describe('metadata size limit', () => {
+      test('rejects metadata with more than 1,000 properties to prevent memory exhaustion', () => {
+        const oversized: Record<string, string> = {};
+        for (let i = 0; i <= 1000; i++) {
+          oversized[`key${i}`] = 'v';
+        }
+        expect(() => InputValidator.validateMetadata(oversized)).toThrow(
+          'Metadata cannot have more than 1000 properties',
+        );
+      });
+
+      test('rejects metadata string values exceeding 10,000 characters', () => {
+        const longValue = 'x'.repeat(10_001);
+        expect(() => InputValidator.validateMetadata({ field: longValue })).toThrow(
+          'String value cannot exceed 10000 characters',
+        );
+      });
+
+      test('rejects metadata arrays exceeding 10,000 elements', () => {
+        const largeArray = new Array(10_001).fill(0);
+        expect(() => InputValidator.validateMetadata({ items: largeArray })).toThrow(
+          'Array cannot exceed 10000 elements',
+        );
+      });
+
+      test('rejects deeply nested metadata exceeding depth 10 to prevent stack exhaustion', () => {
+        let nested: Record<string, unknown> = { leaf: 'value' };
+        for (let i = 0; i < 10; i++) {
+          nested = { child: nested };
+        }
+        expect(() => InputValidator.validateMetadata(nested)).toThrow(
+          'Metadata object depth cannot exceed 10',
+        );
+      });
+    });
+
+    describe('search options limit', () => {
+      test('rejects maxResults exceeding 50,000 to prevent memory exhaustion', () => {
+        expect(() =>
+          InputValidator.validateSearchOptions({ maxResults: 50_001 }),
+        ).toThrow('maxResults cannot exceed 50,000');
+      });
+
+      test('rejects batchSize exceeding 50,000 to prevent memory exhaustion', () => {
+        expect(() => InputValidator.validateSearchOptions({ batchSize: 50_001 })).toThrow(
+          'batchSize cannot exceed 50,000',
+        );
+      });
+    });
+
+    describe('vector ID count limit', () => {
+      test('rejects more than 10,000 vector IDs at once to prevent memory exhaustion', () => {
+        const ids = Array.from({ length: 10_001 }, (_, i) => `id-${i}`);
+        expect(() => InputValidator.validateVectorIds(ids)).toThrow(
+          'Cannot process more than 10,000 vector IDs at once',
+        );
+      });
     });
   });
 });

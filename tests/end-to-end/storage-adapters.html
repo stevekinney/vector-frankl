@@ -595,6 +595,101 @@
             };
         };
 
+        // ── OPFS-specific: delete/recreate cycle ────────────────────────
+
+        window.testOPFSDeleteRecreateCycle = async function () {
+            const dirName = `e2e-opfs-cycle-${Date.now()}`;
+
+            // First adapter instance: write two vectors then destroy.
+            const adapter1 = new OPFSStorageAdapter({ directory: dirName });
+            await adapter1.init();
+            await adapter1.put(makeVector('before-delete-1', [1, 2, 3]));
+            await adapter1.put(makeVector('before-delete-2', [4, 5, 6]));
+            const firstCount = await adapter1.count();
+            await adapter1.destroy();
+
+            // Recreate the same directory and write a new vector.
+            const adapter2 = new OPFSStorageAdapter({ directory: dirName });
+            await adapter2.init();
+            await adapter2.put(makeVector('after-recreate', [7, 8, 9]));
+            const secondCount = await adapter2.count();
+            const all = await adapter2.getAll();
+            await adapter2.destroy();
+
+            return {
+                firstCount,
+                secondCount,
+                secondId: all.length > 0 ? all[0].id : null,
+            };
+        };
+
+        // ── OPFS-specific: corrupt file recovery ────────────────────────
+
+        window.testOPFSCorruptFileRecovery = async function () {
+            const dirName = `e2e-opfs-corrupt-${Date.now()}`;
+            const adapter = new OPFSStorageAdapter({ directory: dirName });
+            await adapter.init();
+
+            // Write a valid vector.
+            await adapter.put(makeVector('valid-vec', [1, 2, 3]));
+
+            // Manually write a corrupt file directly into the OPFS directory.
+            const root = await navigator.storage.getDirectory();
+            const adapterDir = await root.getDirectoryHandle(dirName);
+            const vecDir = await adapterDir.getDirectoryHandle('vectors');
+            const corruptHandle = await vecDir.getFileHandle('corrupt%2dvec.vec', { create: true });
+            const writable = await corruptHandle.createWritable();
+            await writable.write('{{not valid json}}');
+            await writable.close();
+
+            // getAll() should skip the corrupt file and return only valid entries.
+            const all = await adapter.getAll();
+            const getAllCount = all.length;
+            const validId = all.length > 0 ? all[0].id : null;
+
+            // get() on the corrupt file ID should throw.
+            // The filename 'corrupt%2dvec.vec' maps to ID 'corrupt-vec'.
+            let corruptGetThrew = false;
+            try {
+                await adapter.get('corrupt-vec');
+            } catch {
+                corruptGetThrew = true;
+            }
+
+            await adapter.destroy();
+
+            return { getAllCount, validId, corruptGetThrew };
+        };
+
+        // ── OPFS-specific: two instances on same directory ──────────────
+
+        window.testOPFSTwoInstances = async function () {
+            const dirName = `e2e-opfs-two-instances-${Date.now()}`;
+
+            const instanceA = new OPFSStorageAdapter({ directory: dirName });
+            await instanceA.init();
+            await instanceA.put(makeVector('from-a', [1, 2]));
+
+            // Instance B shares the same underlying directory.
+            const instanceB = new OPFSStorageAdapter({ directory: dirName });
+            await instanceB.init();
+
+            let instanceBSawInstanceAWrite = false;
+            try {
+                const vec = await instanceB.get('from-a');
+                instanceBSawInstanceAWrite = vec.id === 'from-a';
+            } catch {
+                instanceBSawInstanceAWrite = false;
+            }
+
+            await instanceB.put(makeVector('from-b', [3, 4]));
+            const count = await instanceA.count();
+
+            await instanceA.destroy();
+
+            return { instanceBSawInstanceAWrite, count };
+        };
+
         // Signal that the page is ready
         window.__STORAGE_ADAPTERS_READY__ = true;
     </script>

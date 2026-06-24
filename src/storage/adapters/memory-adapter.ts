@@ -2,9 +2,15 @@ import { VectorNotFoundError } from '@/core/errors.js';
 import type {
   BatchOptions,
   BatchProgress,
+  ScanCapabilities,
+  ScanOptions,
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import {
+  MEMORY_ADAPTER_CAPABILITIES,
+  type AdapterCapabilities,
+} from './adapter-capabilities.js';
 import { calculateMagnitude } from './serialization.js';
 
 interface MemoryStorageAdapterOptions {
@@ -12,10 +18,31 @@ interface MemoryStorageAdapterOptions {
   cloneOnWrite?: boolean;
 }
 
+/**
+ * In-memory storage adapter backed by a plain `Map`.
+ *
+ * Supports `filteredScan()` — predicate evaluation is done record-by-record as
+ * the Map is iterated, so only matching records are included in the returned
+ * array. This avoids building a full-dataset array just to discard most of it.
+ */
 export class MemoryStorageAdapter implements StorageAdapter {
+  /** Declared capability guarantees for this adapter. */
+  static readonly capabilities: AdapterCapabilities = MEMORY_ADAPTER_CAPABILITIES;
+
   private readonly store = new Map<string, VectorData>();
   private readonly cloneOnRead: boolean;
   private readonly cloneOnWrite: boolean;
+
+  /**
+   * Capabilities reported to the search engine.
+   *
+   * `metadataIndexing: true` because `filteredScan()` evaluates the predicate
+   * inline as the Map is iterated — no full materialization required.
+   */
+  readonly capabilities: AdapterCapabilities = {
+    ...MEMORY_ADAPTER_CAPABILITIES,
+    metadataIndexing: true,
+  };
 
   constructor(options: MemoryStorageAdapterOptions = {}) {
     this.cloneOnRead = options.cloneOnRead ?? true;
@@ -107,8 +134,57 @@ export class MemoryStorageAdapter implements StorageAdapter {
     return results;
   }
 
+  /**
+   * Scan the store and return only the records whose metadata satisfies
+   * `predicate`.
+   *
+   * The predicate is evaluated inline while iterating the Map — only matching
+   * records are cloned and included in the result, so the full dataset is
+   * never materialized into a separate array.
+   */
+  async filteredScan(
+    predicate: (metadata: Record<string, unknown>) => boolean,
+  ): Promise<VectorData[]> {
+    const results: VectorData[] = [];
+
+    for (const entry of this.store.values()) {
+      if (predicate(entry.metadata ?? {})) {
+        results.push(this.cloneOnRead ? this.clone(entry) : entry);
+      }
+    }
+
+    return results;
+  }
+
   async count(): Promise<number> {
     return this.store.size;
+  }
+
+  /**
+   * Stream all vectors from the in-memory store one at a time.
+   *
+   * The in-memory adapter iterates the underlying Map without materializing a
+   * separate array — each yielded value is produced lazily. The store itself
+   * is already in memory, so this does not save memory overall, but it provides
+   * the streaming API so callers can work with `scan()` uniformly across adapters.
+   */
+  async *scan(options?: ScanOptions): AsyncIterable<VectorData> {
+    for (const entry of this.store.values()) {
+      if (options?.signal?.aborted) return;
+      yield this.cloneOnRead ? this.clone(entry) : entry;
+    }
+  }
+
+  /**
+   * The in-memory adapter holds all data in a Map; scan() iterates lazily
+   * but all data is already in memory by definition.
+   */
+  getScanCapabilities(): ScanCapabilities {
+    return {
+      nativeStreaming: false,
+      limitationReason:
+        'MemoryStorageAdapter holds all vectors in a Map; scan() iterates lazily but all data is already in memory.',
+    };
   }
 
   // Multi-item writes

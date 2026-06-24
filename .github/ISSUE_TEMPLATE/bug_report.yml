@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug or unexpected behavior in this project.
+description: Report a bug or unexpected behavior in vector-frankl.
 title: "[Bug] YOUR BUG TITLE HERE"
 labels: ["bug", "triage"]
 assignees: []
@@ -7,23 +7,102 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thank you for taking the time to report a bug. Please provide as much detail as possible to help us reproduce and fix the issue.
+        Thank you for taking the time to report a bug. Please fill in as much detail as you can — the runtime, adapter, dimension, and metric fields are especially important for production triage.
+
+        **Do not include API keys, connection strings, raw embeddings, or any other sensitive data.** Sanitize logs before pasting.
   - type: input
     id: summary
     attributes:
       label: Bug Summary
-      placeholder: App crashes when clicking the save button
+      placeholder: Search returns incorrect results when using cosine metric with 768-dimensional vectors
     validations:
       required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: Package Version
+      description: Output of `npm list vector-frankl` or `bun pm ls | grep vector-frankl`.
+      placeholder: "1.2.3"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime
+      description: JavaScript runtime and version (e.g. Bun, Node.js, Deno, browser engine).
+      placeholder: "Bun 1.1.0 / Node.js 20.12.0 / Chrome 124"
+    validations:
+      required: true
+  - type: input
+    id: adapter
+    attributes:
+      label: Adapter
+      description: Storage adapter in use (e.g. IndexedDB, in-memory, custom).
+      placeholder: "IndexedDB (default)"
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and OS (if applicable)
+      description: Browser name, version, and operating system. Leave blank for server-side runtimes.
+      placeholder: "Chrome 124 on macOS 14.4 / Firefox 125 on Ubuntu 22.04"
+    validations:
+      required: false
+  - type: input
+    id: vector-dimension
+    attributes:
+      label: Vector Dimension
+      description: Number of dimensions in the vectors you are storing or searching.
+      placeholder: "384"
+    validations:
+      required: true
+  - type: input
+    id: search-metric
+    attributes:
+      label: Search / Distance Metric
+      description: Distance metric configured for the namespace or VectorDB instance.
+      placeholder: "cosine / euclidean / manhattan / hamming / jaccard"
+    validations:
+      required: true
+  - type: input
+    id: dataset-size
+    attributes:
+      label: Approximate Dataset Size
+      description: Number of vectors in the store when the bug occurs.
+      placeholder: "10 000 vectors"
+    validations:
+      required: false
+  - type: dropdown
+    id: acceleration-path
+    attributes:
+      label: Acceleration Path
+      description: Which acceleration path is active? Check via the acceleration status API or browser DevTools.
+      options:
+        - WebGPU
+        - WebAssembly (WASM)
+        - SIMD
+        - Web Workers
+        - CPU / no acceleration
+        - Unknown
+      multiple: true
+    validations:
+      required: false
   - type: textarea
     id: steps-to-reproduce
     attributes:
       label: Steps to Reproduce
-      description: List the steps to reproduce the bug.
+      description: Minimal, self-contained reproduction. Remove any secrets or connection strings before pasting.
       placeholder: |
-        1. Go to the settings page
-        2. Click on 'Save'
-        3. Observe the error
+        ```ts
+        import { VectorDB } from 'vector-frankl';
+
+        const db = new VectorDB('test', 384);
+        await db.init();
+        await db.addVector('a', new Float32Array(384).fill(1), {});
+        const results = await db.search(new Float32Array(384).fill(1), 1);
+        console.log(results); // unexpected output
+        ```
     validations:
       required: true
   - type: textarea
@@ -31,7 +110,7 @@ body:
     attributes:
       label: Expected Behavior
       description: What did you expect to happen?
-      placeholder: The settings should be saved without errors.
+      placeholder: The top result should be 'a' with a similarity score of 1.0.
     validations:
       required: true
   - type: textarea
@@ -39,26 +118,28 @@ body:
     attributes:
       label: Actual Behavior
       description: What actually happened?
-      placeholder: The app crashes and shows an error message.
+      placeholder: No results are returned / an exception is thrown / the wrong vector is returned.
     validations:
       required: true
   - type: textarea
-    id: environment
+    id: logs
     attributes:
-      label: Environment
-      description: Please provide information about your environment.
+      label: Sanitized Logs
+      description: |
+        Paste relevant console output, stack traces, or error messages here.
+        **Remove all secrets, API keys, connection strings, and personal data before pasting.**
       placeholder: |
-        - OS: macOS Ventura 13.0
-        - Browser: Chrome 110
-        - Node.js: 18.0.0
-        - App version: 1.2.3
+        VectorDBError: dimension mismatch — expected 384, got 512
+          at InputValidator.validateVector (vector-frankl/src/security/input-validator.ts:42)
+          ...
+      render: shell
     validations:
       required: false
   - type: textarea
     id: additional-context
     attributes:
       label: Additional Context
-      description: Add any other context, screenshots, or error logs here.
+      description: Screenshots, links to related issues, or anything else that might help.
       placeholder: Any other information that might be useful.
     validations:
       required: false

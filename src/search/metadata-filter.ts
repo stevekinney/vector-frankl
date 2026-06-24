@@ -231,6 +231,25 @@ export class MetadataFilterCompiler {
           }
           break;
 
+        case '$contains':
+          if (typeof value !== 'string' || typeof operand !== 'string') return false;
+          if (!value.includes(operand)) return false;
+          break;
+
+        case '$between': {
+          if (
+            !Array.isArray(operand) ||
+            operand.length !== 2 ||
+            typeof operand[0] !== 'number' ||
+            typeof operand[1] !== 'number'
+          ) {
+            return false;
+          }
+          if (typeof value !== 'number') return false;
+          if (value < operand[0] || value > operand[1]) return false;
+          break;
+        }
+
         case '$exists': {
           const exists = value !== undefined;
           if (exists !== operand) return false;

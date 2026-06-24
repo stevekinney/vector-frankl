@@ -88,7 +88,7 @@ export default [
   // Ignore patterns
   {
     ignores: [
-      '**/{dist,build,coverage,.bun}/**',
+      '**/{dist,build,coverage,.bun,tmp}/**',
       '**/node_modules/**',
       '**/*.lock',
       '**/README.md',
@@ -137,7 +137,7 @@ export default [
   // TypeScript-specific rules
   {
     files: [tsFiles],
-    ignores: ['playwright.config.ts'],
+    ignores: ['playwright.config.ts', 'playwright.config.package-consumer.ts'],
     languageOptions: {
       parser: tseslintParser,
       parserOptions: {

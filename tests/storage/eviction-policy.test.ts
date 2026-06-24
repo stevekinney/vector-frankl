@@ -67,6 +67,8 @@ class TestStorage {
       updateVector: (id, v, o) => this.adapter.updateVector(id, v, o),
       updateMetadata: (id, m, o) => this.adapter.updateMetadata(id, m, o),
       updateBatch: (u, o) => this.adapter.updateBatch(u, o),
+      scan: (options) => this.adapter.scan(options),
+      getScanCapabilities: () => this.adapter.getScanCapabilities(),
     };
   }
 }

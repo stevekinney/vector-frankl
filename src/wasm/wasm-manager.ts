@@ -15,6 +15,12 @@ export interface WASMConfig {
   maxMemory?: number;
   /** Reserved for a future compiled WASM module path */
   modulePath?: string;
+  /**
+   * Expected SHA-256 hash (lowercase hex) of the WASM module bytes.
+   * When set, `init()` verifies the module against this hash before
+   * instantiation and rejects it if tampered.
+   */
+  expectedHash?: string;
 }
 
 export interface WASMCapabilities {
@@ -55,6 +61,10 @@ export interface WASMPerformanceStats {
  * The package does not currently bundle a compiled vector-operation module. Keep WASM
  * unavailable unless a real backend is wired in so callers fall back to SIMD/scalar
  * implementations instead of relying on placeholder exports.
+ *
+ * When `enableWASM: false` is passed, the manager is fully inert: it does not probe
+ * WebAssembly runtime support, does not allocate WebAssembly memory, and reports no
+ * capabilities as active. All operations route through the documented fallback.
  */
 export class WASMManager {
   private config: Required<WASMConfig>;
@@ -70,13 +80,46 @@ export class WASMManager {
       enableProfiling: config.enableProfiling ?? false,
       maxMemory: config.maxMemory || 64 * 1024 * 1024, // 64MB
       modulePath: config.modulePath || '',
+      expectedHash: config.expectedHash || '',
     };
 
+    // When WASM is explicitly disabled, skip capability detection and memory
+    // allocation entirely — the manager is fully inert.
+    if (!this.config.enableWASM) {
+      this.capabilities = this.disabledCapabilities();
+      return;
+    }
+
     this.capabilities = this.detectCapabilities();
+    // WebAssembly memory pages are 64 KiB each.
+    // Ensure maximum is at least 1 page and that initial does not exceed maximum.
+    const maximumPages = Math.max(1, Math.floor(this.config.maxMemory / 65536));
+    const initialPages = Math.min(256, maximumPages); // 256 pages = 16 MB default initial
     this.memory = new WebAssembly.Memory({
-      initial: 256, // 16MB
-      maximum: Math.floor(this.config.maxMemory / 65536), // Convert to pages
+      initial: initialPages,
+      maximum: maximumPages,
     });
+  }
+
+  /**
+   * Return a zeroed-out capabilities object used when WASM is explicitly disabled.
+   * Keeps `supported` false so callers see no active WASM capability.
+   */
+  private disabledCapabilities(): WASMCapabilities {
+    return {
+      supported: false,
+      features: [],
+      memory: {
+        initial: 0,
+        maximum: 0,
+        available: 0,
+      },
+      performance: {
+        supportsSimd: false,
+        supportsThreads: false,
+        supportsBulkMemory: false,
+      },
+    };
   }
 
   /**
@@ -150,7 +193,13 @@ export class WASMManager {
   }
 
   /**
-   * Initialize WebAssembly module with security validation
+   * Initialize WebAssembly module with security validation.
+   *
+   * When `enableWASM: false` is configured the method is a no-op — it never
+   * touches the WebAssembly API.  When a `modulePath` is configured AND an
+   * `expectedHash` is provided, the module bytes are verified before
+   * instantiation; a hash mismatch throws immediately so a tampered module is
+   * never executed.
    */
   async init(): Promise<void> {
     if (this.isInitialized || !this.config.enableWASM || !this.capabilities.supported) {
@@ -161,6 +210,28 @@ export class WASMManager {
       if (!this.config.modulePath) {
         log.debug('No WebAssembly module configured; using SIMD/scalar fallbacks');
         return;
+      }
+
+      // Load module bytes for integrity verification before instantiation.
+      const response = await fetch(this.config.modulePath);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch WASM module: HTTP ${response.status}`);
+      }
+
+      const moduleBytes = new Uint8Array(await response.arrayBuffer());
+
+      // If an expected hash is configured, verify before executing the module.
+      if (this.config.expectedHash) {
+        const valid = await this.verifyModuleIntegrity(
+          moduleBytes,
+          this.config.expectedHash,
+        );
+        if (!valid) {
+          throw new Error(
+            'WebAssembly module integrity check failed: hash mismatch. ' +
+              'The module may have been tampered with.',
+          );
+        }
       }
 
       log.warn('External WebAssembly modules are not enabled in this build');
@@ -188,6 +259,29 @@ export class WASMManager {
   }
 
   /**
+   * Verify the integrity of a WebAssembly module before execution.
+   *
+   * Computes the SHA-256 hash of `moduleBytes` and compares it against
+   * `expectedHash` (a lowercase hex string). Returns `true` when the hashes
+   * match, `false` otherwise. Callers MUST reject the module when this returns
+   * `false` — executing an unverified module is a security violation.
+   *
+   * This method works regardless of whether `enableWASM` is set, so callers
+   * can use it as a standalone integrity gate before deciding whether to load.
+   */
+  async verifyModuleIntegrity(
+    moduleBytes: Uint8Array,
+    expectedHash: string,
+  ): Promise<boolean> {
+    const hashBuffer = await crypto.subtle.digest('SHA-256', moduleBytes);
+    const hashArray = new Uint8Array(hashBuffer);
+    const actualHash = Array.from(hashArray)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    return actualHash === expectedHash.toLowerCase();
+  }
+
+  /**
    * Allocate memory for vector data
    */
   allocateVector(length: number): { ptr: number; byteLength: number } {
@@ -196,6 +290,15 @@ export class WASMManager {
     }
 
     const byteLength = length * 4; // Float32 = 4 bytes
+
+    // Reject before attempting memory growth to prevent exhaustion attacks.
+    // WebAssembly memory pages are 64 KiB each; the configured maxMemory caps growth.
+    if (byteLength > this.config.maxMemory) {
+      throw new Error(
+        `WASM allocation of ${byteLength} bytes exceeds the maximum allowed memory of ${this.config.maxMemory} bytes`,
+      );
+    }
+
     const currentPages = this.memory.buffer.byteLength / 65536;
     const requiredPages = Math.ceil(byteLength / 65536);
 
@@ -207,8 +310,8 @@ export class WASMManager {
       }
     }
 
-    // Simple allocation at current end of used memory
-    // In production, you'd want a proper allocator
+    // Allocate at the top of the current memory buffer.
+    // This is a bump-pointer strategy: safe for single-use scratch allocations.
     const ptr = this.memory.buffer.byteLength - byteLength;
     return { ptr, byteLength };
   }
@@ -253,17 +356,15 @@ export class WASMManager {
 
     try {
       const exports = this.wasmInstance.exports as {
-        dotProduct: (ptr: number, length: number) => number;
-        magnitude: (length: number) => number;
-        noop: () => void;
+        dotProduct: (aPtr: number, bPtr: number, length: number) => number;
       };
 
-      exports.dotProduct(0, vectorA.length);
+      const aAlloc = this.allocateVector(vectorA.length);
+      const bAlloc = this.allocateVector(vectorB.length);
+      this.copyToWASM(vectorA, aAlloc.ptr);
+      this.copyToWASM(vectorB, bAlloc.ptr);
 
-      let result = 0;
-      for (let i = 0; i < vectorA.length; i++) {
-        result += (vectorA[i] ?? 0) * (vectorB[i] ?? 0);
-      }
+      const result = exports.dotProduct(aAlloc.ptr, bAlloc.ptr, vectorA.length);
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
@@ -291,18 +392,13 @@ export class WASMManager {
 
     try {
       const exports = this.wasmInstance.exports as {
-        dotProduct: (ptr: number, length: number) => number;
-        magnitude: (length: number) => number;
-        noop: () => void;
+        magnitude: (ptr: number, length: number) => number;
       };
 
-      exports.magnitude(vector.length);
+      const alloc = this.allocateVector(vector.length);
+      this.copyToWASM(vector, alloc.ptr);
 
-      let sum = 0;
-      for (let i = 0; i < vector.length; i++) {
-        sum += (vector[i] ?? 0) * (vector[i] ?? 0);
-      }
-      const result = Math.sqrt(sum);
+      const result = exports.magnitude(alloc.ptr, vector.length);
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();
@@ -334,17 +430,18 @@ export class WASMManager {
 
     try {
       const exports = this.wasmInstance.exports as {
-        dotProduct: (ptr: number, length: number) => number;
-        magnitude: (length: number) => number;
-        noop: () => void;
+        vectorAdd: (aPtr: number, bPtr: number, outPtr: number, length: number) => void;
       };
 
-      exports.noop();
+      const aAlloc = this.allocateVector(vectorA.length);
+      const bAlloc = this.allocateVector(vectorB.length);
+      const outAlloc = this.allocateVector(vectorA.length);
+      this.copyToWASM(vectorA, aAlloc.ptr);
+      this.copyToWASM(vectorB, bAlloc.ptr);
 
-      const result = new Float32Array(vectorA.length);
-      for (let i = 0; i < vectorA.length; i++) {
-        result[i] = (vectorA[i] ?? 0) + (vectorB[i] ?? 0);
-      }
+      exports.vectorAdd(aAlloc.ptr, bAlloc.ptr, outAlloc.ptr, vectorA.length);
+
+      const result = this.copyFromWASM(outAlloc.ptr, vectorA.length);
 
       if (this.config.enableProfiling) {
         const endTime = performance.now();

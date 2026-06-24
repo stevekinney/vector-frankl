@@ -1,7 +1,92 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 
+import type { DistanceMetric } from '../../src/core/types.js';
 import { SharedMemoryManager } from '../../src/workers/shared-memory.js';
 import { cleanupIndexedDBMocks, setupIndexedDBMocks } from '../mocks/indexeddb-mock.js';
+
+// ---------------------------------------------------------------------------
+// Brute-force reference implementation for parity checks
+// ---------------------------------------------------------------------------
+
+function normalize(v: Float32Array): Float32Array {
+  const mag = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
+  if (mag === 0) return v;
+  const out = new Float32Array(v.length);
+  for (let i = 0; i < v.length; i++) out[i] = v[i]! / mag;
+  return out;
+}
+
+function computeDistance(
+  a: Float32Array,
+  b: Float32Array,
+  metric: DistanceMetric,
+): number {
+  switch (metric) {
+    case 'cosine': {
+      const na = normalize(a);
+      const nb = normalize(b);
+      let dot = 0;
+      for (let i = 0; i < na.length; i++) dot += na[i]! * nb[i]!;
+      return 1 - dot;
+    }
+    case 'euclidean': {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) {
+        const d = a[i]! - b[i]!;
+        sum += d * d;
+      }
+      return Math.sqrt(sum);
+    }
+    case 'manhattan': {
+      let sum = 0;
+      for (let i = 0; i < a.length; i++) sum += Math.abs(a[i]! - b[i]!);
+      return sum;
+    }
+    case 'dot': {
+      let dot = 0;
+      for (let i = 0; i < a.length; i++) dot += a[i]! * b[i]!;
+      return -dot;
+    }
+    case 'hamming': {
+      let dist = 0;
+      for (let i = 0; i < a.length; i++) {
+        const ba = a[i]! > 0 ? 1 : 0;
+        const bb = b[i]! > 0 ? 1 : 0;
+        if (ba !== bb) dist++;
+      }
+      return dist;
+    }
+    case 'jaccard': {
+      let intersection = 0;
+      let union = 0;
+      for (let i = 0; i < a.length; i++) {
+        const ba = a[i]! > 0 ? 1 : 0;
+        const bb = b[i]! > 0 ? 1 : 0;
+        if (ba || bb) {
+          union++;
+          if (ba && bb) intersection++;
+        }
+      }
+      return union === 0 ? 0 : 1 - intersection / union;
+    }
+    default:
+      throw new Error(`Unknown metric: ${metric}`);
+  }
+}
+
+function bruteForceSearch(
+  vectors: Float32Array[],
+  query: Float32Array,
+  k: number,
+  metric: DistanceMetric,
+): Array<{ index: number; distance: number }> {
+  const distances = vectors.map((v, index) => ({
+    index,
+    distance: computeDistance(query, v, metric),
+  }));
+  distances.sort((a, b) => a.distance - b.distance);
+  return distances.slice(0, k);
+}
 
 describe('SharedMemoryManager', () => {
   beforeAll(() => {
@@ -335,6 +420,390 @@ describe('SharedMemoryManager', () => {
       expect(results[0]![0]).toMatchObject({ index: 0, distance: 0, score: 1 });
       expect(results[1]).toHaveLength(2);
       expect(results[1]![0]).toMatchObject({ index: 1, distance: 0, score: 1 });
+    });
+  });
+
+  describe('sharedMemoryBatchSearch — non-empty results and brute force parity', () => {
+    let manager: SharedMemoryManager;
+
+    beforeEach(() => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+      manager = new SharedMemoryManager();
+    });
+
+    it('sharedMemoryBatchSearch returns non-empty results for non-empty inputs', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const vectors = [
+        new Float32Array([1, 0, 0]),
+        new Float32Array([0, 1, 0]),
+        new Float32Array([0, 0, 1]),
+        new Float32Array([0.5, 0.5, 0]),
+      ];
+      const queries = [new Float32Array([1, 0, 0]), new Float32Array([0, 1, 0])];
+
+      const results = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        2,
+        'cosine',
+      );
+
+      // Must return one result set per query
+      expect(results.length).toBe(queries.length);
+
+      // Each query must have non-empty results
+      for (const queryResults of results) {
+        expect(queryResults.length).toBeGreaterThan(0);
+        expect(queryResults.length).toBeLessThanOrEqual(2);
+
+        // Each result must have the required fields with valid values
+        for (const result of queryResults) {
+          expect(typeof result.index).toBe('number');
+          expect(typeof result.distance).toBe('number');
+          expect(typeof result.score).toBe('number');
+          expect(isFinite(result.distance)).toBe(true);
+          expect(isFinite(result.score)).toBe(true);
+          expect(result.index).toBeGreaterThanOrEqual(0);
+          expect(result.index).toBeLessThan(vectors.length);
+        }
+      }
+    });
+
+    it('sharedMemoryBatchSearch matches brute force for cosine metric (2D)', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const vectors = [
+        new Float32Array([1, 0]),
+        new Float32Array([0, 1]),
+        new Float32Array([0.6, 0.8]),
+        new Float32Array([-1, 0]),
+      ];
+      const queries = [new Float32Array([1, 0.1]), new Float32Array([0.3, 0.7])];
+      const k = 3;
+
+      const smResults = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        k,
+        'cosine',
+      );
+      expect(smResults.length).toBe(queries.length);
+
+      for (let qi = 0; qi < queries.length; qi++) {
+        const bf = bruteForceSearch(vectors, queries[qi]!, k, 'cosine');
+        const sm = smResults[qi]!;
+
+        expect(sm.length).toBe(bf.length);
+
+        // Top result indices must match
+        expect(sm[0]!.index).toBe(bf[0]!.index);
+
+        // Distances must match within floating-point tolerance
+        for (let ri = 0; ri < bf.length; ri++) {
+          expect(sm[ri]!.index).toBe(bf[ri]!.index);
+          expect(sm[ri]!.distance).toBeCloseTo(bf[ri]!.distance, 4);
+        }
+      }
+    });
+
+    it('sharedMemoryBatchSearch matches brute force for euclidean metric (4D)', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const vectors = [
+        new Float32Array([1, 2, 3, 4]),
+        new Float32Array([5, 6, 7, 8]),
+        new Float32Array([0, 0, 0, 0]),
+        new Float32Array([1, 1, 1, 1]),
+        new Float32Array([2, 3, 4, 5]),
+      ];
+      const queries = [new Float32Array([1, 2, 3, 4]), new Float32Array([3, 3, 3, 3])];
+      const k = 3;
+
+      const smResults = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        k,
+        'euclidean',
+      );
+
+      for (let qi = 0; qi < queries.length; qi++) {
+        const bf = bruteForceSearch(vectors, queries[qi]!, k, 'euclidean');
+        const sm = smResults[qi]!;
+
+        expect(sm.length).toBe(bf.length);
+        for (let ri = 0; ri < bf.length; ri++) {
+          expect(sm[ri]!.index).toBe(bf[ri]!.index);
+          expect(sm[ri]!.distance).toBeCloseTo(bf[ri]!.distance, 4);
+        }
+      }
+    });
+
+    it('sharedMemoryBatchSearch matches brute force for manhattan metric (3D)', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const vectors = [
+        new Float32Array([0, 0, 0]),
+        new Float32Array([1, 1, 1]),
+        new Float32Array([2, 0, 0]),
+        new Float32Array([0, 2, 0]),
+      ];
+      const queries = [new Float32Array([0.5, 0.5, 0.5])];
+      const k = 4;
+
+      const smResults = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        k,
+        'manhattan',
+      );
+
+      const bf = bruteForceSearch(vectors, queries[0]!, k, 'manhattan');
+      const sm = smResults[0]!;
+
+      expect(sm.length).toBe(bf.length);
+      for (let ri = 0; ri < bf.length; ri++) {
+        expect(sm[ri]!.index).toBe(bf[ri]!.index);
+        expect(sm[ri]!.distance).toBeCloseTo(bf[ri]!.distance, 4);
+      }
+    });
+
+    it('sharedMemoryBatchSearch matches brute force for dot metric (3D)', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const vectors = [
+        new Float32Array([1, 0, 0]),
+        new Float32Array([0, 1, 0]),
+        new Float32Array([0.5, 0.5, 0.7]),
+        new Float32Array([0.9, 0.1, 0.3]),
+      ];
+      const queries = [new Float32Array([0.8, 0.2, 0.5])];
+      const k = 2;
+
+      const smResults = await manager.sharedMemoryBatchSearch(vectors, queries, k, 'dot');
+
+      const bf = bruteForceSearch(vectors, queries[0]!, k, 'dot');
+      const sm = smResults[0]!;
+
+      expect(sm.length).toBe(bf.length);
+      for (let ri = 0; ri < bf.length; ri++) {
+        expect(sm[ri]!.index).toBe(bf[ri]!.index);
+        expect(sm[ri]!.distance).toBeCloseTo(bf[ri]!.distance, 4);
+      }
+    });
+
+    it('sharedMemoryBatchSearch matches brute force for hamming metric (binary vectors)', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const vectors = [
+        new Float32Array([1, 0, 1, 0]),
+        new Float32Array([1, 1, 1, 0]),
+        new Float32Array([0, 0, 0, 0]),
+        new Float32Array([1, 1, 1, 1]),
+      ];
+      const queries = [new Float32Array([1, 0, 1, 0])];
+      const k = 3;
+
+      const smResults = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        k,
+        'hamming',
+      );
+
+      const bf = bruteForceSearch(vectors, queries[0]!, k, 'hamming');
+      const sm = smResults[0]!;
+
+      expect(sm.length).toBe(bf.length);
+      for (let ri = 0; ri < bf.length; ri++) {
+        expect(sm[ri]!.index).toBe(bf[ri]!.index);
+        expect(sm[ri]!.distance).toBeCloseTo(bf[ri]!.distance, 4);
+      }
+    });
+
+    it('sharedMemoryBatchSearch matches brute force for jaccard metric (sparse vectors)', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const vectors = [
+        new Float32Array([1, 1, 0, 0]),
+        new Float32Array([0, 1, 1, 0]),
+        new Float32Array([1, 0, 0, 1]),
+        new Float32Array([0, 0, 1, 1]),
+      ];
+      const queries = [new Float32Array([1, 1, 0, 0])];
+      const k = 4;
+
+      const smResults = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        k,
+        'jaccard',
+      );
+
+      const bf = bruteForceSearch(vectors, queries[0]!, k, 'jaccard');
+      const sm = smResults[0]!;
+
+      expect(sm.length).toBe(bf.length);
+      for (let ri = 0; ri < bf.length; ri++) {
+        expect(sm[ri]!.index).toBe(bf[ri]!.index);
+        expect(sm[ri]!.distance).toBeCloseTo(bf[ri]!.distance, 4);
+      }
+    });
+
+    it('sharedMemoryBatchSearch brute force parity holds for higher-dimensional vectors', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      // 16-dimensional vectors
+      const dim = 16;
+      const seed = (i: number, j: number) => ((i * 7 + j * 13) % 17) / 17;
+      const vectors = Array.from(
+        { length: 10 },
+        (_, i) => new Float32Array(Array.from({ length: dim }, (__, j) => seed(i, j))),
+      );
+      const queries = Array.from(
+        { length: 3 },
+        (_, i) =>
+          new Float32Array(Array.from({ length: dim }, (__, j) => seed(i + 10, j))),
+      );
+      const k = 5;
+
+      for (const metric of ['cosine', 'euclidean', 'manhattan'] as DistanceMetric[]) {
+        const smResults = await manager.sharedMemoryBatchSearch(
+          vectors,
+          queries,
+          k,
+          metric,
+        );
+
+        expect(smResults.length).toBe(queries.length);
+
+        for (let qi = 0; qi < queries.length; qi++) {
+          const bf = bruteForceSearch(vectors, queries[qi]!, k, metric);
+          const sm = smResults[qi]!;
+
+          expect(sm.length).toBe(k);
+
+          // Top-1 must match
+          expect(sm[0]!.index).toBe(bf[0]!.index);
+
+          // All k results must match index and distance
+          for (let ri = 0; ri < k; ri++) {
+            expect(sm[ri]!.index).toBe(bf[ri]!.index);
+            expect(sm[ri]!.distance).toBeCloseTo(bf[ri]!.distance, 3);
+          }
+        }
+      }
+    });
+
+    it('sharedMemoryBatchSearch handles multiple query chunks with parity', async () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const vectors = [
+        new Float32Array([1, 0]),
+        new Float32Array([0, 1]),
+        new Float32Array([0.5, 0.5]),
+      ];
+      // 5 queries — exceeds default chunk size? No, default is 1000 so all in one chunk.
+      // Use chunkSize=2 to force multiple chunks.
+      const queries = [
+        new Float32Array([1, 0]),
+        new Float32Array([0, 1]),
+        new Float32Array([0.7, 0.3]),
+        new Float32Array([0.3, 0.7]),
+        new Float32Array([0.5, 0.5]),
+      ];
+      const k = 2;
+
+      const smResults = await manager.sharedMemoryBatchSearch(
+        vectors,
+        queries,
+        k,
+        'cosine',
+        {
+          chunkSize: 2,
+        },
+      );
+
+      expect(smResults.length).toBe(queries.length);
+
+      for (let qi = 0; qi < queries.length; qi++) {
+        const bf = bruteForceSearch(vectors, queries[qi]!, k, 'cosine');
+        const sm = smResults[qi]!;
+
+        expect(sm.length).toBe(bf.length);
+        expect(sm[0]!.index).toBe(bf[0]!.index);
+        expect(sm[0]!.distance).toBeCloseTo(bf[0]!.distance, 4);
+      }
+    });
+  });
+
+  describe('Worker buffer memory limit regression tests', () => {
+    it('rejects allocation exceeding the configured pool memory limit', () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      // Configure a tight 1 MB pool to verify the guard fires before allocation
+      const tightManager = new SharedMemoryManager({
+        maxPoolSize: 1 * 1024 * 1024, // 1 MB
+        enableStats: true,
+      });
+
+      // Requesting ~2 MB should exceed the 1 MB pool limit — rejected before SharedArrayBuffer is created
+      expect(() => {
+        tightManager.allocateVectorBuffer(1, 500_000); // 500k × 4 bytes = ~2 MB
+      }).toThrow('would exceed the pool memory limit');
+    });
+
+    it('rejects sequential allocations that cumulatively exceed the pool limit', () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      const tightManager = new SharedMemoryManager({
+        maxPoolSize: 2 * 1024 * 1024, // 2 MB
+        enableStats: true,
+      });
+
+      // First ~1 MB allocation fits
+      tightManager.allocateVectorBuffer(1, 250_000); // 250k × 4 bytes ≈ 1 MB
+
+      // Second ~1.5 MB allocation pushes total over 2 MB limit
+      expect(() => {
+        tightManager.allocateVectorBuffer(1, 375_000); // 375k × 4 bytes ≈ 1.5 MB
+      }).toThrow('would exceed the pool memory limit');
+    });
+
+    it('rejects allocation when the request alone exceeds the pool size', () => {
+      if (typeof SharedArrayBuffer === 'undefined') {
+        return;
+      }
+
+      // 1-byte pool (a nonsensically small limit) — any vector allocation must fail
+      const microManager = new SharedMemoryManager({ maxPoolSize: 1 });
+      expect(() => {
+        microManager.allocateVectorBuffer(1, 1); // 1×1×4 + header > 1 byte
+      }).toThrow('would exceed the pool memory limit');
     });
   });
 });

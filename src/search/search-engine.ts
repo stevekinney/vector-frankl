@@ -1,5 +1,9 @@
 import { VectorDatabase } from '@/core/database.js';
-import { DimensionMismatchError } from '@/core/errors.js';
+import {
+  DimensionMismatchError,
+  SearchAbortedError,
+  SearchTimeoutError,
+} from '@/core/errors.js';
 import type {
   DistanceMetric as DistanceMetricType,
   MetadataFilter,
@@ -8,13 +12,20 @@ import type {
   StorageAdapter,
   VectorData,
 } from '@/core/types.js';
+import { InputValidator } from '@/core/input-validator.js';
 import { GPUSearchEngine, type GPUSearchConfig } from '@/gpu/gpu-search-engine.js';
+import {
+  GPU_SEARCH_THRESHOLD,
+  WORKER_BATCH_SIMILARITY_THRESHOLD,
+  WORKER_NORMALIZE_THRESHOLD,
+  WORKER_SEARCH_THRESHOLD,
+} from '@/performance/execution-thresholds.js';
 import { log } from '@/utilities/logger.js';
 import { VectorOperations } from '@/vectors/operations.js';
 import { WorkerPool } from '@/workers/worker-pool.js';
 import { createDistanceCalculator, DistanceCalculator } from './distance-metrics.js';
 import { HNSWIndex } from './hnsw-index.js';
-import { IndexCache } from './index-persistence.js';
+import { IndexCache, type IndexHealthReport } from './index-persistence.js';
 import { MetadataFilterCompiler } from './metadata-filter.js';
 
 /**
@@ -29,10 +40,17 @@ export class SearchEngine {
   private indexId: string;
   private workerPool: WorkerPool | null = null;
   private useWorkers = false;
-  private parallelThreshold = 1000; // Use workers for datasets larger than this
+  private parallelThreshold = WORKER_SEARCH_THRESHOLD;
   private gpuSearchEngine: GPUSearchEngine | null = null;
   private useGPU = false;
-  private gpuThreshold = 5000; // Use GPU for datasets larger than this
+  private gpuThreshold = GPU_SEARCH_THRESHOLD;
+
+  /**
+   * When true, the HNSW index may not reflect current storage state.
+   * Indexed search is suppressed until the index is explicitly rebuilt or cleared.
+   * Set by markIndexDirty() after a storage–index synchronization failure.
+   */
+  private indexDirty = false;
 
   constructor(
     private storage: StorageAdapter,
@@ -92,7 +110,80 @@ export class SearchEngine {
   }
 
   /**
-   * Search for k most similar vectors
+   * Throw SearchAbortedError if the signal is already aborted.
+   */
+  private throwIfAborted(signal?: SearchOptions['signal']): void {
+    if (signal?.aborted) {
+      throw new SearchAbortedError();
+    }
+  }
+
+  /**
+   * Wrap a search promise with timeout and/or abort-signal enforcement.
+   *
+   * - `timeout` races the search against a timer. If the timer fires first,
+   *   the search resolves with SearchTimeoutError.
+   * - `signal` is polled before the promise settles via a rejection race.
+   *   When the signal is already aborted at call time, the error is thrown
+   *   synchronously by throwIfAborted before we even reach here.
+   */
+  private withCancellation<T>(promise: Promise<T>, options?: SearchOptions): Promise<T> {
+    const { timeout, signal } = options ?? {};
+
+    if (!timeout && !signal) {
+      return promise;
+    }
+
+    const racers: Promise<T>[] = [promise];
+
+    if (timeout !== undefined) {
+      racers.push(
+        new Promise<T>((_resolve, reject) => {
+          setTimeout(() => reject(new SearchTimeoutError(timeout)), timeout);
+        }),
+      );
+    }
+
+    if (signal !== undefined) {
+      racers.push(
+        new Promise<T>((_resolve, reject) => {
+          // Poll the signal — VectorAbortSignal only exposes `.aborted`, not an
+          // `addEventListener`. We resolve the race quickly by checking every frame
+          // via a tight polling loop that terminates once the outer promise settles.
+          let done = false;
+          promise
+            .then(() => {
+              done = true;
+            })
+            .catch(() => {
+              done = true;
+            });
+
+          const poll = () => {
+            if (done) return;
+            if (signal.aborted) {
+              reject(new SearchAbortedError());
+              return;
+            }
+            // Check every ~10 ms while the search is running.
+            setTimeout(poll, 10);
+          };
+          // If already aborted, fire immediately on the next tick.
+          setTimeout(poll, 0);
+        }),
+      );
+    }
+
+    return Promise.race(racers);
+  }
+
+  /**
+   * Search for k most similar vectors.
+   *
+   * When the HNSW index is marked dirty (due to a failed storage–index
+   * synchronization), this method silently falls back to brute-force search
+   * so that stale index state is never used. Call {@link rebuildIndex} to
+   * restore indexed performance.
    */
   async search(
     queryVector: Float32Array,
@@ -104,13 +195,22 @@ export class SearchEngine {
       throw new DimensionMismatchError(this.dimension, queryVector.length);
     }
 
-    // Use HNSW index if available and no metadata filter
-    if (this.useIndex && this.hnswIndex && !options?.filter) {
-      return this.searchWithIndex(queryVector, k, options);
+    // Reject immediately if the caller already aborted.
+    this.throwIfAborted(options?.signal);
+
+    if (this.indexDirty) {
+      log.warn(
+        'Index is dirty due to a prior synchronization failure — using brute-force search until index is rebuilt',
+      );
     }
 
-    // Fall back to brute force search
-    return this.searchBruteForce(queryVector, k, options);
+    // Use HNSW index if available, no metadata filter, and index is clean
+    const coreSearch =
+      this.useIndex && this.hnswIndex && !options?.filter && !this.indexDirty
+        ? this.searchWithIndex(queryVector, k, options)
+        : this.searchBruteForce(queryVector, k, options);
+
+    return this.withCancellation(coreSearch, options);
   }
 
   /**
@@ -132,6 +232,9 @@ export class SearchEngine {
 
     // Search using HNSW index
     const indexResults = await this.hnswIndex.search(processedQuery, k);
+
+    // Check abort signal after the async index search.
+    this.throwIfAborted(options?.signal);
 
     // Convert to search results
     const results = await Promise.all(
@@ -174,6 +277,9 @@ export class SearchEngine {
     // Get candidates (all vectors for now, will be optimized with indexing)
     const candidates = await this.getCandidates(options?.filter);
 
+    // Check abort signal after the async storage fetch.
+    this.throwIfAborted(options?.signal);
+
     if (candidates.length === 0) {
       return [];
     }
@@ -199,10 +305,11 @@ export class SearchEngine {
       processedQuery,
       candidates,
       metric || { name: 'cosine' },
+      options,
     );
 
-    // Sort by distance (ascending) and take top k
-    scoredCandidates.sort((a, b) => a.distance - b.distance);
+    // Sort by distance ascending; use id as a stable tie-breaker.
+    scoredCandidates.sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
     const topK = scoredCandidates.slice(0, k);
 
     // Convert to search results
@@ -313,6 +420,9 @@ export class SearchEngine {
     }
 
     try {
+      // Check abort signal before dispatching worker tasks.
+      this.throwIfAborted(options?.signal);
+
       // Use parallel similarity search
       const results = await this.workerPool.parallelSimilaritySearch(
         candidates,
@@ -321,6 +431,9 @@ export class SearchEngine {
         metric?.name as DistanceMetricType,
         filterFn,
       );
+
+      // Check abort signal after workers finish.
+      this.throwIfAborted(options?.signal);
 
       // Convert to search results format
       return results.map((result) => {
@@ -341,6 +454,13 @@ export class SearchEngine {
         return searchResult;
       });
     } catch (error) {
+      // Cancellation is not a worker failure — rethrow it instead of falling
+      // back. The sequential fallback is synchronous and would otherwise resolve
+      // with results before the outer cancellation race observes the abort,
+      // returning data for a request the caller cancelled or that timed out.
+      if (error instanceof SearchAbortedError || error instanceof SearchTimeoutError) {
+        throw error;
+      }
       log.warn('Worker search failed, falling back to sequential search', {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -362,10 +482,11 @@ export class SearchEngine {
       queryVector,
       candidates,
       metric || { name: 'cosine' },
+      options,
     );
 
-    // Sort by distance (ascending) and take top k
-    scoredCandidates.sort((a, b) => a.distance - b.distance);
+    // Sort by distance ascending; use id as a stable tie-breaker.
+    scoredCandidates.sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
     const topK = scoredCandidates.slice(0, k);
 
     // Convert to search results
@@ -386,7 +507,12 @@ export class SearchEngine {
   }
 
   /**
-   * Search for vectors within a distance threshold
+   * Search for vectors within a distance threshold.
+   *
+   * All vectors whose distance to the query is at most `maxDistance` are
+   * collected first, then sorted by distance ascending with vector id as a
+   * stable tie-breaker. When `options.maxResults` is set the nearest N
+   * results are returned — independent of insertion order.
    */
   async searchRange(
     queryVector: Float32Array,
@@ -398,6 +524,21 @@ export class SearchEngine {
       throw new DimensionMismatchError(this.dimension, queryVector.length);
     }
 
+    // Reject immediately if the caller already aborted.
+    this.throwIfAborted(options?.signal);
+
+    const rangeSearch = this.searchRangeCore(queryVector, maxDistance, options);
+    return this.withCancellation(rangeSearch, options);
+  }
+
+  /**
+   * Core implementation of range search (without cancellation wrapping).
+   */
+  private async searchRangeCore(
+    queryVector: Float32Array,
+    maxDistance: number,
+    options?: SearchOptions & { maxResults?: number },
+  ): Promise<SearchResult[]> {
     const metric = this.distanceCalculator.getMetricInfo();
     const processedQuery = metric?.requiresNormalized
       ? VectorOperations.normalizeSync(queryVector)
@@ -407,7 +548,23 @@ export class SearchEngine {
     const candidates = await this.getCandidates(options?.filter);
     const results: SearchResult[] = [];
 
-    for (const candidate of candidates) {
+    // Enforce abort/timeout inside this synchronous scan (see scoreVectors for
+    // why the timer race alone is insufficient on a blocked event loop).
+    const signal = options?.signal;
+    const timeout = options?.timeout;
+    const deadline = timeout !== undefined ? performance.now() + timeout : undefined;
+    const CANCELLATION_CHECK_INTERVAL = 1024;
+
+    for (let i = 0; i < candidates.length; i++) {
+      if (i % CANCELLATION_CHECK_INTERVAL === 0) {
+        if (signal?.aborted) {
+          throw new SearchAbortedError();
+        }
+        if (deadline !== undefined && performance.now() > deadline) {
+          throw new SearchTimeoutError(timeout as number);
+        }
+      }
+      const candidate = candidates[i] as VectorData;
       // Process vector if needed
       const processedVector = metric?.requiresNormalized
         ? VectorOperations.normalizeSync(candidate.vector)
@@ -416,7 +573,9 @@ export class SearchEngine {
       // Calculate distance
       const distance = this.distanceCalculator.calculate(processedQuery, processedVector);
 
-      // Check if within threshold
+      // Collect all matches — do NOT break early; maxResults is applied after
+      // sorting so that the nearest vectors are returned regardless of insertion
+      // order.
       if (distance <= maxDistance) {
         const searchResult: SearchResult = {
           id: candidate.id,
@@ -430,17 +589,17 @@ export class SearchEngine {
           searchResult.vector = candidate.vector;
         }
         results.push(searchResult);
-
-        // Check max results limit
-        if (options?.maxResults && results.length >= options.maxResults) {
-          break;
-        }
       }
     }
 
-    // Sort by distance
-    results.sort((a, b) => (a.distance || 0) - (b.distance || 0));
-    return results;
+    // Sort by distance ascending; use id as a stable tie-breaker so that
+    // equal-distance results are returned in a consistent, documented order.
+    results.sort(
+      (a, b) => (a.distance ?? 0) - (b.distance ?? 0) || a.id.localeCompare(b.id),
+    );
+
+    // Apply maxResults limit after sorting to guarantee nearest results are kept.
+    return options?.maxResults != null ? results.slice(0, options.maxResults) : results;
   }
 
   /**
@@ -454,8 +613,14 @@ export class SearchEngine {
       progressive?: boolean;
     },
   ): AsyncGenerator<SearchResult[], void, unknown> {
+    // Reject immediately if already aborted.
+    this.throwIfAborted(options?.signal);
+
     const batchSize = options?.batchSize || 10;
-    const maxResults = options?.maxResults || Infinity;
+    // Default to the bounded result cap rather than Infinity: omitting
+    // maxResults must not let search() materialize and sort the entire
+    // candidate set in memory, which would defeat the 50,000-result contract.
+    const maxResults = options?.maxResults ?? InputValidator.MAX_SEARCH_RESULT_LIMIT;
 
     // For progressive search, start with smaller candidate sets
     if (options?.progressive) {
@@ -463,11 +628,13 @@ export class SearchEngine {
       return;
     }
 
-    // Regular streaming search
+    // Regular streaming search — run via search() which already enforces
+    // timeout and signal.
     const results = await this.search(queryVector, maxResults, options);
 
-    // Yield results in batches
+    // Yield results in batches, checking signal between each batch.
     for (let i = 0; i < results.length; i += batchSize) {
+      this.throwIfAborted(options?.signal);
       yield results.slice(i, i + batchSize);
     }
   }
@@ -528,20 +695,35 @@ export class SearchEngine {
   }
 
   /**
-   * Get candidate vectors based on filter
+   * Get candidate vectors based on filter.
+   *
+   * When the adapter reports `capabilities.metadataIndexing = true` and
+   * implements `filteredScan()`, the scan is delegated to the adapter so the
+   * full dataset is never materialized into memory. Adapters that do not
+   * implement `filteredScan()` are documented as lacking metadata indexing;
+   * the search engine falls back to `getAll()` + in-memory filtering, which
+   * loads the entire store.
    */
   private async getCandidates(filter?: MetadataFilter): Promise<VectorData[]> {
     if (!filter) {
       return this.storage.getAll();
     }
 
-    // Compile the filter for efficient matching
+    // Compile the filter once so both paths share the same predicate.
     const matcher = MetadataFilterCompiler.compile(filter);
 
-    // For now, get all and filter in memory
-    // TODO: Optimize with metadata indices
+    // Prefer adapter-assisted scanning when the adapter supports it.
+    if (this.storage.capabilities?.metadataIndexing && this.storage.filteredScan) {
+      return this.storage.filteredScan(matcher);
+    }
+
+    // Fallback: load all vectors and filter in memory.
+    // NOTE: Adapters that reach this path lack metadata indexing — see
+    // AdapterCapabilities.metadataIndexing. At production dataset sizes this
+    // will materialize the full store. Consider using an adapter that
+    // implements filteredScan() for filtered search on large collections.
     const allVectors = await this.storage.getAll();
-    return allVectors.filter((vector) => matcher(vector.metadata || {}));
+    return allVectors.filter((vector) => matcher(vector.metadata ?? {}));
   }
 
   /**
@@ -551,18 +733,37 @@ export class SearchEngine {
     query: Float32Array,
     candidates: VectorData[],
     metric: { name: string; requiresNormalized?: boolean },
+    options?: SearchOptions,
   ): Array<VectorData & { distance: number }> {
-    return candidates.map((candidate) => {
-      // Process vector if needed
+    // The distance loop runs synchronously and blocks the event loop, so the
+    // timer/abort race in withCancellation() cannot fire until it finishes.
+    // Enforce the deadline and abort signal *inside* the loop (checked every
+    // CANCELLATION_CHECK_INTERVAL candidates to keep the overhead negligible)
+    // so a long sequential scan honours timeout/abort instead of returning
+    // results for a request that should have been cancelled.
+    const signal = options?.signal;
+    const timeout = options?.timeout;
+    const deadline = timeout !== undefined ? performance.now() + timeout : undefined;
+    const CANCELLATION_CHECK_INTERVAL = 1024;
+
+    const scored: Array<VectorData & { distance: number }> = new Array(candidates.length);
+    for (let i = 0; i < candidates.length; i++) {
+      if (i % CANCELLATION_CHECK_INTERVAL === 0) {
+        if (signal?.aborted) {
+          throw new SearchAbortedError();
+        }
+        if (deadline !== undefined && performance.now() > deadline) {
+          throw new SearchTimeoutError(timeout as number);
+        }
+      }
+      const candidate = candidates[i] as VectorData;
       const processedVector = metric?.requiresNormalized
         ? VectorOperations.normalizeSync(candidate.vector)
         : candidate.vector;
-
-      // Calculate distance
       const distance = this.distanceCalculator.calculate(query, processedVector);
-
-      return { ...candidate, distance };
-    });
+      scored[i] = { ...candidate, distance };
+    }
+    return scored;
   }
 
   /**
@@ -585,8 +786,8 @@ export class SearchEngine {
       metric || { name: 'cosine' },
     );
 
-    // Sort and take top k
-    scoredCandidates.sort((a, b) => a.distance - b.distance);
+    // Sort by distance ascending; use id as a stable tie-breaker.
+    scoredCandidates.sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
     const topK = scoredCandidates.slice(0, k);
 
     return topK.map((candidate) => {
@@ -611,8 +812,9 @@ export class SearchEngine {
   private distanceToScore(distance: number, metricName: string): number {
     switch (metricName) {
       case 'cosine':
-        // Cosine distance is in range [0, 2], convert to similarity [0, 1]
-        return 1 - distance / 2;
+        // Cosine distance is in range [0, 2], convert to similarity [0, 1].
+        // Clamp to [0, 1] to guard against floating-point drift with unit vectors.
+        return Math.min(1, Math.max(0, 1 - distance / 2));
 
       case 'dot':
         // Dot product is negative distance, convert back
@@ -672,7 +874,33 @@ export class SearchEngine {
   }
 
   /**
-   * Rebuild the index from storage
+   * Mark the HNSW index as dirty.
+   *
+   * Call this after any operation where storage writes succeeded but the
+   * corresponding index mutation failed. While dirty, {@link search} falls
+   * back to brute-force so stale index state is never used. Call
+   * {@link rebuildIndex} to restore indexed performance.
+   */
+  markIndexDirty(): void {
+    this.indexDirty = true;
+    log.warn('Search index marked dirty — indexed search disabled until rebuild');
+  }
+
+  /**
+   * Returns true if the index is dirty and brute-force search is in use.
+   */
+  isIndexDirty(): boolean {
+    return this.indexDirty;
+  }
+
+  /**
+   * Rebuild the index from storage, optionally loading a persisted snapshot first.
+   *
+   * When loading from cache, the cached index is validated against the current
+   * storage vector count. If the counts differ (stale or incompatible index) the
+   * index is rebuilt from scratch so results remain consistent.
+   *
+   * Clears the dirty flag on success so indexed search resumes.
    */
   async rebuildIndex(options: { loadFromCache?: boolean } = {}): Promise<void> {
     if (!this.useIndex || !this.hnswIndex) {
@@ -683,28 +911,77 @@ export class SearchEngine {
     if (options.loadFromCache !== false && this.indexCache) {
       const cached = await this.indexCache.getIndex(this.indexId);
       if (cached) {
-        this.hnswIndex = cached.index;
+        // Validate cached index against current storage state. The cached index
+        // must match BOTH the storage node count AND the active distance metric:
+        // a cosine-built graph traversed under euclidean (or vice versa) yields
+        // incorrect indexed results even when the node count matches.
+        const allVectors = await this.storage.getAll();
+        const currentMetric = this.distanceCalculator.getMetricInfo().name || 'cosine';
+        const metricMatches = cached.distanceMetric === currentMetric;
+        if (cached.index.size() === allVectors.length && metricMatches) {
+          this.hnswIndex = cached.index;
+          this.indexDirty = false;
+          return;
+        }
+
+        // Stale or incompatible index — node count or distance metric differs.
+        // Discard and rebuild so results stay consistent with the active metric.
+        log.warn(
+          `Persisted HNSW index is incompatible (cached ${cached.index.size()} nodes/${cached.distanceMetric} ` +
+            `vs storage ${allVectors.length} vectors/${currentMetric}); rebuilding`,
+          { indexId: this.indexId },
+        );
+
+        // Clear the stale persisted entry so it doesn't get reused
+        await this.indexCache.deleteIndex(this.indexId);
+
+        // Clear existing index and rebuild from the already-fetched vectors
+        this.hnswIndex.clear();
+        for (const vectorData of allVectors) {
+          await this.hnswIndex.addVector(vectorData);
+        }
+        await this.saveIndex();
+        // The index is now consistent with storage. Clear the dirty flag so a
+        // public rebuildIndex() that recovered via this stale-cache path
+        // re-enables indexed search; otherwise every later search would keep
+        // falling back to brute force.
+        this.indexDirty = false;
         return;
       }
     }
 
-    // Clear existing index
-    this.hnswIndex.clear();
+    // Signal that a rebuild is in progress so health checks reflect it.
+    this.indexCache?.setRebuilding(this.indexId, true);
 
-    // Get all vectors from storage
-    const allVectors = await this.storage.getAll();
+    try {
+      // Clear existing index
+      this.hnswIndex.clear();
 
-    // Add each vector to the index
-    for (const vectorData of allVectors) {
-      await this.hnswIndex.addVector(vectorData);
+      // Get all vectors from storage
+      const allVectors = await this.storage.getAll();
+
+      // Add each vector to the index
+      for (const vectorData of allVectors) {
+        await this.hnswIndex.addVector(vectorData);
+      }
+
+      // Save rebuilt index
+      await this.saveIndex();
+    } finally {
+      this.indexCache?.setRebuilding(this.indexId, false);
     }
 
-    // Save rebuilt index
-    await this.saveIndex();
+    // Index is now consistent with storage
+    this.indexDirty = false;
   }
 
   /**
-   * Enable/disable indexing
+   * Enable or disable HNSW approximate nearest-neighbor indexing.
+   *
+   * **Status: Experimental** — HNSW recall, deletion, update, persistence,
+   * and rebuild correctness are not validated. Brute-force search (the
+   * default) is recommended for production use until these limitations are
+   * resolved. See {@link HNSWIndex} for the full list of known gaps.
    */
   setIndexing(enabled: boolean, distanceMetric?: DistanceMetricType): void {
     this.useIndex = enabled;
@@ -722,20 +999,106 @@ export class SearchEngine {
   getIndexStats(): {
     enabled: boolean;
     nodeCount: number;
+    dirtyCount: number;
+    /**
+     * Whether the runtime index is dirty (an index mutation failed and searches
+     * fall back to brute force). This reflects in-memory state and is true even
+     * when there are no unsaved cache entries, unlike `dirtyCount`.
+     */
+    indexDirty: boolean;
     levels?: number[];
     avgConnections?: number;
   } {
     if (!this.useIndex || !this.hnswIndex) {
-      return { enabled: false, nodeCount: 0 };
+      return {
+        enabled: false,
+        nodeCount: 0,
+        dirtyCount: this.indexCache?.getStats().dirtyCount ?? 0,
+        indexDirty: this.indexDirty,
+      };
     }
 
     const stats = this.hnswIndex.getStats();
     return {
       enabled: true,
       nodeCount: stats.nodeCount,
+      dirtyCount: this.indexCache?.getStats().dirtyCount ?? 0,
+      indexDirty: this.indexDirty,
       levels: stats.levels,
       avgConnections: stats.avgConnections,
     };
+  }
+
+  /**
+   * Return a health report for the active index without performing a search.
+   *
+   * Consumers can use this to detect dirty, stale, missing, incompatible,
+   * rebuilding, disabled, or error states before deciding whether to run a
+   * search, trigger a rebuild, or surface a warning to end users.
+   *
+   * When no index cache is configured (i.e. no `database` was passed to the
+   * constructor), the state is either `disabled` (indexing off) or `healthy`
+   * (pure in-memory index with no persistence layer).
+   */
+  getIndexHealth(): IndexHealthReport {
+    if (!this.indexCache) {
+      // No persistence layer at all.
+      if (!this.useIndex) {
+        return {
+          indexId: this.indexId,
+          state: 'disabled',
+          isDirty: false,
+          lastAccess: undefined,
+          message: 'Indexing is disabled for this search engine instance.',
+        };
+      }
+      // In-memory only index.
+      if (!this.hnswIndex) {
+        return {
+          indexId: this.indexId,
+          state: 'missing',
+          isDirty: false,
+          lastAccess: undefined,
+          message: 'No in-memory index is present. Call rebuildIndex() to populate it.',
+        };
+      }
+      // A runtime-dirty index (an index mutation failed) disables indexed search
+      // even with no persistence layer, so report it as dirty rather than healthy.
+      if (this.indexDirty) {
+        return {
+          indexId: this.indexId,
+          state: 'dirty',
+          isDirty: true,
+          lastAccess: undefined,
+          message:
+            'The in-memory index is dirty after a failed mutation; searches fall ' +
+            'back to brute force. Call rebuildIndex() to restore indexed search.',
+        };
+      }
+      return {
+        indexId: this.indexId,
+        state: 'healthy',
+        isDirty: false,
+        lastAccess: undefined,
+        message: 'In-memory index is loaded and ready (no persistence configured).',
+      };
+    }
+
+    const report = this.indexCache.getHealthReport(this.indexId, this.useIndex);
+    // The cache report only knows about unsaved cache entries. A runtime-dirty
+    // index (mutation failed, no unsaved cache entry) would otherwise read as
+    // healthy even though indexed search is disabled — overlay the runtime flag.
+    if (this.indexDirty && report.state === 'healthy') {
+      return {
+        ...report,
+        state: 'dirty',
+        isDirty: true,
+        message:
+          'The runtime index is dirty after a failed mutation; searches fall ' +
+          'back to brute force. Call rebuildIndex() to restore indexed search.',
+      };
+    }
+    return report;
   }
 
   /**
@@ -759,7 +1122,7 @@ export class SearchEngine {
     }
 
     const distanceMetric = this.distanceCalculator.getMetricInfo().name || 'cosine';
-    this.indexCache.putInCache(this.indexId, this.hnswIndex, distanceMetric, true);
+    await this.indexCache.putInCache(this.indexId, this.hnswIndex, distanceMetric, true);
     await this.indexCache.flushDirty();
   }
 
@@ -873,7 +1236,7 @@ export class SearchEngine {
    * Batch normalize vectors using workers if available
    */
   async normalizeVectorsBatch(vectors: Float32Array[]): Promise<Float32Array[]> {
-    if (this.workerPool && vectors.length >= 100) {
+    if (this.workerPool && vectors.length >= WORKER_NORMALIZE_THRESHOLD) {
       try {
         await this.workerPool.init();
         return await this.workerPool.normalizeVectors(vectors);
@@ -896,7 +1259,10 @@ export class SearchEngine {
     queries: Float32Array[],
     metric: DistanceMetricType = 'cosine',
   ): Promise<number[][]> {
-    if (this.workerPool && vectors.length * queries.length >= 10000) {
+    if (
+      this.workerPool &&
+      vectors.length * queries.length >= WORKER_BATCH_SIMILARITY_THRESHOLD
+    ) {
       try {
         await this.workerPool.init();
         return await this.workerPool.batchSimilarity(vectors, queries, metric);

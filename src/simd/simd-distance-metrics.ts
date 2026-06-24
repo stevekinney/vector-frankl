@@ -1,5 +1,10 @@
 /**
- * SIMD-accelerated distance metrics for high-performance vector similarity calculations
+ * Optimized JavaScript distance metrics for high-performance vector similarity calculations.
+ *
+ * Despite the "SIMD" naming retained for API compatibility, these metrics use
+ * loop-unrolled TypedArray JavaScript — not hardware SIMD instructions. The
+ * `simdAccelerated` flag on each calculator reflects JavaScript-level
+ * optimizations only, not real hardware SIMD.
  */
 
 import type { DistanceMetric } from '../core/types.js';
@@ -21,6 +26,11 @@ export interface SIMDDistanceCalculator {
   calculate: (a: Float32Array, b: Float32Array) => number;
   batchCalculate?: (vectors: Float32Array[], query: Float32Array) => Float32Array;
   requiresNormalized?: boolean;
+  /**
+   * Whether this calculator uses loop-unrolled TypedArray optimizations.
+   * This is JavaScript-level optimization only — not hardware SIMD instructions.
+   * No hardware SIMD path is active in the current implementation.
+   */
   simdAccelerated: boolean;
 }
 
@@ -186,8 +196,9 @@ export class SIMDDistanceMetrics {
   distanceToScore(distance: number, metric: DistanceMetric): number {
     switch (metric) {
       case 'cosine':
-        // Cosine distance is in range [0, 2], convert to similarity [0, 1]
-        return 1 - distance / 2;
+        // Cosine distance is in range [0, 2], convert to similarity [0, 1].
+        // Clamp to [0, 1] to guard against floating-point drift with unit vectors.
+        return Math.min(1, Math.max(0, 1 - distance / 2));
 
       case 'dot':
         // Dot product is negative distance, convert back

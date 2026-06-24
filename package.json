@@ -1,6 +1,6 @@
 {
   "name": "vector-frankl",
-  "version": "1.0.0-beta.1",
+  "version": "1.0.0-beta.3",
   "description": "High-performance vector database that runs entirely in the browser using IndexedDB",
   "keywords": [
     "vector",
@@ -27,7 +27,9 @@
   },
   "license": "MIT",
   "author": "Steve Kinney <hello@stevekinney.net>",
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/**/*.ts"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -126,12 +128,14 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:cjs && bun run build:adapters",
+    "benchmark:production": "bun run scripts/benchmark-production.ts",
+    "build": "bun run build:clean && bun run build:types && bun run build:js && bun run build:worker && bun run build:cjs && bun run build:adapters",
     "build:adapters": "bun build --target=bun --root=src/storage/adapters --outdir=dist/storage/adapters --format=esm --sourcemap=external ./src/storage/adapters/chrome-storage-adapter.ts ./src/storage/adapters/file-system-adapter.ts ./src/storage/adapters/indexed-database-adapter.ts ./src/storage/adapters/level-adapter.ts ./src/storage/adapters/lmdb-adapter.ts ./src/storage/adapters/memory-adapter.ts ./src/storage/adapters/opfs-adapter.ts ./src/storage/adapters/redis-adapter.ts ./src/storage/adapters/s3-adapter.ts ./src/storage/adapters/sqlite-adapter.ts",
-    "build:cjs": "bun build --target=browser --outdir=dist/cjs --format=cjs --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
+    "build:cjs": "bun run scripts/build.ts --format=cjs",
     "build:clean": "rm -rf dist",
-    "build:js": "bun build --target=browser --outdir=dist --format=esm --minify --sourcemap=external ./src/index.ts ./src/gpu.ts ./src/workers.ts ./src/debug.ts ./src/benchmarks.ts ./src/compression.ts",
+    "build:js": "bun run scripts/build.ts --format=esm",
     "build:types": "tsc -p tsconfig.build.json && bun run scripts/rewrite-declaration-imports.ts",
+    "build:worker": "bun build --target=browser --outdir=dist/workers --format=esm --minify --sourcemap=external ./src/workers/vector-worker.ts",
     "check:env": "bun run scripts/check-environment.ts",
     "clean": "bun run scripts/clean.ts",
     "dev": "bun --watch run src/index.ts",
@@ -142,11 +146,11 @@
     "prepack": "bun run build",
     "package:check": "bun run build && bun run scripts/check-package.ts",
     "prepare": "husky",
-    "prepublishOnly": "bun run lint && bun run typecheck && bun run test && bun run build",
+    "prepublishOnly": "bun run verify:production",
     "start": "bun run dist/index.js",
     "test": "r=0; bun test src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test tests/gpu tests/integration tests/search || r=$?; bun test tests/vectors tests/wasm tests/workers || r=$?; bun test tests/storage || r=$?; exit $r",
     "test:all": "bun run test && bun run test:end-to-end",
-    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage",
+    "test:coverage": "bun test --coverage src tests/unit tests/compression tests/debug tests/debug-mock.test.ts tests/gpu tests/integration tests/search tests/vectors tests/wasm tests/workers tests/storage && bun run scripts/check-coverage.ts",
     "test:end-to-end": "playwright test",
     "test:end-to-end:chromium": "playwright test --project=chromium",
     "test:end-to-end:firefox": "playwright test --project=firefox",
@@ -156,7 +160,17 @@
     "test:end-to-end:webkit": "playwright test --project=webkit",
     "test:parallel": "r=0; bun test --parallel src tests/unit tests/compression tests/debug tests/debug-mock.test.ts || r=$?; bun test --parallel tests/gpu tests/integration tests/search || r=$?; bun test --parallel tests/vectors tests/wasm tests/workers || r=$?; bun test --parallel tests/storage || r=$?; exit $r",
     "test:watch": "bun test --watch src tests/unit tests/compression tests/debug tests/gpu tests/integration tests/search tests/storage tests/vectors tests/wasm tests/workers tests/debug-mock.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:acceleration": "bun run scripts/verify-acceleration.ts",
+    "verify:benchmarks": "bun run scripts/verify-benchmarks.ts",
+    "verify:bundle-size": "bun run scripts/verify-bundle-size.ts",
+    "verify:changelog": "bun run scripts/verify-changelog.ts",
+    "verify:documentation": "bun run scripts/verify-documentation.ts",
+    "verify:documentation-examples": "bun run scripts/verify-documentation-examples.ts",
+    "verify:exports": "bun run scripts/verify-exports.ts",
+    "verify:package-consumers": "bun run scripts/verify-package-consumers.ts",
+    "verify:production": "bun run format:check && bun run lint && bun run typecheck && bun run test && bun run build && bun run verify:exports && bun run verify:package-consumers && bun run verify:documentation-examples && bun run verify:acceleration && bun run verify:benchmarks && bun run verify:bundle-size && bun run verify:supply-chain && bun run verify:changelog",
+    "verify:supply-chain": "bun run scripts/verify-supply-chain.ts"
   },
   "lint-staged": {
     "src/**/*.{js,ts,tsx,jsx,mjs,cjs}": [
@@ -225,6 +239,7 @@
   },
   "publishConfig": {
     "access": "public",
+    "provenance": true,
     "registry": "https://registry.npmjs.org/"
   }
 }
