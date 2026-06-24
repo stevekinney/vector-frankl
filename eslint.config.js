@@ -93,6 +93,7 @@ export default [
       '**/*.lock',
       '**/README.md',
       '**/package.json',
+      '.claude/**',
     ],
   },
 

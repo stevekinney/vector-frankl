@@ -114,3 +114,6 @@ REQUIREMENTS.md
 # Stray build artifacts — src is TypeScript-only
 src/**/*.js
 tmp/
+
+# Claude Code agent worktrees and local state (untracked, machine-local)
+.claude/
