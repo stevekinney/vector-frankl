@@ -28,6 +28,18 @@ const environmentSchema = z.object({
 
 export type Environment = z.infer<typeof environmentSchema>;
 
+interface EnvironmentVariableSources {
+  importMetaEnvironment?: Record<string, string | undefined>;
+  processEnvironment?: Record<string, string | undefined>;
+}
+
+export function resolveEnvironmentVariables({
+  importMetaEnvironment,
+  processEnvironment,
+}: EnvironmentVariableSources = {}): Record<string, string | undefined> {
+  return importMetaEnvironment ?? processEnvironment ?? {};
+}
+
 function validateEnvironment(env?: Record<string, string | undefined>): Environment {
   // In browser environments, provide sensible defaults
   const envToValidate = env || {};
